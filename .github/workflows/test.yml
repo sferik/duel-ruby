@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+    # The plugins (plugins/*) have workflows of their own (plugin-*.yml).
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  pull_request:
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  # By hand (Actions > Test > Run workflow): a push GitHub can't diff (a
+  # force-pushed root commit, say) matches no paths, so starts nothing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.ruby-version }}
+    runs-on: ubuntu-latest
+    # The development versions (Ruby's, JRuby's and TruffleRuby's) get an
+    # early look, but can't fail the build.
+    continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby-version: ["3.4", "4.0", "ruby-head", "jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+      # A development version's failure is advisory: the step's failure
+      # shows, but the job (and its check) passes, with a warning.
+      - name: Run tests
+        id: tests
+        continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
+        env:
+          COVERAGE: "false"
+        run: bundle exec rake test
+      - name: Note an advisory failure
+        if: steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::The tests failed on ${{ matrix.ruby-version }}, a development version"
+
+  coverage:
+    name: Coverage (100% line, branch and method)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      # SimpleCov's strict profile fails the run if any criterion drops
+      # below 100%.
+      - run: bundle exec rake test

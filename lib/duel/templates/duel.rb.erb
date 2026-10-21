@@ -1,0 +1,35 @@
+# frozen_string_literal: true
+
+# Duel's configuration: https://github.com/sferik/duel-ruby/blob/main/docs/configuration.md
+#
+# Duel follows conventions, so set only what differs: benchmarks are in
+# duel/**/*_duel.rb, each version's lib/ is first on the load path, a
+# change is compared when it touches lib/ or ext/, and releases are
+# tagged v*.
+Duel.configure do |c|
+<% if library -%>
+  # The library each version's workers require (from the gemspec, unless
+  # this says otherwise).
+  # c.library = "<%= library %>"
+<% elsif guess -%>
+  # The library each version's workers require, from its lib/.
+  c.library = "<%= guess %>"
+<% else -%>
+  # The library each version's workers require, from its lib/ (there's no
+  # gemspec to name it). Or, to load each version some other way:
+  #   c.load { |root| require File.join(root, "config", "boot") }
+  # c.library = "my_library"
+<% end -%>
+<% if ext -%>
+
+  # Builds each version's C extension, so that each is measured with its
+  # own build.
+  c.build = "bundle exec rake compile"
+<% end -%>
+<% if version_file -%>
+
+  # Each version runs on the Ruby that its own .ruby-version names, so a
+  # branch that upgrades Ruby is compared on each version's Ruby.
+  c.ruby = :version_file
+<% end -%>
+end

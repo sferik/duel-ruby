@@ -1,0 +1,91 @@
+module Duel
+  # What a plugin's tests need: its prepare blocks run as a worker's would
+  # be, its metrics measuring a block, and whole comparisons of two small
+  # projects.
+  module Testing
+    extend Testing
+
+    # What Testing.compare found.
+    class Comparison < Data
+      # A Result for each benchmark.
+      attr_reader results: Array[Result]
+
+      # What the run printed.
+      attr_reader output: String
+
+      # As `duel` would have it: no benchmark worse, nothing across the board
+      # (see #passed?).
+      # @api private
+      attr_reader passed: bool
+
+      # @api private
+      def self.new: (Array[Result] results, String output, bool passed) -> Comparison
+
+      # Whether it passed, as `duel` would have it.
+      def passed?: () -> bool
+
+      # The benchmark's Result.
+      def []: (String name) -> Result?
+    end
+
+    # What #measure measured, by name, and what metrics said of it.
+    class Measurement < Hash[String, Metric::value]
+      # What metrics said of it, by measure.
+      attr_reader details: Hash[String, String]
+
+      # @api private
+      attr_writer details: Hash[String, String]
+    end
+
+    # Where prepare blocks' builds are kept, for every test of this process.
+    # @api private
+    CACHE: String
+
+    # Each config's metrics.
+    # @api private
+    MADE: Hash[Config, [Hash[String, Hash[Symbol, untyped]], Array[Metric]]]
+
+    # Runs +config+'s prepare blocks as they'd prepare a worker, sets the
+    # environment they give while the block runs, yields it, and stops
+    # what they started after.
+    def prepare: [T] (Config config, ?name: String, ?root: String, ?cache: String) { (Hash[String, String?] env) -> T } -> T
+
+    # What +config+'s metrics measure of the block, as one counted sample
+    # of +n+ iterations of a benchmark would, with its hooks (each
+    # iteration inside around_iteration hooks, if it has them). The
+    # block gets the benchmark's Context.
+    def measure: (Config config, ?n: Integer, ?only: (:count | :timing)?, **untyped hooks) { (Context context) -> untyped } -> Measurement
+
+    # Runs the block with +env+ set, and the environment as it was after.
+    # @api private
+    def with_env: [T] (Hash[String, String?] env) { () -> T } -> T
+
+    # Each config's worker's Stops.
+    # @api private
+    STOPS: Hash[Config, Stops]
+
+    # Runs the block as a worker of +config+ would, then ends it.
+    def in_worker: [T] (Config config) { () -> T } -> T
+
+    # +config+'s metrics, made once (its in_worker blocks run first).
+    def metrics: (Config config) -> Array[Metric]
+
+    # Compares the project at +base+ with the one at +candidate+, in
+    # worker processes, as `duel` does, with +settings+ (as `duel`'s
+    # options name them: processes:, timeout:, filter:, limit:...).
+    def compare: (String base, String candidate, **untyped settings) -> Comparison
+
+    # A stand-in Sample of +n+ iterations of a benchmark, measuring
+    # nothing.
+    def sample: (?n: Integer, ?name: String, ?only: only?, ?peak_memory: bool) -> Sample
+
+    # A stand-in reading of running totals, and what was read with them.
+    def reading: [T, C] (?Snapshot::totals[T] totals, ?C? context) -> Snapshot::Reading[T, C?]
+
+    # What running totals' details block says of +stretches+ of +sample+.
+    def details: (singleton(Snapshot) metric, Snapshot::stretches[Metric::value, untyped] stretches, ?Sample sample) -> Snapshot::explained
+
+    # Writes a project into +dir+: +files+, by path, with their contents.
+    def project: (String dir, Hash[String, String] files) -> String
+  end
+end

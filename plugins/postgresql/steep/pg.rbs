@@ -1,0 +1,55 @@
+# What duel-postgresql uses of pg.
+module PG
+  PQPING_OK: Integer
+  PGRES_COMMAND_OK: Integer
+  PQTRANS_INTRANS: Integer
+
+  def self.connect: (?String conninfo) -> Connection
+
+  class Error < StandardError
+  end
+
+  class Connection
+    def self.ping: (String conninfo) -> Integer
+
+    def async_exec: (String sql) -> Result
+
+    def exec_params: (String sql, Array[String] params) -> Result
+
+    def close: () -> void
+
+    def finished?: () -> bool
+
+    def transaction_status: () -> Integer
+
+    def close_portal: (String name) -> Result
+  end
+
+  class TypeMap
+  end
+
+  class TypeMapByColumn < TypeMap
+    def initialize: (Array[Coder?] coders) -> void
+  end
+
+  class Coder
+  end
+
+  module TextDecoder
+    class Integer < Coder
+    end
+
+    class Float < Coder
+    end
+  end
+
+  class Result
+    def values: () -> Array[Array[String?]]
+
+    def map_types!: (TypeMap type_map) -> Result
+
+    def column_values: (Integer index) -> Array[untyped]
+
+    def result_status: () -> Integer
+  end
+end

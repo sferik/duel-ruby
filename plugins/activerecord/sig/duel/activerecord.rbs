@@ -1,0 +1,99 @@
+module Duel
+  # What Active Record did for each benchmark, from its notifications
+  # (active_record_queries, active_record_cached_queries,
+  # active_record_transactions, active_record_instantiations and, when
+  # asked for, active_record_query_time).
+  module ActiveRecord
+    # A notification's payload, as Active Record gives it.
+    type payload = Hash[Symbol, untyped]
+
+    VERSION: String
+
+    # Counts.
+    MEASURES: Hash[String, Metric::settings]
+
+    # Elapsed time, measured when asked for.
+    QUERY_TIME: Hash[String, Metric::settings]
+
+    # Configures Duel for the plugin (c.use :activerecord): its metrics,
+    # and +query_time+ too if true. A query +ignore+ is true for isn't
+    # counted, nor timed. Returns the Counter.
+    def self.configure: (Config config, ?query_time: bool, ?ignore: (^(payload payload) -> boolish)?) -> Counter
+
+    # Running totals, from the notifications it subscribes to.
+    class Counter
+      SQL: String
+      TRANSACTION: String
+      INSTANTIATION: String
+
+      # The events each measure needs.
+      EVENTS: Hash[String, String]
+
+      # Where a query's start is kept until it finishes.
+      STARTED: Symbol
+
+      # The queries counted last that it keeps track of.
+      KEPT: Integer
+
+      # The most statements whose SQL it keeps between two #details.
+      STATEMENTS: Integer
+
+      # The most statements shown, and the most shown of each one's SQL.
+      SHOWN: Integer
+      LENGTH: Integer
+
+      @query_time: bool
+      @ignore: (^(payload payload) -> boolish)?
+      @timing: bool
+      @queries: Integer
+      @cached: Integer
+      @transactions: Integer
+      @instantiations: Integer
+      @time: Integer
+      @subscriptions: Array[untyped]
+      @recent: Array[Integer]
+      @sql: Hash[Integer, String]
+
+      def initialize: (query_time: bool, ignore: (^(payload payload) -> boolish)?) -> void
+
+      # Subscribes to the events +measures+ need.
+      def subscribe: (Array[String] measures) -> void
+
+      # The totals so far, by name.
+      def totals: () -> Hash[String, Integer]
+
+      # What explains the queries a sample of +n+ iterations sent, in its
+      # stretches: the statements sent most, and how many times an
+      # iteration. It forgets their SQL.
+      def details: (Snapshot::stretches[Integer, nil] stretches, Integer n) -> Hash[String, String]?
+
+      # Stops counting.
+      def unsubscribe: () -> void
+
+      # (Active Support's, for every event subscribed to.)
+      def start: (String name, String id, payload payload) -> void
+
+      def finish: (String name, String id, payload payload) -> void
+
+      private
+
+      def query: (payload payload) -> void
+
+      # Keeps track of the statement a query sent, and its SQL, for the
+      # first STATEMENTS.
+      def sent: (String sql) -> void
+
+      # The queries counted by a reading of the totals.
+      def queries: (Snapshot::Reading[Integer, nil] reading) -> Integer
+
+      # +sql+ on one line, and at most LENGTH long.
+      def shorten: (String sql) -> String
+
+      def monotonic: () -> Integer
+
+      # Active Support's notifications, loaded when it first subscribes
+      # (untyped: Active Support has no signatures of its own).
+      def notifications: () -> untyped
+    end
+  end
+end

@@ -1,0 +1,19 @@
+usage: opensource
+integration:
+  name: minitest
+includes:
+  - lib
+  - test
+requires:
+  - ./test/test_helper
+coverage_criteria:
+  # A mutation whose tests' process dies before it reports (a crash, a
+  # stack overflow, a kill for its memory) counts as killed, as one that
+  # times out does. Mutant counts it alive unless told.
+  process_abort: true
+  timeout: true
+matcher:
+  subjects:
+    - Duel::Redis*
+mutation:
+  timeout: 20.0

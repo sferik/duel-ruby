@@ -1,0 +1,62 @@
+module Duel
+  # What each benchmark leaves alive: the Ruby objects still there after
+  # a full garbage collection that weren't before it (retained_objects).
+  module Retained
+    VERSION: String
+
+    # The retained objects a sample is allowed (Duel's allowance) before
+    # any is counted against it.
+    ALLOWANCE: Integer
+
+    # Retained objects per iteration that still aren't a regression.
+    TOLERANCE: Float
+
+    # The kinds of object a sample that retained more than its allowance
+    # shows, most first.
+    SHOWN: Integer
+
+    # Configures Duel for the plugin (c.use :retained): the metric (CRuby
+    # only). Returns it.
+    def self.configure: (Config config) -> singleton(Metric)
+
+    # Collects all the garbage there is (a full collection, twice).
+    def self.collect: () -> void
+
+    # The objects alive after collecting the garbage.
+    def self.live: () -> Integer
+
+    # What each of the objects a sample made and left alive is, and where
+    # it was made: {[class, "file:line"] => how many}, most first.
+    def self.traced: () -> Hash[[String, String], Integer]
+
+    # Where Duel's own files are: what it makes isn't shown.
+    DUEL: String
+
+    # Where an object was made, from its +file+ and +line+ (nil where it
+    # wasn't made in Ruby code).
+    def self.site: (String? file, Integer? line, String here) -> String
+
+    # The metric: the objects alive after the sample less those before
+    # it.
+    class Objects < Metric
+      @live: Integer
+      @n: Integer
+      @retained: Integer
+
+      # It traces where objects are made during the sample, for #details.
+      def start_sample: (Sample sample) -> void
+
+      def stop_sample: () -> Integer
+
+      # It goes on through an untimed block: it measures the whole sample.
+      def pause_sample: () -> nil
+
+      def resume_sample: (Sample _sample) -> nil
+
+      # What the sample retained, an iteration, by class and where it was
+      # made, when it retained more than its allowance and tolerance let
+      # through.
+      def details: () -> String?
+    end
+  end
+end

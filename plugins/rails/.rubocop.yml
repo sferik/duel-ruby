@@ -1,0 +1,31 @@
+plugins:
+  - rubocop-performance
+  - rubocop-minitest
+
+inherit_gem:
+  standard: config/base.yml
+  standard-performance: config/base.yml
+
+# (.duel.rb is a dotfile, which RuboCop leaves out unless told.)
+inherit_mode:
+  merge:
+    - Include
+
+# RuboCop takes the AllCops/Exclude of the repository root's .rubocop.yml
+# too, which leaves plugins/ out. The options in .rubocop, next to this
+# file, ignore it (--ignore-parent-exclusion).
+AllCops:
+  Include:
+    - ".duel.rb"
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "tmp/**/*"
+    - "vendor/**/*"
+    - "pkg/**/*"
+    - "coverage/**/*"
+
+# End-to-end tests check several facets of one comparison.
+Minitest/MultipleAssertions:
+  Max: 10

@@ -1,0 +1,212 @@
+module Duel
+  # A MySQL server of each worker's own, and what it did for each
+  # benchmark (mysql_queries, mysql_rows, mysql_rows_examined,
+  # mysql_time).
+  module MySQL
+    VERSION: String
+
+    URL: String
+    SOCKET: String
+    DATABASE: String
+    USER: String
+
+    # The server's options (after --no-defaults).
+    OPTIONS: Array[String]
+
+    # And once it's initialized.
+    RUNNING: Array[String]
+
+    METRICS: Hash[String, Metric::settings]
+
+    # What the worker's server has done so far, but for this connection.
+    STATS: String
+
+    # Whether a client besides the reading one is running a statement,
+    # and how long a reading waits until none is.
+    BUSY: String
+    SETTLE: Float
+
+    # What it has done so far by statement (digest), any connection's:
+    # of those run since a time, but some digests.
+    DIGESTS: String
+
+    # The digests of statements, and the texts of digests.
+    DIGEST_OF: String
+    TEXTS: String
+
+    # A statement's numbers (or the server's, all told): queries, rows,
+    # rows examined, time (ps).
+    type numbers = Array[Integer]
+
+    # A statement's row, as MySQL.digests reads it: [digest, *numbers].
+    type row = Array[untyped]
+
+    # Configures Duel for the plugin (c.use :mysql): the server (+server+
+    # the program, +args+ more of its options, +setup+ SQL each worker's
+    # database runs when it's started, +env+ the variables besides
+    # DUEL_MYSQL_URL given its URL, +scheme+ the URL's) and its metrics.
+    # Returns the plugin's own connection to it, a worker's.
+    def self.configure: (Config config, ?server: String, ?args: Array[String], ?setup: String?, ?env: Array[String],
+                         ?scheme: String) -> InWorker[Connection]
+
+    # Runs SQL on a connection of its own to the server on +socket+;
+    # returns the last statement's result.
+    def self.run: (String socket, String sql) -> ::Trilogy::Result
+
+    # What the worker's server has done so far, but for the plugin's own
+    # connection, which reads it.
+    def self.totals: (Connection connection) -> numbers
+
+    # Waits, SETTLE seconds at most, until +connection+ is the only one
+    # running a statement.
+    def self.settle: (Connection connection) -> void
+
+    # The same by measure.
+    def self.stats: (Connection connection) -> Snapshot::totals[Metric::value]
+
+    # What the server has done so far, by statement, read over
+    # +connection+: those run since +since+, but the +own+ digests, each
+    # one's [digest, *numbers].
+    def self.digests: (Connection connection, Integer since, Array[String] own) -> Array[row]
+
+    # The digest of each of +statements+, read over +connection+.
+    def self.digests_of: (Connection connection, Array[String] statements) -> Array[String]
+
+    # The texts of the statements with these digests, by digest, read over
+    # +connection+.
+    def self.texts: (Connection connection, Array[String] digests) -> Hash[String, String]
+
+    # For benchmarks: the worker's server.
+    def self.url: () -> String
+
+    # Its socket's path.
+    def self.socket: () -> String
+
+    # Runs SQL on it, over a connection of its own; returns the last
+    # statement's result. For setting up: it fails while a benchmark is
+    # measured.
+    def self.execute: (String sql) -> ::Trilogy::Result
+
+    # Empties every table in its database. For setting up, as execute is.
+    def self.reset: () -> ::Trilogy::Result
+
+    # Running totals of what the worker's server did, all told, and by
+    # statement, to explain a regression.
+    class Statements
+      # The measures, in the order of a statement's numbers.
+      NAMES: Array[String]
+
+      # The statements a regression is explained with, and how much of
+      # each one's text.
+      SHOWN: Integer
+      TEXT: Integer
+
+      # A statement not read yet, as a row of MySQL.digests.
+      UNREAD: row
+
+      # A statement that did nothing yet.
+      NOTHING: numbers
+
+      # Nothing to say.
+      NONE: Hash[String, String]
+
+      # No statement changed.
+      UNCHANGED: Array[String]
+
+      # A reading's context: every statement's row as of it, by digest, the
+      # last reading's, and the digests of those that changed since.
+      class Reading
+        attr_reader rows: Hash[String, row]
+        attr_reader previous: Hash[String, row]
+        attr_reader changed: Array[String]
+
+        def initialize: (Hash[String, row] rows, Hash[String, row] previous, Array[String] changed) -> void
+      end
+
+      # How long before a reading (in seconds) the next one reads the
+      # statements run since.
+      OVERLAP: Integer
+
+      @connection: InWorker[Connection]
+      @texts: Hash[String, String]
+      @rows: Hash[String, row]
+      @last: Reading?
+      @since: Integer
+      @own: Array[String]?
+
+      # A statement's numbers (or the server's) by measure, time in µs.
+      def self.by_measure: (numbers numbers) -> Snapshot::totals[Metric::value]
+
+      # Read over +connection+, the plugin's own (a worker's).
+      def initialize: (InWorker[Connection] connection) -> void
+
+      # What the server has done so far, all told, by measure, and by
+      # statement (the reading's context, for #details).
+      def read: () -> [Snapshot::totals[Metric::value], Reading]
+
+      # The statements that did the most of each measure in a sample's
+      # stretches, by measure, but its own readings': how many times each
+      # ran an iteration (+n+ of them), and each one's share of the rest.
+      def details: (Snapshot::stretches[Metric::value, Reading] stretches, Integer n) -> Hash[String, String]
+
+      private
+
+      # A Reading, read over +connection+.
+      def reading: (Connection connection) -> Reading
+
+      # What each statement did in the stretches, all told, by digest.
+      def grew: (Snapshot::stretches[Metric::value, Reading] stretches) -> Hash[String, numbers]
+
+      # Each statement's text, by digest.
+      def texts: (Array[String] digests) -> Hash[String, String]
+
+      def shorten: (String text) -> String
+    end
+
+    # A connection to a worker's server, as root, to its database.
+    class Connection
+      @client: ::Trilogy
+
+      # Whether a server answers on +socket+.
+      def self.ping: (String socket) -> bool
+
+      def initialize: (String socket) -> void
+
+      def query: (String sql) -> ::Trilogy::Result
+
+      # +text+ as a string literal.
+      def quote: (String text) -> String
+
+      # Runs statements; returns the last one's result.
+      def execute: (String sql) -> ::Trilogy::Result
+
+      # Closes it without telling the server (no QUIT); true.
+      def close: () -> bool
+    end
+
+    # A worker's data directory: a copy of one initialized once.
+    class DataDir
+      @resource: Resource
+      @server: String
+
+      # The server program: +server+ if it's a path, or the one by that
+      # name on +path+; nil if there's none.
+      def self.find_server: (String server, ?String path) -> String?
+
+      # The options the server's run with, initializing a data directory
+      # or not.
+      def self.options: (String data) -> Array[String]
+
+      def initialize: (Resource resource, String server) -> void
+
+      # Makes one in +data+: a copy of the one made for this server.
+      def create: (String data) -> void
+
+      private
+
+      def key: () -> String
+
+      def make: (String data) -> void
+    end
+  end
+end

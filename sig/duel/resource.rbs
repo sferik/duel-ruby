@@ -1,0 +1,106 @@
+module Duel
+  # What a prepare block (see Config#prepare) gets: a worker's, or a
+  # version's, own directory, and help running commands and starting a
+  # server there, and stopping it.
+  class Resource
+    # Seconds between looks while waiting.
+    # @api private
+    POLL: Float
+
+    # Seconds a process gets to end after its stop signal before it's
+    # killed.
+    # @api private
+    STOP_WAIT: Integer
+
+    # The lines of its log a failure shows.
+    # @api private
+    LOG_LINES: Integer
+
+    # What a cache key may be.
+    # @api private
+    KEY: Regexp
+
+    # The lock on building a cache.
+    # @api private
+    CACHE: Thread::Mutex
+
+    @name: String
+    @dir: String
+    @root: String
+    @ruby: String
+    @env: Hash[String, String?]
+    @timeout: Float
+    @cache: String
+    # Each process's program, log and stop signal, by pid.
+    @processes: Hash[Integer, [String, String, String]]
+    @stops: Array[^() -> void]
+
+    # +env+ with +vars+ too: two prepare blocks that set a variable differently
+    # fail.
+    # @api private
+    def self.environment: (String name, Hash[String, String?] env, Hash[String, String?] vars) -> Hash[String, String?]
+
+    # The worker it's for ("baseline-1", say).
+    attr_reader name: String
+
+    # The directory it has of its own.
+    attr_reader dir: String
+
+    # The tree of the version its worker runs.
+    attr_reader root: String
+
+    # The Ruby its version runs on.
+    attr_reader ruby: String
+
+    # What its commands get in their environment, under their own.
+    attr_reader env: Hash[String, String?]
+
+    # @api private
+    def initialize: (String dir, String name, String root, timeout: Float, cache: String, ?ruby: String,
+                     ?env: Hash[String, String?]) -> void
+
+    # A path in its directory.
+    def path: (String file) -> String
+
+    # A directory built once, by the block, for every worker of this run
+    # and later ones. The first that asks for +key+ builds it.
+    def cached: (String key) { (String dir) -> void } -> String
+
+    # Starts a process (as Process.spawn takes it), its output added to a
+    # log in the directory (+log+.log: by default, its program's name), and
+    # stopped with the resource by +stop_signal+. Returns its pid.
+    def spawn: (*untyped command, ?log: String?, ?stop_signal: String, **untyped options) -> Integer
+
+    # Runs a command to its end, logged as #spawn's is. Fails, showing its
+    # log, unless it succeeds.
+    def run: (*untyped command, ?log: String?, **untyped options) -> void
+
+    # Waits until the block is true: fails if a process spawned dies first,
+    # or the run's timeout passes.
+    def wait_until: () { () -> boolish } -> void
+
+    # Runs the block when the resource stops, before its processes do.
+    def at_stop: () { () -> void } -> void
+
+    # Fails, saying it's this resource that did, with the end of +log+.
+    def failed: (String message, ?log: String?) -> bot
+
+    # Stops it.
+    # @api private
+    def stop: () -> void
+
+    private
+
+    # Builds +dir+ in a directory of its own, then renames it into place.
+    def build: (String dir) { (String building) -> void } -> void
+
+    # The log a command's output goes to.
+    def log_path: (Array[untyped] command, String? name) -> String
+
+    def start: (Array[untyped] command, String log, Hash[Symbol, untyped] options) -> Integer
+
+    def end_process: (Integer pid, String signal) -> void
+
+    def monotonic: () -> Float
+  end
+end

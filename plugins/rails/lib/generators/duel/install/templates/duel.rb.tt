@@ -1,0 +1,23 @@
+# frozen_string_literal: true
+
+# Duel compares this app's benchmarks (duel/) on two versions of it, each
+# booted in the benchmark environment (config/environments/benchmark.rb),
+# with a bundle of its own and a database of its own, which its schema
+# (and data) is loaded into. See
+# https://github.com/sferik/duel-ruby/tree/main/plugins/rails.
+Duel.configure do |c|
+<% if version_file? -%>
+  # Each version runs on the Ruby that its own .ruby-version names, so a
+  # change that upgrades Ruby is compared too. Each Ruby must be
+  # installed, with rbenv, chruby, mise or asdf, or be the one running
+  # Duel.
+  c.ruby = :version_file
+<% end -%>
+<% if fixtures? -%>
+  c.use :rails, database: <%= database ? ":#{database}" : "nil" %>, fixtures: :all
+<% else -%>
+  # To load test/fixtures, or db/seeds.rb, into each worker's database:
+  # fixtures: :all, or seeds: true.
+  c.use :rails, database: <%= database ? ":#{database}" : "nil" %>
+<% end -%>
+end

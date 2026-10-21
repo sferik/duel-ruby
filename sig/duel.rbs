@@ -1,0 +1,276 @@
+# Performance regression guards: every benchmark runs on two versions of
+# a codebase side by side, the baseline and the candidate, and the
+# candidate fails if it's slower at any of them.
+module Duel
+  # What Duel raises when something is used wrong, or fails (see Failed).
+  class Error < StandardError
+  end
+
+  # What a benchmark is judged on, if not both its timings and its
+  # counts (see DSL#duel).
+  type only = :count | :timing
+
+  # A benchmark's body, run in its Context: given the iterations to do
+  # when it takes a parameter, else run once an iteration.
+  # @api private
+  type body = ^() [self: Context] -> void | ^(Integer n) [self: Context] -> void
+
+  # A hook (see HOOKS): a block, or a lambda, given the benchmark (setup,
+  # teardown and before_sample, if it takes it), or the Iteration to run
+  # (around_iteration), or nothing (after_iterations). A file's, or a
+  # benchmark's own, runs in each benchmark's Context.
+  type hook = ^(?untyped) [self: Context] -> untyped
+
+  # A benchmark's own hooks, by name (see DSL#duel).
+  # @api private
+  type hooks = Hash[Symbol, hook]
+
+  # A benchmark (see DSL#duel), defined in +file+, whose hooks (its
+  # file's, and its own) it gets. Or one of a whole process (see
+  # DSL#duel_process). What a metric sees of it (Sample#benchmark): its
+  # name, only and peak_memory.
+  class Definition < Struct[String | only | bool | body | hooks | Definition::process | nil]
+    # A process benchmark's process: its command, or Ruby code.
+    # @api private
+    type process = { "command" => Array[String]?, "ruby" => String?, "runs" => Integer? }
+
+    # What the runner learns of it (see #to_h).
+    # @api private
+    type summary = { "name" => String, "only" => String?, "peak_memory" => bool, "process" => process? }
+
+    # Its name, as DSL#duel was given it.
+    attr_reader name: String
+
+    # @api private
+    attr_writer name: String
+
+    # What it's judged on (DSL#duel's only:): nil for both its timings
+    # and its counts.
+    attr_reader only: only?
+
+    # @api private
+    attr_writer only: only?
+
+    # Whether its peak memory is judged too.
+    attr_reader peak_memory: bool
+
+    # @api private
+    attr_writer peak_memory: bool
+
+    # @api private
+    attr_accessor file: String
+
+    # (None, for a process benchmark, which is never run in a worker.)
+    # @api private
+    attr_accessor body: body
+
+    # Its own hooks, by name (see DSL#duel).
+    # @api private
+    attr_accessor hooks: hooks
+
+    # Its process, for a process benchmark.
+    # @api private
+    attr_accessor process: process?
+
+    # @api private
+    def self.new: (String name, only? only, bool peak_memory, String file, body? body, ?hooks? hooks, ?process? process) -> instance
+
+    # Whose CPU time it takes: the benchmark thread's, or the process's.
+    # @api private
+    def cpu: () -> (:thread | :process)
+
+    # What the runner learns of it.
+    # @api private
+    def to_h: () -> summary
+  end
+
+  # The iterations of a benchmark judged on its counts alone.
+  # @api private
+  COUNTS_ONLY: Integer
+
+  # What a benchmark may be judged on: nil for both.
+  # @api private
+  ONLY: Array[only?]
+
+  # The hooks, by name, in the order a benchmark's life runs them.
+  HOOKS: Array[Symbol]
+
+  # No hooks, by name.
+  # @api private
+  NO_HOOKS: Hash[Symbol, Array[hook]]
+
+  # What a worker's blocks (Config#in_worker) are given: blocks to run
+  # when the worker ends.
+  class Stops
+    @blocks: Array[^() -> void]
+
+    # @api private
+    def initialize: () -> void
+
+    # Runs the block when the worker ends.
+    def at_stop: () { () -> void } -> void
+
+    # Runs them, last first.
+    # @api private
+    def run: () -> void
+  end
+
+  # What Config#in_worker returns: what its block returned, in the
+  # worker.
+  class InWorker[T]
+    # The value, boxed (so a nil or false one is made too), or nil outside
+    # a worker.
+    @made: [T]?
+
+    # The worker's. Outside a worker, it fails.
+    def value: () -> T
+
+    # @api private
+    def made: (T value) -> void
+
+    # @api private
+    def forget: () -> void
+  end
+
+  self.@config: Config?
+  self.@benchmarks: Hash[String, Definition]?
+  self.@file_hooks: Hash[String, Hash[Symbol, Array[hook]]]?
+  self.@plugins: Hash[Symbol, Module & _Plugin]?
+
+  # A plugin (see Duel.plugin): what configures Duel for it, given the
+  # configuration and the options it's used with.
+  interface _Plugin
+    def configure: (Config config, **untyped options) -> untyped
+  end
+
+  # The configuration: the project's .duel.rb, or the conventions.
+  def self.config: () -> Config
+
+  # @api private
+  def self.config=: (Config config) -> Config
+
+  # Yields the configuration, as .duel.rb does.
+  def self.configure: [T] () { (Config config) -> T } -> T
+
+  self.@measuring: bool?
+
+  # Whether a benchmark is being measured right now: in a worker, inside a
+  # sample, but not in its untimed blocks (or in setup).
+  def self.measuring?: () -> bool
+
+  # Fails while a benchmark is being measured: for a helper, +name+d,
+  # meant for setting up.
+  def self.unmeasured!: (String name) -> void
+
+  # Runs the block with measuring? as +measuring+.
+  # @api private
+  def self.measured: [T] (bool measuring) { () -> T } -> T
+
+  # Loads a config file (.duel.rb): a fresh configuration, rooted where
+  # the file is.
+  # @api private
+  def self.load_config: (String path) -> Config
+
+  # Where +method+ is defined ("file:line"), or whose it is.
+  # @api private
+  def self.where: (Method | UnboundMethod method) -> String
+
+  # Every benchmark defined, by name.
+  # @api private
+  def self.benchmarks: () -> Hash[String, Definition]
+
+  # Each file's hooks, by its path, then by name.
+  # @api private
+  def self.file_hooks: () -> Hash[String, Hash[Symbol, Array[hook]]]
+
+  # Adds +block+ as a hook of the file of benchmarks running, or of
+  # +file+, the one that gave it.
+  # @api private
+  def self.file_hook: (Symbol name, Proc? block, String file) -> void
+
+  # +block+, a hook +name+d, or a failure if it isn't one.
+  # @api private
+  def self.hook: (Symbol name, untyped block) -> untyped
+
+  # Registers a plugin, +name+d as its file is required (see
+  # Config#use): a module whose configure Config#use calls, and whose
+  # DSL module, if it has one, has its DSL methods. Returns its name.
+  def self.plugin: (Symbol name, Module & _Plugin plugin) -> Symbol
+
+  # Every plugin registered, by name.
+  # @api private
+  def self.plugins: () -> Hash[Symbol, Module & _Plugin]
+
+  self.@defining_file: String?
+
+  # The file of benchmarks that called the DSL method running, if one is.
+  # @api private
+  def self.defining_file: () -> String?
+
+  # Runs the block with +file+ as the defining file, unless one is already.
+  # @api private
+  def self.defining: [T] (String? file) { () -> T } -> T
+
+  # What files of benchmarks call (the worker gives it to its main
+  # object).
+  module DSL
+    # Adds the public methods of a plugin's DSL module to the DSL (a name
+    # it has, or every object has, fails), as .duel.rb uses the plugin.
+    # @api private
+    def self.add: (Module methods) -> Array[Symbol]
+
+    # Adds one of a plugin's DSL module's methods to the DSL, unless it's
+    # there already.
+    # @api private
+    def self.define: (Symbol name, Module methods) -> void
+
+    # The plugin's DSL module each method DSL.add added is from.
+    # @api private
+    DEFINED: Hash[Symbol, Module]
+
+    # Defines a benchmark: its block is timed, run as many times as a
+    # sample needs or, with a parameter, once a sample, given how many
+    # iterations to do. Its own hooks (see HOOKS) run after its file's:
+    # an around_iteration one runs around each iteration, given it to
+    # run, and only the iteration is measured.
+    def duel: (String name, ?only: only?, ?peak_memory: bool, **hook hooks) { (?Integer n) [self: Context] -> void } -> void
+
+    # A benchmark's own hooks, checked.
+    # @api private
+    def self.hooks: (String name, Hash[Symbol, untyped] hooks, ^(?) [self: Context] -> untyped body) -> hooks
+
+    # Defines a benchmark of a whole process: a command (as Process.spawn
+    # takes it), or Ruby code, run fresh for each version in every sample
+    # (the fastest of +runs+).
+    def duel_process: (String name, *String command, ?ruby: String?, ?runs: Integer?, **untyped options) -> void
+
+    # En garde.
+    # @api private
+    alias `⚔️` duel
+
+    # @api private
+    alias ⚔ duel
+
+    # The file's hooks (see HOOKS), for every benchmark in it, run in its
+    # context: setup once in each worker before a benchmark's samples,
+    # teardown after them, and before_sample before every sample, not
+    # measured, each given the benchmark if it takes it.
+    def setup: () { (?Definition benchmark) [self: Context] -> void } -> void
+
+    def teardown: () { (?Definition benchmark) [self: Context] -> void } -> void
+
+    def before_sample: () { (?Definition benchmark) [self: Context] -> void } -> void
+
+    # Runs the block around each iteration of every benchmark in the
+    # file, given the iteration to run: only the iteration is measured.
+    def around_iteration: () { (Iteration iteration) [self: Context] -> void } -> void
+
+    # Runs the block after each sample's iterations of every benchmark in
+    # the file, measured with them.
+    def after_iterations: () { () [self: Context] -> void } -> void
+
+    # The file that called the DSL method calling this.
+    # @api private
+    def self.caller_file: () -> String
+  end
+end

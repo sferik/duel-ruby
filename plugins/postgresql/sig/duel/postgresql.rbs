@@ -1,0 +1,178 @@
+module Duel
+  # A PostgreSQL server of each worker's own, and what it did for each
+  # benchmark (postgres_queries, postgres_rows, postgres_blocks,
+  # postgres_time).
+  module PostgreSQL
+    VERSION: String
+
+    URL: String
+    DATABASE: String
+    USER: String
+
+    # It names the socket: the server listens on no port.
+    PORT: Integer
+
+    # The server's settings.
+    SETTINGS: Hash[String, String]
+
+    METRICS: Hash[String, Metric::settings]
+
+    # What the worker's server has done so far, by statement, but for
+    # these readings.
+    STATEMENTS: String
+
+    # STATEMENTS' columns, as pg decodes them.
+    COLUMNS: ::PG::TypeMapByColumn
+
+    # Statements' texts, by query id.
+    TEXTS: String
+
+    # A statement's numbers: queries, rows, blocks, time (ns).
+    type numbers = Array[Integer]
+
+    # Configures Duel for the plugin (c.use :postgresql): the server
+    # (+bin+ the directory of its programs, +settings+ more of its
+    # settings, +setup+ SQL each worker's database runs when it's started,
+    # +env+ the variables besides DUEL_POSTGRESQL_URL given its URL) and
+    # its metrics. Returns the plugin's own connection to it, a worker's.
+    def self.configure: (Config config, ?bin: String?, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
+                         ?env: Array[String]) -> InWorker[::PG::Connection]
+
+    # Runs SQL on a connection of its own to +url+; returns the last
+    # statement's result.
+    def self.run: (String url, String sql) -> ::PG::Result
+
+    # The empty query's parameters (see .settle).
+    NO_PARAMS: Array[String]
+
+    # Ends the statement each of the process's +connections+ has left
+    # open in a transaction, for a reading to count it.
+    def self.settle: (?Enumerable[::PG::Connection] connections) -> void
+
+    # What the worker's server has done so far, by statement, read over
+    # +connection+: a column each of their query ids, queries, rows,
+    # blocks and time (ms).
+    def self.columns: (::PG::Connection connection) -> [Array[String], Array[Integer], Array[Integer], Array[Integer], Array[Float]]
+
+    # What the worker's server has done so far, by statement (query id),
+    # read over +connection+.
+    def self.statements: (::PG::Connection connection) -> Hash[String, numbers]
+
+    # A time in ms, in ns.
+    def self.ns: (Float ms) -> Integer
+
+    # What the worker's server has done so far, all told, read over
+    # +connection+.
+    def self.stats: (::PG::Connection connection) -> Snapshot::totals[Metric::value]
+
+    # The texts of the statements with these query ids, by query id, read
+    # over +connection+.
+    def self.texts: (::PG::Connection connection, Array[String] ids) -> Hash[String, String]
+
+    # For benchmarks: the worker's server.
+    def self.url: () -> String
+
+    # Runs SQL on it, over a connection of its own; returns the last
+    # statement's result. For setting up: it fails while a benchmark is
+    # measured.
+    def self.execute: (String sql) -> ::PG::Result
+
+    # Empties every table, restarting their sequences. For setting up,
+    # as execute is.
+    def self.reset: () -> ::PG::Result
+
+    # What reset runs.
+    RESET: String
+
+    # Running totals of what the worker's server did, all told, and by
+    # statement, to explain a regression.
+    class Statements
+      # The measures, in the order of a statement's numbers.
+      NAMES: Array[String]
+
+      # The statements a regression is explained with, and how much of
+      # each one's text.
+      SHOWN: Integer
+      TEXT: Integer
+
+      # A statement that did nothing yet.
+      NOTHING: numbers
+
+      # A reading's context: every statement's numbers, by query id, the
+      # last reading's, and the query ids of those that changed since.
+      class Reading < Data
+        attr_reader numbers: Hash[String, numbers]
+        attr_reader previous: Hash[String, numbers]
+        attr_reader changed: Array[String]
+
+        def self.new: (Hash[String, numbers] numbers, Hash[String, numbers] previous, Array[String] changed) -> Reading
+      end
+
+      @connection: InWorker[::PG::Connection]
+      @texts: Hash[String, String]
+      @numbers: Hash[String, numbers]
+      @sums: numbers
+
+      # Statements' numbers, all told, by measure.
+      def self.total: (Array[numbers] statements) -> Snapshot::totals[Metric::value]
+
+      # Statements' numbers, added up.
+      def self.sum: (Array[numbers] statements) -> numbers
+
+      # A statement's numbers, or several's added up, by measure.
+      def self.by_measure: (numbers numbers) -> Snapshot::totals[Metric::value]
+
+      # Read over +connection+, the plugin's own (a worker's).
+      def initialize: (InWorker[::PG::Connection] connection) -> void
+
+      # What the server has done so far, all told, by measure, and by
+      # statement (the reading's context, for #details).
+      def read: () -> [Snapshot::totals[Metric::value], Reading]
+
+      # The statements that did the most of each measure in a sample's
+      # stretches, by measure: how many times each ran an iteration (+n+
+      # of them), and each one's share of the rest.
+      def details: (Snapshot::stretches[Metric::value, Reading] stretches, Integer n) -> Hash[String, String]
+
+      private
+
+      # What each statement did in the stretches, all told, by query id.
+      def grew: (Snapshot::stretches[Metric::value, Reading] stretches) -> Hash[String, numbers]
+
+      # The +numbers+ of the statements with these query ids, those gone
+      # forgotten, and their sums.
+      def forget: (Hash[String, numbers] numbers, Array[String] ids) -> Hash[String, numbers]
+
+      # Each statement's text, by query id.
+      def texts: (Array[String] ids) -> Hash[String, String]
+
+      def shorten: (String text) -> String
+    end
+
+    # A worker's database cluster: a copy of one initdb'd once.
+    class Cluster
+      @resource: Resource
+      @bin: String
+
+      # The real directory of the postgres on +path+, or of the newest
+      # Debian's; nil if there's none.
+      def self.find_bin: (?String path, ?debian: String) -> String?
+
+      def initialize: (Resource resource, String bin) -> void
+
+      # Makes one in +data+: a copy of the one made for these programs.
+      def create: (String data) -> void
+
+      private
+
+      def key: () -> String
+
+      def make: (String data) -> void
+
+      def single: (String data, String database, String sql) -> void
+
+      # Runs one of the programs to its end.
+      def run: (String program, *String args, **untyped options) -> void
+    end
+  end
+end

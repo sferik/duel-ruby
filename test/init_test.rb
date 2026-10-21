@@ -1,0 +1,343 @@
+# frozen_string_literal: true
+
+require_relative "test_helper"
+require "yaml"
+
+# `duel init`, in a project of the test's own.
+class InitTest < DuelTest
+  cover "Duel::Init*"
+
+  def root = @root ||= FileUtils.mkdir_p(File.join(tmpdir, "my_gem")).first
+
+  def init(*argv, at: root) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), root: at)
+
+  def read(path) = File.read(File.join(root, path))
+
+  def write(path, content = "")
+    FileUtils.mkdir_p(File.dirname(File.join(root, path)))
+    File.write(File.join(root, path), content)
+  end
+
+  # A gem: its gemspec names the library.
+  def gem
+    write("my_gem.gemspec", %(Gem::Specification.new { |s| s.name = "my_gem" }\n))
+    write("lib/my_gem.rb")
+    write("Gemfile", %(source "https://rubygems.org"\ngemspec\ngem "duel"\n))
+  end
+
+  def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
+
+  def test_a_gem
+    gem
+    write("config/settings.yml")
+
+    assert_equal 0, init.run
+    assert_equal <<~OUT, @out.string
+        create    .duel.rb
+        create    duel/my_gem_duel.rb
+        create    .github/workflows/perf.yml
+        append    Gemfile (gem "stackprof", platforms: :mri)
+
+      Next:
+        1. Run `bundle install`, for StackProf (added to the Gemfile).
+        2. Replace the example in duel/my_gem_duel.rb with benchmarks of your own code.
+        3. Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound.
+        4. Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the report.
+    OUT
+    assert_empty @err.string
+    assert_includes read(".duel.rb"), <<~RUBY
+      Duel.configure do |c|
+        # The library each version's workers require (from the gemspec, unless
+        # this says otherwise).
+        # c.library = "my_gem"
+      end
+    RUBY
+    assert_includes read("duel/my_gem_duel.rb"), "fails if the candidate is slower at any of them. Each version's workers\n" \
+      "# load my_gem and every duel/**/*_duel.rb file. See\n"
+    assert_includes read("duel/my_gem_duel.rb"), %(\nduel "example: join words" do\n)
+    workflow = read(".github/workflows/perf.yml")
+
+    assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
+    refute_includes workflow, "baseline-ruby"
+    refute_includes workflow, "working-directory"
+    assert_includes workflow, %(marker="<!-- duel -->"\n)
+    assert_equal %w[checkout setup-ruby Compare Comment], YAML.safe_load(workflow).dig("jobs", "duel", "steps").map { |step|
+      step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1]
+    }
+  end
+
+  # A gem whose name has a dash: its library's in a directory.
+  def test_a_dashed_gem
+    write("my-gem.gemspec", %(Gem::Specification.new { |s| s.name = "my-gem" }\n))
+    write("lib/my/gem.rb")
+    init.run
+
+    assert_includes @out.string, "  create    duel/my_gem_duel.rb\n"
+    assert_includes read(".duel.rb"), %(  # c.library = "my/gem"\n)
+    refute_includes @out.string, "c.library"
+  end
+
+  # The workflow's Ruby: this one's minor version.
+  def test_the_workflows_ruby
+    assert_equal ["10.12", "3.4"], ["10.12.3", "3.4.11"].map { |version| with_constants(Object, RUBY_VERSION: version) { init.send(:ruby_version) } }
+  end
+
+  # The example defines a benchmark, as workers load it.
+  def test_the_example
+    gem
+    init.run
+    path = File.join(root, "duel", "my_gem_duel.rb")
+    DSL.instance_eval(File.read(path), path)
+
+    assert_equal ["example: join words"], Duel.benchmarks.keys
+  end
+
+  # A gem with a C extension is built with rake compile, and one with a
+  # .ruby-version runs each version on its own Ruby, whose workflow sets
+  # up the baseline's too.
+  def test_a_gem_with_an_extension_and_a_ruby_version
+    gem
+    write("ext/my_gem/extconf.rb")
+    write(".ruby-version", "3.4.1\n")
+    init.run
+
+    assert_includes read(".duel.rb"), %(  # c.library = "my_gem"\n\n  # Builds each version's C extension, so that each is measured with its\n) +
+      %(  # own build.\n  c.build = "bundle exec rake compile"\n\n  # Each version runs on the Ruby that its own .ruby-version names, so a\n) +
+      "  # branch that upgrades Ruby is compared on each version's Ruby.\n  c.ruby = :version_file\nend\n"
+    workflow = read(".github/workflows/perf.yml")
+
+    assert_includes workflow, "        with:\n          bundler-cache: true\n"
+    assert_includes workflow, %(git show "origin/$GITHUB_BASE_REF:./.ruby-version")
+    assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
+  end
+
+  # Without a gemspec: lib/'s only file is the library, or there's none
+  # to guess, and it says to set one.
+  def test_an_app
+    write("lib/my_app.rb")
+    init.run
+
+    assert_includes read(".duel.rb"), %(  # The library each version's workers require, from its lib/.\n  c.library = "my_app"\nend\n)
+    assert_includes @out.string, "  create    duel/my_app_duel.rb\n"
+    assert_includes read("duel/my_app_duel.rb"), "# load my_app and every duel/**/*_duel.rb file. See\n"
+    write("lib/other.rb")
+    init("--force").run
+
+    assert_includes read(".duel.rb"), %(  #   c.load { |root| require File.join(root, "config", "boot") }\n  # c.library = "my_library"\nend\n)
+    assert_includes @out.string, "  create    duel/example_duel.rb\n"
+    assert_includes read("duel/example_duel.rb"), "# load every duel/**/*_duel.rb file. See\n"
+    assert_includes @out.string, "\n  2. Set c.library in .duel.rb to what each version's workers require.\n  3. Replace the example in duel/example_duel.rb"
+  end
+
+  # Without Duel in the Gemfile (or a Gemfile), it says to add it.
+  def test_duel_to_add
+    write("lib/my_app.rb")
+    init.run
+
+    assert_includes @out.string, %(\nNext:\n  1. Add gem "duel" to the Gemfile's development group, and run `bundle install`.\n  2. Replace)
+    write("Gemfile", %(gem "duel-redis"\n))
+    init.run
+
+    assert_includes @out.string, %(  1. Add gem "duel")
+    write("Gemfile", %(gem 'duel', group: :development\ngem "stackprof"\n))
+    init.run
+
+    assert_includes @out.string, "\n  1. Replace"
+  end
+
+  # Files that exist are left, unless --force.
+  def test_existing_files
+    gem
+    write(".duel.rb", "mine")
+    init.run
+
+    assert_equal "mine", read(".duel.rb")
+    assert_includes @out.string, "  skip      .duel.rb (it exists: --force to overwrite)\n  create    duel/my_gem_duel.rb\n"
+    init("--force").run
+
+    assert_includes read(".duel.rb"), "Duel.configure"
+    assert_includes @out.string, "  overwrite .duel.rb\n  overwrite duel/my_gem_duel.rb\n  overwrite .github/workflows/perf.yml\n"
+  end
+
+  def test_a_dry_run
+    gem
+    write(".duel.rb", "mine")
+
+    assert_equal 0, init("--dry-run").run
+    assert_equal "duel init: a dry run, so nothing is written\n  skip      .duel.rb (it exists: --force to overwrite)\n" \
+      "  create    duel/my_gem_duel.rb\n", @out.string.lines.first(3).join
+    assert_equal ["my_gem.gemspec", "lib", "Gemfile", ".duel.rb"].sort, Dir.children(root).sort
+    init("--dry-run", "--force").run
+
+    assert_includes @out.string, "  overwrite .duel.rb\n"
+    assert_equal "mine", read(".duel.rb")
+  end
+
+  # Duel's Rake task, added to a Rakefile (once), after a blank line.
+  def test_the_rakefile
+    gem
+    write("Rakefile", "task :default")
+    init.run
+
+    assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
+    assert_includes @out.string, "  create    .github/workflows/perf.yml\n  append    Rakefile\n  append    Gemfile"
+    init.run
+
+    assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
+    assert_includes @out.string, "  skip      Rakefile (it has Duel's task)\n"
+    write("Rakefile", "task :default\n")
+    init.run
+
+    assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
+    write("Rakefile")
+    init.run
+
+    assert_equal %(require "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
+    write("Rakefile", "x\n")
+    init("--dry-run").run
+
+    assert_equal "x\n", read("Rakefile")
+    assert_includes @out.string, "  append    Rakefile\n"
+  end
+
+  # StackProf, for profiles of regressions, added to the Gemfile (on
+  # CRuby's platforms only): last in its development group, if it has
+  # one, or else at its end, after a blank line. A Gemfile with
+  # stackprof is left alone, even with --force.
+  def test_stackprof
+    gem
+
+    assert_equal 0, init.run
+    assert_equal %(source "https://rubygems.org"\ngemspec\ngem "duel"\n\n# For profiles of regressions (StackProf runs on CRuby only)\n) +
+      %(gem "stackprof", platforms: :mri\n), read("Gemfile")
+    init("--force").run
+
+    assert_includes @out.string, "  skip      Gemfile (it has stackprof)\n\nNext:\n  1. Replace"
+    assert_equal 1, read("Gemfile").scan("stackprof").size
+    group = "group :development do\n  gem \"duel\"\n  if true\n  end\nend\n"
+    {"" => "", "gem \"rake\"" => "gem \"rake\"\n", "group :test do\nend" => "group :test do\nend\n",
+     "group :development do\n  gem \"duel\"\n" => "group :development do\n  gem \"duel\"\n"}.each do |gemfile, before|
+      write("Gemfile", gemfile)
+      init.run
+
+      assert_includes @out.string, "  append    Gemfile (gem \"stackprof\", platforms: :mri)\n"
+      assert_equal "#{before}#{"\n" unless before.empty?}# For profiles of regressions (StackProf runs on CRuby only)\n" \
+        "gem \"stackprof\", platforms: :mri\n", read("Gemfile"), gemfile
+    end
+    ["group :development do", "group :development, :test do", "group :test, :development do", "group(:development, :test) do",
+      "  group :development do"].each do |opening|
+      indent = opening[/\A */]
+      write("Gemfile", "#{indent}platforms :ruby do\n#{indent}end\n\n#{opening}\n#{indent}  gem \"duel\"\n#{indent}end\n#{indent}gem \"x\"\n")
+      init.run
+
+      assert_includes @out.string, "  insert    Gemfile (gem \"stackprof\", platforms: :mri, in the development group)\n"
+      assert_equal "#{indent}platforms :ruby do\n#{indent}end\n\n#{opening}\n#{indent}  gem \"duel\"\n#{indent}  gem \"stackprof\", platforms: :mri\n#{indent}end\n" \
+        "#{indent}gem \"x\"\n", read("Gemfile"), opening
+    end
+    write("Gemfile", group)
+    init.run
+
+    assert_equal "group :development do\n  gem \"duel\"\n  if true\n  end\n  gem \"stackprof\", platforms: :mri\nend\n",
+      read("Gemfile"), "at its own end"
+  end
+
+  def test_stackprof_in_a_dry_run
+    gem
+    init("--dry-run").run
+
+    assert_includes @out.string, "  append    Gemfile (gem \"stackprof\", platforms: :mri)\n\nNext:\n  1. Run `bundle install`"
+    write("Gemfile", "group :development do\nend\n")
+    init("--dry-run").run
+
+    assert_includes @out.string, "  insert    Gemfile (gem \"stackprof\", platforms: :mri, in the development group)\n"
+    assert_equal "group :development do\nend\n", read("Gemfile")
+  end
+
+  # Without a Gemfile, there's none to add StackProf to.
+  def test_stackprof_without_a_gemfile
+    write("lib/my_app.rb")
+    init.run
+
+    refute_includes @out.string, "stackprof"
+    refute_path_exists File.join(root, "Gemfile")
+  end
+
+  # A Rails app is set up by duel-rails's generator.
+  def test_a_rails_app
+    write("config/application.rb")
+
+    assert_equal 1, init.run
+    assert_equal "duel init: this is a Rails app (config/application.rb). Add duel-rails to the Gemfile's development group, " \
+      "and run `bin/rails generate duel:install` instead\n", @err.string
+    assert_empty @out.string
+    assert_equal %w[config], Dir.children(root)
+  end
+
+  # A project in a subdirectory of its repository: the workflow is at the
+  # repository's root, named for the project's directory, and runs there.
+  def test_a_project_in_a_subdirectory
+    system("git", "init", "--quiet", tmpdir, exception: true)
+    project = File.join(tmpdir, "gems", "parser")
+    FileUtils.mkdir_p(File.join(project, "lib"))
+    File.write(File.join(project, "lib", "parser.rb"), "")
+    init(at: project).run
+
+    assert_includes @out.string, "  create    ../../.github/workflows/perf-gems-parser.yml\n"
+    workflow = File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
+
+    assert_includes workflow, "    defaults:\n      run:\n        working-directory: gems/parser\n    steps:\n"
+    assert_includes workflow, "        with:\n          working-directory: gems/parser\n          ruby-version:"
+    assert_includes workflow, %(marker="<!-- duel gems/parser -->"\n)
+    assert_path_exists File.join(project, ".duel.rb")
+    assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
+    init(at: tmpdir).run
+
+    assert_includes @out.string, "  create    .github/workflows/perf.yml\n", "at the root"
+  end
+
+  # The workflow is the guide's, in docs/ci.md (with this Ruby).
+  def test_the_guides_workflow
+    workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
+
+    assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
+  end
+
+  def test_help
+    assert_equal 0, init("--help").run
+    assert_empty @err.string
+    assert_equal <<~HELP, @out.string
+      Usage: duel init [options]
+
+      Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, a GitHub Actions workflow,
+      a Rake task, and StackProf in the Gemfile.
+
+              --force                      Overwrite files that exist
+              --dry-run                    Say what it would do, and write nothing
+          -h, --help                       Print this help
+    HELP
+    assert_equal 0, init("-h").run
+    assert_includes @out.string, "Usage: duel init"
+    assert_empty Dir.children(root), "nothing written"
+  rescue SystemExit
+    flunk "OptionParser's own --help exits"
+  end
+
+  def test_bad_arguments
+    assert_equal 2, init("--nope").run
+    assert_equal "duel init: invalid option: --nope\n", @err.string
+    assert_equal 2, init("here", "there").run
+    assert_equal "duel init: needless argument: here\n", @err.string
+    assert_empty Dir.children(root)
+  end
+
+  # In the working directory, by default, and to $stdout and $stderr.
+  def test_defaults
+    gem
+    out, = capture_io { Dir.chdir(root) { Duel::Init.new([]).run } }
+
+    assert_includes out, "  create    .duel.rb\n"
+    _, err = capture_io { Duel::Init.new(["--nope"]).run }
+
+    assert_equal "duel init: invalid option: --nope\n", err
+  end
+end

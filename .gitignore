@@ -1,0 +1,20 @@
+# Bundler, builds and packages
+/.bundle/
+pkg/
+tmp/
+*.gem
+Gemfile.lock
+
+# Test, coverage and mutation testing output
+coverage/
+/.mutant/
+
+# The same for each plugin (plugins/*), whose own .gitignore has them too
+/plugins/*/.bundle/
+/plugins/*/.mutant/
+# duel-gvl's extension, built
+/plugins/gvl/lib/duel_gvl/
+
+# Local tools and OS files
+/.claude/
+.DS_Store

@@ -1,0 +1,10 @@
+# What Duel uses of StackProf (an optional gem, with no RBS of its own).
+# For type checking Duel only: not in the gem.
+module StackProf
+  def self.start: (?mode: Symbol, ?interval: Integer, ?raw: bool) -> bool
+
+  def self.stop: () -> bool
+
+  # The last run's profile.
+  def self.results: () -> Hash[Symbol, untyped]
+end

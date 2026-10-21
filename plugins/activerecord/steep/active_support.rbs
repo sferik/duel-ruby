@@ -1,0 +1,11 @@
+# What the plugin uses of Active Support, which has no signatures of its
+# own. For type checking the plugin only: not in the gem.
+module ActiveSupport
+  module Notifications
+    # Subscribes +listener+ (here, an object with #start and #finish) to
+    # the events named +pattern+; returns the subscription.
+    def self.subscribe: (String pattern, untyped listener) -> untyped
+
+    def self.unsubscribe: (untyped subscription) -> void
+  end
+end

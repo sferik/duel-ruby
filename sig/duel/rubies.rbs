@@ -1,0 +1,45 @@
+module Duel
+  # The Ruby each version runs on (Config#ruby).
+  # @api private
+  module Rubies
+    # The files that name a Ruby, in the order they're looked at.
+    VERSION_FILES: Array[String]
+
+    # Where chruby finds Rubies.
+    CHRUBY: Array[String]
+
+    # Where each manager has a version of Ruby installed, or nil.
+    MANAGERS: Hash[String, ^(String version) -> String?]
+
+    # A Ruby's own variables, set by a manager for the Ruby it chose.
+    VARIABLES: Array[String]
+
+    # The Ruby that +choice+ gives the version +name+d at +root+.
+    def self.find: (Config::ruby choice, String root, String name) -> String
+
+    # Whether +ruby+ is the runner's own.
+    def self.runner?: (String ruby) -> bool
+
+    # What a version's processes on +ruby+ get in their environment.
+    def self.environment: (String ruby, ?path: String?) -> Hash[String, String?]
+
+    # The nearest version file that names a Ruby, and the version.
+    def self.requested: (String root) -> [String, String]?
+
+    # The version of Ruby a version file names, or nil.
+    def self.read: (String file) -> String?
+
+    # Where chruby has +version+.
+    def self.chruby: (String version) -> String?
+
+    # Whether +version+, as a version file names it, is the runner's own
+    # Ruby.
+    def self.runner_asked?: (String version, ?engine: String, ?engine_version: String) -> bool
+
+    # What a command prints, or nil if it fails.
+    def self.command: (*String command) -> String?
+
+    # The Ruby the nearest version file names.
+    private def self.from_version_file: (String root, String name) -> String
+  end
+end

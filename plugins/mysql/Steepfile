@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+D = Steep::Diagnostic
+
+target :lib do
+  signature "sig"
+  # Signatures of what the plugin uses from trilogy, which has none: only for
+  # checking it, so not in the gem.
+  signature "steep"
+  check "lib"
+  library "digest", "fileutils", "duel"
+  configure_code_diagnostics(D::Ruby.strict)
+end

@@ -1,0 +1,272 @@
+name: duel-postgresql
+
+# duel-postgresql, a gem of its own in plugins/postgresql: its tests, lint, types,
+# mutation testing and benchmarks. They run only when something in it
+# changes, or this workflow does. Nightly, only its benchmarks run,
+# against its last release. Run by hand (Actions > duel-postgresql > Run
+# workflow), mutant mutates every subject and Duel compares anyway.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "plugins/postgresql/**"
+      - ".github/workflows/plugin-postgresql.yml"
+  pull_request:
+    paths:
+      - "plugins/postgresql/**"
+      - ".github/workflows/plugin-postgresql.yml"
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The plugin is a project of its own, in its directory: its Gemfile (and
+# ruby/setup-ruby's bundler-cache, given working-directory), Rakefile,
+# tests and benchmarks.
+defaults:
+  run:
+    working-directory: plugins/postgresql
+
+jobs:
+  test:
+    name: Test on ${{ matrix.ruby-version }}
+    # (Nightly, only the comparison with the last release runs.)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    # The development versions (Ruby's, JRuby's and TruffleRuby's) get an
+    # early look, but can't fail the build.
+    continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby-version: ["3.4", "4.0", "ruby-head", "jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head"]
+        exclude:
+          # The pg gem, a runtime dependency, is a C extension: it doesn't
+          # install on JRuby.
+          - ruby-version: "jruby-10.0"
+          - ruby-version: "jruby-10.1"
+          - ruby-version: "jruby-head"
+    steps:
+      - uses: actions/checkout@v7
+      # PostgreSQL (its programs in /usr/lib/postgresql/*/bin, where the
+      # plugin looks), with pg_stat_statements, and libpq's headers for pg.
+      - run: sudo apt-get install -y postgresql libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      # A development version's failure is advisory: the step's failure
+      # shows, but the job (and its check) passes, with a warning.
+      - name: Run tests
+        id: tests
+        continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
+        env:
+          COVERAGE: "false"
+        run: bundle exec rake test
+      - name: Note an advisory failure
+        if: steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::The tests failed on ${{ matrix.ruby-version }}, a development version"
+
+  coverage:
+    name: Coverage (100% line, branch and method)
+    # (Nightly, only the comparison with the last release runs.)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get install -y postgresql libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      # SimpleCov's strict profile fails the run if any criterion drops
+      # below 100%.
+      - run: bundle exec rake test
+
+  lint:
+    name: Lint
+    # (Nightly, only the comparison with the last release runs.)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      - run: bundle exec rubocop
+      - run: bundle exec standardrb
+
+  typecheck:
+    name: Typecheck on ${{ matrix.ruby-version }}
+    # (Nightly, only the comparison with the last release runs.)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Steep runs on CRuby only.
+        ruby-version: ["3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      # rbs validate, then steep check: lib/ against sig/, strictly. Any
+      # diagnostic fails the run.
+      - name: Check types
+        run: bundle exec rake typecheck
+
+  plan:
+    name: Plan the mutation testing
+    # (Nightly, only the comparison with the last release runs.)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COVERAGE: "false"
+      # Subjects a runner takes, sized so a shard of the slowest stays well
+      # inside the timeout below (each mutation reruns the tests that cover
+      # its subject, until one fails: see the mutate job).
+      SUBJECTS_PER_SHARD: 2
+      # A ceiling on the fan-out: past it, shards grow rather than runners.
+      MAX_SHARDS: 16
+    outputs:
+      base: ${{ steps.plan.outputs.base }}
+      count: ${{ steps.plan.outputs.count }}
+      shards: ${{ steps.plan.outputs.shards }}
+      total: ${{ steps.plan.outputs.total }}
+    steps:
+      # Mutant selects subjects by diffing against a revision, so the
+      # revision has to be in the clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get install -y postgresql libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      - name: Fetch the base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin ${{ github.base_ref }}
+      # A pull request is diffed against its base branch, and a push against
+      # the head it replaced. The first push, a push whose old head is gone,
+      # and a manual run mutate every subject (an empty base).
+      - name: Plan the shards
+        id: plan
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base=$(git rev-parse "origin/${{ github.base_ref }}^{commit}")
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base="${{ github.event.before }}"
+            git cat-file -e "$base^{commit}" 2>/dev/null || git fetch --no-tags origin "$base" 2>/dev/null || base=""
+          else
+            base=""
+          fi
+          echo "Comparing against ${base:-nothing: every subject}"
+
+          count=$(bundle exec rake -s "mutant:subjects[$base]" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            total=0
+          else
+            total=$(( (count + SUBJECTS_PER_SHARD - 1) / SUBJECTS_PER_SHARD ))
+            if [ "$total" -gt "$MAX_SHARDS" ]; then total="$MAX_SHARDS"; fi
+          fi
+          echo "$count subject(s) across $total shard(s)"
+          {
+            echo "base=$base"
+            echo "count=$count"
+            echo "total=$total"
+            echo "shards=$(jq -nc --argjson n "$total" '[range($n)]')"
+          } >> "$GITHUB_OUTPUT"
+
+  # A change that touches no library code selects nothing and never gets
+  # here.
+  mutate:
+    name: Mutation testing, shard ${{ matrix.shard }} (every mutant killed)
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    # Each mutation reruns the tests that cover its subject, until one
+    # fails: those that start no server first, then those on a server
+    # shared by its process, then those that start their own. On 10 cores,
+    # the slowest subject, PostgreSQL.install, took 3 minutes, and the
+    # rest 1 or less each (some 25 seconds of it the tests' full run).
+    timeout-minutes: 45
+    env:
+      COVERAGE: "false"
+      # Two subjects to a runner (the plan job's).
+      SUBJECTS_PER_SHARD: 2
+      # A ceiling on the fan-out: past it, shards grow rather than runners.
+      MAX_SHARDS: 16
+    strategy:
+      # Every shard reports its own survivors: stopping the others on the
+      # first failure would hide the rest.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      # Mutant selects subjects by diffing against a revision, so the
+      # revision has to be in the clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get install -y postgresql libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      - name: Make the base revision available
+        if: needs.plan.outputs.base != ''
+        run: |
+          git cat-file -e "${{ needs.plan.outputs.base }}^{commit}" 2>/dev/null ||
+            git fetch --no-tags origin "${{ needs.plan.outputs.base }}"
+      # mutant.yml says what's mutated and how it's tested. Any mutant left
+      # alive fails the shard.
+      - name: Mutation-test this shard
+        run: bundle exec rake "mutant:shard[${{ needs.plan.outputs.base }},${{ matrix.shard }},${{ needs.plan.outputs.total }}]"
+
+  duel:
+    name: Duel
+    runs-on: ubuntu-latest
+    # Duel runs in the plugin's directory (the default above), and checks
+    # out the whole repository for the baseline, using its
+    # plugins/postgresql too.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the baseline comes from history, tags included
+      # libpq's headers, for pg. (The benchmarks start no server: they
+      # measure the plugin's own work on rows a server would return.)
+      - run: sudo apt-get install -y libpq-dev
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+          working-directory: plugins/postgresql
+      # Against the main branch for a pull request, what was there before
+      # for a push, and the last release on a schedule (slow creep).
+      - name: Compare
+        env:
+          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || '' }}
+          # (Run by hand, it compares anyway: with nothing changed, the code
+          # with itself, which checks the setup.)
+          DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+        run: |
+          # (A branch's first push, or one that rewrote history, has no
+          # commit before it here to compare against.)
+          if [ "$GITHUB_EVENT_NAME" = push ] && ! git cat-file -e "$DUEL_BASE^{commit}" 2>/dev/null; then
+            echo "::notice::No commit before this push to compare against"
+            exit 0
+          fi
+          bundle exec duel

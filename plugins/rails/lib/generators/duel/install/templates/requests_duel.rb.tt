@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+# Benchmarks of the app's requests. Each sends its request through the
+# whole Rack stack, performs the jobs it enqueued, and rolls back what it
+# wrote. A version fails that's slower at any of them, or that queries
+# the database, renders views or allocates more. Add the requests that
+# matter most, with what they send:
+#
+#   duel_request "posts: create", "POST /posts", params: {post: {title: "Hi"}}
+<% routes.each do |name, request| -%>
+
+duel_request <%= name.inspect %>, <%= request.inspect %>
+<% end -%>

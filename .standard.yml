@@ -1,0 +1,6 @@
+ruby_version: 3.4
+plugins:
+  - standard-performance
+# Each plugin has a configuration of its own, in its directory.
+ignore:
+  - "plugins/**/*"

@@ -1,0 +1,39 @@
+name: Typecheck
+
+on:
+  push:
+    branches: [main]
+    # The plugins (plugins/*) have workflows of their own (plugin-*.yml).
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  pull_request:
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  # By hand (Actions > Typecheck > Run workflow): a push GitHub can't diff (a
+  # force-pushed root commit, say) matches no paths, so starts nothing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: ${{ matrix.ruby-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Steep runs on CRuby only.
+        ruby-version: ["3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+      # rbs validate, then steep check: lib/ against sig/, strictly. Any
+      # diagnostic fails the run.
+      - name: Check types
+        run: bundle exec rake typecheck

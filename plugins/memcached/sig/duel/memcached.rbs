@@ -1,0 +1,92 @@
+module Duel
+  # A memcached server of each worker's own, and what it did for each
+  # benchmark (memcached_operations, memcached_misses, memcached_bytes,
+  # and with cpu: true memcached_cpu).
+  module Memcached
+    VERSION: String
+
+    SERVERS: String
+
+    METRICS: Hash[String, Metric::settings]
+
+    CPU: Metric::settings
+
+    # The statistics each is the sum of.
+    OPERATIONS: Array[String]
+    MISSES: Array[String]
+    BYTES: Array[String]
+    RUSAGE: Array[String]
+
+    # What a statistic's line starts with, by its name (made once each).
+    NEEDLES: Hash[String, String]
+
+    # Configures Duel for the plugin (c.use :memcached): the server
+    # (+server+ is the program, +args+ more of its options, +env+ the
+    # variables besides DUEL_MEMCACHED_SERVERS given its socket's path)
+    # and its metrics, memcached_cpu too with +cpu+. Returns the plugin's
+    # own connection to it, a worker's.
+    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?cpu: bool) -> InWorker[Connection]
+
+    # What the worker's server has done so far (but memcached_cpu), read
+    # over +connection+ (the plugin's own). It allocates only its Hash.
+    def self.stats: (Connection connection) -> Hash[String, Integer]
+
+    # Its CPU time so far, in microseconds, read over +connection+. It
+    # allocates nothing.
+    def self.cpu_time: (Connection connection) -> Integer
+
+    # The sum of +names+ in +stats+, a stats reply as the server sent it.
+    def self.sum: (String stats, Array[String] names) -> Integer
+
+    # The value of +name+ in +stats+ (a stats reply), read in place.
+    def self.value: (String stats, String name) -> Integer
+
+    # For benchmarks: the worker's server (its socket's path).
+    def self.servers: () -> String
+
+    # Empties it, over a connection of its own: in setup or untimed
+    # blocks only (it fails while a benchmark is measured).
+    def self.flush: () -> String
+
+    # The least a connection needs to read a server's statistics.
+    class Connection
+      @socket: UNIXSocket
+      @sent: Integer
+      @received: Integer
+      @reply: String
+      @chunk: String
+
+      # Its bytes the server had counted when it answered the latest stats.
+      attr_reader own: Integer
+
+      # The most read at a time.
+      READ: Integer
+
+      def self.ready?: (String path) -> bool
+
+      def initialize: (String path) -> void
+
+      # The server's statistics, by name.
+      def stats: () -> Hash[String, String]
+
+      # The server's statistics as it sent them, in a buffer the next
+      # reading reuses.
+      def stats_reply: () -> String
+
+      # Empties the server; returns its reply.
+      def flush_all: () -> String
+
+      def close: () -> void
+
+      private
+
+      # +command+ is a line, its CRLF too.
+      def request: (String command) -> Integer
+
+      # Appends what the server sent next to the reply.
+      def receive: () -> String
+
+      def reply: () -> String
+    end
+  end
+end

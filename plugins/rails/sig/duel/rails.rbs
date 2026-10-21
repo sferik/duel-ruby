@@ -1,0 +1,245 @@
+module Duel
+  # Duel for a Rails app: each version booted in the benchmark
+  # environment, with a bundle and a database of its own, and benchmarks
+  # of requests (DSL#duel_request), with the jobs they enqueue.
+  module Rails
+    VERSION: String
+
+    # What .configure gave .reset_data to load again, or nil (no database).
+    self.@data: {fixtures: Array[Symbol | String] | :all, seeds: bool, seed: Integer}?
+
+    # What a change must touch to be compared.
+    WATCH: Array[String]
+
+    # The environment each version boots in.
+    ENVIRONMENT: String
+
+    # What random numbers are seeded with in each worker.
+    SEED: Integer
+
+    # An around_iteration hook: each iteration rolled back after it.
+    ROLLBACK: ^(Iteration iteration) -> untyped
+
+    # Configures Duel for the app, c.use :rails (see the README for the
+    # options).
+    def self.configure: (Config config, ?database: Symbol?, ?environment: String, ?bundle: bool,
+                       ?fixtures: Array[Symbol | String] | :all, ?seeds: bool, ?seed: Integer, ?reset: bool, ?jobs: bool,
+                       ?active_record: bool, ?query_time: bool, **untyped database_options) -> Counter
+
+    # Boots the version at +root+ in +environment+, from its own tree.
+    def self.boot: (String root, String environment) -> bool
+
+    # Loads the worker's data: the schema, fixtures, and seeds.
+    def self.load_worker_data: (fixtures: Array[Symbol | String] | :all, seeds: bool, seed: Integer) -> void
+
+    # Loads fixtures and seeds, with random numbers seeded.
+    def self.load_data: (fixtures: Array[Symbol | String] | :all, seeds: bool, seed: Integer) -> void
+
+    # Empties every table, and loads its fixtures and seeds again.
+    def self.reset_data: () -> void
+
+    # Runs the block with what it writes to the database rolled back.
+    def self.rolled_back: [T] () { () -> T } -> T
+
+    # Seeds Ruby's random numbers, and Faker's.
+    def self.seed_random: (Integer seed) -> void
+
+    # Each version runs its own bundle.
+    module Bundle
+      def self.configure: (Config config) -> void
+
+      # The environment for the bundle of the version, installed first.
+      def self.environment: (Resource version) -> Hash[String, String?]
+
+      # What a bundle installed for a lockfile, on a Ruby, is kept as.
+      def self.key: (String lockfile, String ruby) -> String
+
+      # The runner's environment without Bundler's part.
+      def self.unbundled: () -> Hash[String, String?]
+    end
+
+    # Each worker's own database, with its version's schema and data.
+    module Database
+      # The plugin that gives each worker a server, by database.
+      SERVERS: Hash[Symbol, Symbol]
+
+      # The URL's scheme, by database, where the plugin's own isn't it.
+      SCHEMES: Hash[Symbol, String]
+
+      def self.configure: (Config config, Symbol database, **untyped options) -> untyped
+
+      # Loads the version's schema into the worker's database.
+      def self.load_schema: () -> void
+
+      # Empties every table of the worker's database.
+      def self.clear: () -> void
+
+      # Loads fixtures, by name, or every one.
+      def self.load_fixtures: (Array[Symbol | String] | :all names, ?path: path) -> void
+    end
+
+    # A request a benchmark sends the app, through its whole Rack stack.
+    class Request
+      METHODS: Array[String]
+
+      # The statuses a request is expected to answer with, unless told.
+      OK: Range[Integer]
+
+      @options: Hash[untyped, untyped]
+      @status: Integer | Range[Integer]
+      @rollback: bool
+
+      attr_reader verb: String
+      attr_reader path: String
+
+      def initialize: (String request, ?params: Hash[untyped, untyped]?, ?json: untyped, ?headers: Hash[String | Symbol, String],
+                       ?status: Integer | Range[Integer], ?rollback: bool) -> void
+
+      # A fresh Rack environment for the request.
+      def env: () -> Hash[String, untyped]
+
+      # Sends the request; fails unless its status is as expected.
+      def call: (?Hash[String, untyped] rack_env) -> Integer
+
+      # Its benchmark's own hooks: ROLLBACK, unless it isn't rolled back.
+      def hooks: () -> Hash[Symbol, untyped]
+
+      # Defines a benchmark of the request, on a file of benchmarks' DSL.
+      def self.duel: (::Duel::DSL dsl, String name, String request, ?only: only?, ?peak_memory: bool, **untyped options) ?{ (Hash[String, untyped] env) [self: untyped] -> void } -> void
+
+      private
+
+      def respond: (Hash[String, untyped] env) -> Integer
+
+      def header: (String | Symbol name) -> String
+    end
+
+    # What files of benchmarks get, as .duel.rb uses the plugin.
+    module DSL : ::Duel::DSL
+      # Defines a benchmark of a request to the app.
+      def duel_request: (String name, ?String request, **untyped options) ?{ (Hash[String, untyped] env) [self: untyped] -> void } -> void
+    end
+
+    # What the app's views and its cache did for each benchmark.
+    class Counter
+      # A notification's payload, as Rails gives it.
+      type payload = Hash[Symbol, untyped]
+
+      MEASURES: Hash[String, Metric::settings]
+
+      # What each event it subscribes to is.
+      EVENTS: Hash[String, Symbol]
+
+      # The most views shown, explaining a regression.
+      SHOWN: Integer
+
+      @views: Integer
+      @reads: Integer
+      @misses: Integer
+      @writes: Integer
+      @rendered: Hash[String?, Integer]
+      @subscriptions: Array[untyped]
+      @root: String
+
+      def self.configure: (Config config) -> Counter
+
+      def initialize: () -> void
+
+      def subscribe: () -> void
+
+      def unsubscribe: () -> void
+
+      # The totals so far, by name.
+      def totals: () -> Hash[String, Integer]
+
+      # Each view rendered so far, by its template's path.
+      def views: () -> Hash[String?, Integer]
+
+      # What explains the views a sample rendered, or nil.
+      def details: (Array[[Snapshot::Reading[Integer, Hash[String?, Integer]], Snapshot::Reading[Integer, Hash[String?, Integer]]]] stretches,
+                    Integer n) -> Hash[String, String]?
+
+      def start: (String name, String id, payload payload) -> nil
+
+      def finish: (String name, String id, payload payload) -> void
+
+      private
+
+      def view: (payload payload, Integer count) -> void
+
+      def read: (Integer keys, Integer hits) -> void
+    end
+  end
+
+  module Rails
+    # Active Job's queue while benchmarking: jobs performed after the
+    # iterations (an after_iterations hook).
+    class Jobs
+      @queue: Array[Hash[String, untyped]]
+
+      def self.configure: (Config config) -> Jobs
+
+      def initialize: () -> void
+
+      # Makes it Active Job's queue adapter, if the app has Active Job.
+      def use: () -> void
+
+      def enqueue: (untyped job) -> void
+
+      def enqueue_at: (untyped job, untyped timestamp) -> void
+
+      def enqueue_after_transaction_commit?: () -> true
+
+      def stopping?: () -> false
+
+      # The jobs waiting to be performed.
+      def size: () -> Integer
+
+      # Performs the jobs waiting, and those they enqueue.
+      def perform: () -> void
+
+      # Forgets the jobs waiting.
+      def clear: () -> void
+    end
+  end
+
+  module Rails
+    # In the app: `rake duel`.
+    class Railtie < ::Rails::Railtie
+      # Defines `rake duel`, unless there's one.
+      def self.define_task: () -> void
+    end
+  end
+
+  module Generators
+    # `rails generate duel:install`.
+    class InstallGenerator < ::Rails::Generators::Base
+      ADAPTERS: Hash[String, String]
+      PLUGINS: Hash[String, String]
+      ROUTES: Integer
+      FRAMEWORK: Regexp
+
+      def create_config: () -> void
+      def create_environment: () -> void
+      def create_benchmarks: () -> void
+      def create_boot_benchmark: () -> void
+      def create_workflow: () -> void
+      def add_plugin: () -> void
+      def add_stackprof: () -> void
+
+      private
+
+      # The app's Gemfile.
+      def gemfile: () -> String
+
+      def database: () -> String?
+      def adapter: () -> String?
+      def routes: () -> Array[[String, String]]
+      def fixtures?: () -> bool
+      def version_file?: () -> bool
+      def ruby_version: () -> String?
+      def repository: () -> String
+      def working_directory: () -> String?
+    end
+  end
+end

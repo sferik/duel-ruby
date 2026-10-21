@@ -1,0 +1,12 @@
+module Duel
+  # One run at a time in a project: an flock on tmp/duel/lock.
+  # @api private
+  module Lock
+    # An exclusive lock, or none if another holds it.
+    EXCLUSIVE: Integer
+
+    # Runs the block holding +dir+'s lock. Fails, naming the run that
+    # holds it, if another does.
+    def self.hold: [T] (String dir) { () -> T } -> T
+  end
+end

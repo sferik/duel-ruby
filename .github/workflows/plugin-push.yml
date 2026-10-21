@@ -1,0 +1,86 @@
+name: Push plugin gem to RubyGems
+
+# A plugin's release tag (duel-redis-v0.1.0, say, which `rake release` in
+# plugins/redis makes) pushes that plugin's gem. Duel's own tags (v0.1.0)
+# are push.yml's.
+on:
+  push:
+    tags:
+      - "duel-*-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # Which plugin, and which version, the tag is for.
+  plan:
+    if: github.repository == 'sferik/duel-ruby'
+    runs-on: ubuntu-latest
+    outputs:
+      gem: ${{ steps.plan.outputs.gem }}
+      version: ${{ steps.plan.outputs.version }}
+      directory: ${{ steps.plan.outputs.directory }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Find the plugin
+        id: plan
+        run: |
+          gem="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          directory="plugins/${gem#duel-}"
+          if [ ! -f "$directory/$gem.gemspec" ]; then
+            echo "::error::No plugin $gem ($directory/$gem.gemspec) for the tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+          {
+            echo "gem=$gem"
+            echo "version=$version"
+            echo "directory=$directory"
+          } >> "$GITHUB_OUTPUT"
+
+  push:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment:
+      name: rubygems.org
+      url: https://rubygems.org/gems/${{ needs.plan.outputs.gem }}
+    permissions:
+      contents: write
+      id-token: write
+    defaults:
+      run:
+        working-directory: ${{ needs.plan.outputs.directory }}
+    env:
+      GEM: ${{ needs.plan.outputs.gem }}-${{ needs.plan.outputs.version }}.gem
+    steps:
+      - uses: actions/checkout@v7
+      # Ruby 3.4, as push.yml: Sigstore's signing fails on Ruby 4.0.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+      # Trusted publishing: RubyGems.org trusts this workflow, no API key.
+      - uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - name: Update RubyGems
+        run: gem update --system
+      # The tag must be the version the gem builds as (duel-redis-v0.1.0:
+      # duel-redis 0.1.0).
+      - name: Build the gem
+        run: |
+          gem build "${{ needs.plan.outputs.gem }}.gemspec"
+          test -f "$GEM"
+      - name: Sign the gem with Sigstore
+        run: gem exec sigstore-cli sign "$GEM" --bundle "$GEM.sigstore.json"
+      - name: Push the gem
+        run: |
+          gem push "$GEM" --attestation "$GEM.sigstore.json" || {
+            echo "gem push failed: checking whether it's published already"
+            gem exec rubygems-await "$GEM" && echo "Already published, continuing" || exit 1
+          }
+      - name: Wait for the release
+        run: gem exec rubygems-await "$GEM"
+      - name: Create the GitHub release
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

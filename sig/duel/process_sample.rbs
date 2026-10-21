@@ -1,0 +1,54 @@
+module Duel
+  # The runs of a process benchmark for one worker: each a fresh process,
+  # run by a Ruby process of its own, kept for the worker's life.
+  # @api private
+  class ProcessSample
+    # A process's sample, as a worker's has it.
+    type sampled = { "timed" => Hash[String, Integer], "counted" => Hash[String, Integer], "heap" => Integer, "peak" => Integer? }
+
+    # What the process of its own reports of a run.
+    type ended = { "cpu" => Integer, "peak" => Integer?, "failed" => String? }
+
+    # The lines of its output a failure shows.
+    LOG_LINES: Integer
+
+    @label: String
+    @env: Hash[String, String?]
+    @chdir: String
+    @log: String
+    @timeout: Float
+    @pid: Integer?
+    @requests: IO
+    @replies: IO
+
+    def initialize: (String label, env: Hash[String, String?], chdir: String, log: String, timeout: Float) -> void
+
+    # The fastest of +samples+: the least CPU time and peak memory.
+    def self.fastest: (Array[sampled] samples) -> sampled
+
+    # Runs +command+ once, and returns its sample.
+    def run: (Array[String] command) -> sampled
+
+    # Ends the Ruby process of its own, if it started.
+    def stop: () -> void
+
+    # Runs a process for each line of +input+, and reports each on
+    # +output+.
+    def self.main: (String spec, ?input: IO, ?output: IO) -> void
+
+    # Runs +command+ once, and returns what it took.
+    def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log) -> ended
+
+    # The CPU time of the children waited for so far, in nanoseconds.
+    def self.cpu: () -> Integer
+
+    # How a process that failed ended.
+    def self.why: (Integer? code, Integer? signal) -> String
+
+    private
+
+    def start: () -> void
+
+    def kill: () -> void
+  end
+end

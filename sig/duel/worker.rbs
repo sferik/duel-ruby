@@ -1,0 +1,74 @@
+module Duel
+  # A worker process: loads one version of the code and the candidate's
+  # benchmarks, and answers the runner's requests, one JSON object a line.
+  # @api private
+  class Worker
+    type hello = { "benchmarks" => Array[Definition::summary], "metrics" => Array[Metric::spec], "ruby" => String,
+                   "memory" => bool, "profiler" => bool, "yjit" => bool, "extensions" => Hash[String, String],
+                   "gem_dirs" => Array[String] }
+
+    type ok = { "ok" => true }
+
+    type sampled = { "timed" => Hash[String, Metric::value], "counted" => Hash[String, Metric::value], "heap" => Integer,
+                     ?"details" => Hash[String, String] }
+
+    type memory = { "peak" => Integer }
+
+    type error = { "error" => String, "backtrace" => Array[String] }
+
+    type reply = ok | sampled | memory | Profile::profile | error
+
+    BUILT_IN: Array[singleton(Metric)]
+
+    @metrics: Array[Metric]
+    @specs: Array[Metric::spec]
+    @benchmarks: Hash[String, Definition]
+    @hooks: Hash[Symbol, Array[hook]]
+    @harnesses: Hash[String, Harness]
+
+    def self.main: (String version_root, String candidate_root, String control, ?String? config_path) -> void
+
+    # The native extensions loaded, by feature, at their real paths.
+    def self.extensions: (?Array[String] features, ?Array[String] load_path) -> Hash[String, String]
+
+    # The directories gems are installed in, as real paths ending in "/".
+    def self.gem_dirs: (?Array[String] dirs) -> Array[String]
+
+    # Whether StackProf is installed, for profiles: on CRuby only.
+    def self.profiler?: (?String engine) -> bool
+
+    # Whether YJIT is on, by Ruby.
+    YJIT: ^() -> bool
+
+    # Whether YJIT is on, for a longer warm-up.
+    def self.yjit?: () -> bool
+
+    def initialize: (?Array[singleton(Metric)] plugin_metrics, ?Hash[String, Hash[Symbol, untyped]] measures,
+                     ?hooks: Hash[Symbol, Array[hook]]) -> void
+
+    # Closes its metrics, last first, as it ends.
+    def close: () -> void
+
+    # +metrics+ made, and their measures' specs, with +measures+' changes.
+    def self.made: (Array[singleton(Metric)] metrics, Hash[String, Hash[Symbol, untyped]] measures) -> [Array[Metric], Array[Metric::spec]]
+
+    # What the runner learns first.
+    def hello: () -> hello
+
+    # Answers a request (a parsed JSON object). Errors are answered, not
+    # raised.
+    def handle: (Hash[String, untyped] request) -> reply
+
+    private
+
+    def setup: (String name, bool trial) -> ok
+
+    def sample: (String name, Integer n, bool count, Integer runs) -> sampled
+
+    def memory: (String name, Integer n) -> memory
+
+    def profile: (String name, Integer n, Integer runs) -> Profile::profile
+
+    def teardown: (String name) -> ok
+  end
+end

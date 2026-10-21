@@ -1,0 +1,51 @@
+name: Bias
+
+# Nightly, Duel compares identical code: the main branch with itself,
+# several times over (tasks/bias_check.rb). Duel is only worth trusting
+# if identical code compares even, so a run that finds a regression
+# fails the check, and the summary of every benchmark's ratio across the
+# runs shows a lean (one side faster every time) that no one run calls.
+# Duel's own benchmarks, and duel-redis's, whose workers each start a
+# server.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aa:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # On the Ruby each one's Perf comparison uses.
+          - name: Duel
+            directory: "."
+            ruby-version: "4.0"
+            runs: 10
+          - name: duel-redis
+            directory: plugins/redis
+            ruby-version: "3.4"
+            runs: 5
+            packages: redis-server
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      # (The baseline is HEAD, so no history is needed.)
+      - uses: actions/checkout@v7
+      - if: matrix.packages
+        run: sudo apt-get install -y ${{ matrix.packages }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: ${{ matrix.directory }}
+      - name: Compare identical code ${{ matrix.runs }} times
+        run: ruby "$GITHUB_WORKSPACE/tasks/bias_check.rb" ${{ matrix.runs }}

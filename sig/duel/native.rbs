@@ -1,0 +1,98 @@
+module Duel
+  # What the operating system can tell about this process, through Fiddle:
+  # instructions retired (hardware counters) and resident memory.
+  # @api private
+  module Native
+    # A C function (a Fiddle::Function) returning an integer.
+    interface _Function
+      def call: (*untyped args) -> Integer
+    end
+
+    FIDDLE: bool
+    OS: String
+    CPU: String
+    UINT64: Integer
+
+    # A C function of the process's own libraries, by name, taking and
+    # returning Fiddle types (:INT, :LONG, :VOIDP...).
+    def self.function: (String name, Array[Symbol] args, Symbol returns) -> _Function
+
+    # Instructions retired in user space, from the CPU's counters.
+    class Counter
+      @scope: "thread" | "process"
+
+      # The best counter here, or nil.
+      def self.open: (?fiddle: bool) -> Counter?
+
+      # Whose instructions it counts.
+      attr_reader scope: "thread" | "process"
+
+      def initialize: ("thread" | "process" scope) -> void
+
+      def read: () -> Integer
+    end
+
+    # Linux: perf_event_open(2), counting this thread's instructions in
+    # user space.
+    class Linux < Counter
+      SYSCALL: Hash[String, Integer]
+      PERF_TYPE_HARDWARE: Integer
+      PERF_COUNT_HW_INSTRUCTIONS: Integer
+      FLAGS: Integer
+      PERF_FLAG_FD_CLOEXEC: Integer
+      ATTR_SIZE: Integer
+
+      @io: IO
+
+      def self.open: (?platform: String, ?cpu: String, ?syscall: _Function?) -> Linux?
+
+      def initialize: (IO io) -> void
+
+      def read: () -> Integer
+    end
+
+    # macOS: proc_pid_rusage(RUSAGE_INFO_V4), the process's instructions
+    # and resident memory.
+    class MacOS < Counter
+      RUSAGE_INFO_V4: Integer
+      SIZE: Integer
+      RESIDENT: Integer
+      INSTRUCTIONS: Integer
+
+      @rusage: _Function
+      # The struct proc_pid_rusage fills in, in place.
+      @buffer: String
+
+      def self.open: (?platform: String, ?rusage: _Function?) -> MacOS?
+
+      def initialize: (_Function rusage) -> void
+
+      def read: () -> Integer
+
+      def resident: () -> Integer
+
+      private
+
+      def field: (Integer offset) -> Integer
+    end
+
+    # A child process of this one, waited for.
+    module Child
+      RUSAGE_SIZE: Integer
+      MAXRSS: Integer
+      EINTR: Integer
+
+      # Waits for the child +pid+: its exit status (or nil), the signal
+      # that killed it (or nil), and its peak memory in bytes (or nil).
+      def self.wait: (Integer pid, ?fiddle: bool, ?platform: String, ?wait4: _Function?) -> [Integer?, Integer?, Integer?]
+    end
+
+    # This process's resident memory in bytes, or nil where it can't tell.
+    module Memory
+      STATM: String
+      MACOS: MacOS?
+
+      def self.resident: (?statm: String, ?macos: MacOS?) -> Integer?
+    end
+  end
+end

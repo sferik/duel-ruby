@@ -1,0 +1,22 @@
+usage: opensource
+integration:
+  name: minitest
+includes:
+  - lib
+  - test
+requires:
+  - ./test/test_helper
+  # What the tests don't load at once, so mutant finds its subjects.
+  - generators/duel/install/install_generator
+coverage_criteria:
+  # A mutation whose tests' process dies before it reports (a crash, a
+  # stack overflow, a kill for its memory) counts as killed, as one that
+  # times out does. Mutant counts it alive unless told.
+  process_abort: true
+  timeout: true
+matcher:
+  subjects:
+    - Duel::Rails*
+    - Duel::Generators*
+mutation:
+  timeout: 20.0

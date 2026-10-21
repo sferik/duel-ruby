@@ -1,0 +1,34 @@
+# frozen_string_literal: true
+
+# Benchmarks, which Duel runs on two versions of the code, the baseline
+# (where your branch left main) and the candidate (your changes), and
+# fails if the candidate is slower at any of them. Each version's workers
+# load <%= required ? "#{required} and " : "" %>every duel/**/*_duel.rb file. See
+# https://github.com/sferik/duel-ruby/blob/main/docs/benchmarks.md.
+#
+# To write benchmarks that tell a regression from noise:
+#
+# - Benchmark the work that users depend on being fast: the main entry
+#   points, and whatever runs in a loop or once per request. Cover typical
+#   inputs, and the small and large extremes, as separate benchmarks.
+# - Name each one "area: what it does". `duel --filter "^parse:"` picks
+#   out an area.
+# - Time only the work. Build inputs and read fixtures in `once`, which
+#   isn't timed. To prepare each sample's work, take |n| (the
+#   iterations) and wrap the preparation in `untimed`.
+# - Make every iteration alike: fixed inputs, seeded randomness
+#   (Random.new(42)), and caches warmed in `once`. Undo what an
+#   iteration changes with an `around_iteration` hook, or put it back
+#   with a `before_sample` hook.
+# - Aim for microseconds to a few milliseconds an iteration, and split
+#   anything slower.
+# - Use `only: :count` for work that's mostly waiting (on a socket, say),
+#   and `only: :timing` for work on threads of its own.
+# - Use only the API that the main branch has: a benchmark that the
+#   baseline can't run is skipped.
+
+# An example, to replace with benchmarks of your own code.
+duel "example: join words" do
+  once { @words = %w[the quick brown fox jumps over the lazy dog] } # not timed
+  @words.join(" ") # timed
+end

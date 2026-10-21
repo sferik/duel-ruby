@@ -1,0 +1,68 @@
+module Duel
+  # A Redis server of each worker's own, and what it did for each
+  # benchmark (redis_cpu, redis_commands, redis_round_trips).
+  module Redis
+    VERSION: String
+
+    URL: String
+
+    # Every server's options: no TCP port, and nothing written to disk.
+    OPTIONS: Array[String]
+
+    METRICS: Hash[String, Metric::settings]
+
+    # Configures Duel for the plugin (c.use :redis): the server (+server+
+    # is the program, +args+ more of its options, +env+ the variables
+    # besides DUEL_REDIS_URL given its URL) and its metrics. Returns the
+    # plugin's own connection to it, a worker's.
+    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String]) -> InWorker[Connection]
+
+    # What the worker's server has done so far, read over +connection+.
+    def self.stats: (Connection connection) -> Hash[String, Integer]
+
+    # For benchmarks: the worker's server.
+    def self.url: () -> String
+
+    # Empties it, over a connection of its own: in setup or untimed blocks
+    # only (it fails while a benchmark is measured).
+    def self.flush: () -> String
+
+    # The least a connection needs to read a server's statistics.
+    class Connection
+      # A reply, as Connection#call returns it, or in an array (where an
+      # error is one too).
+      type reply = String | Integer | RuntimeError | Array[reply] | nil
+
+      CLOSED: String
+
+      # The first byte of a reply: its type, one of RESP2's.
+      STATUS: Integer
+      ERROR: Integer
+      INTEGER: Integer
+      BULK: Integer
+      ARRAY: Integer
+
+      @socket: UNIXSocket
+
+      def self.ping: (String path) -> bool
+
+      def initialize: (String url) -> void
+
+      # Sends a command; returns its reply (RESP2's, read whole): an error
+      # reply raises.
+      def call: (*String | Symbol | Integer args) -> (String | Integer | Array[reply] | nil)
+
+      def close: () -> void
+
+      private
+
+      def read: () -> reply
+
+      def number: (String line) -> Integer
+
+      def bulk: (Integer size) -> String?
+
+      def array: (Integer size) -> Array[reply]?
+    end
+  end
+end

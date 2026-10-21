@@ -1,0 +1,29 @@
+# What duel-mysql uses of trilogy.
+class Trilogy
+  module Error
+  end
+
+  def initialize: (?socket: String, ?username: String, ?database: String, ?multi_statement: bool) -> void
+
+  def query: (String sql) -> Result
+
+  def escape: (String text) -> String
+
+  def more_results_exist?: () -> bool
+
+  def next_result: () -> Result
+
+  def close: () -> void
+
+  def discard!: () -> bool
+
+  class Result
+    include Enumerable[Array[untyped]]
+
+    def each: () { (Array[untyped] row) -> void } -> self
+
+    def rows: () -> Array[Array[untyped]]
+
+    def count: () -> Integer
+  end
+end

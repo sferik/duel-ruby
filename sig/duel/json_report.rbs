@@ -1,0 +1,47 @@
+module Duel
+  # A run's report as JSON, for a program to read.
+  # @api private
+  class JSONReport
+    # A value in the report: plain JSON types.
+    type value = String | Integer | Float | bool | nil | Array[value] | Hash[String, value]
+
+    # The report, by key.
+    type report = Hash[String, value]
+
+    # Its schema's version.
+    SCHEMA: Integer
+
+    @runner: Runner
+    @results: Array[Result]
+    @settings: Settings
+    @exit: Integer
+    @versions: Hash[String, Hash[String, String | bool | nil]]
+
+    # A run that didn't compare: +status+, its +exit+ status, and what it
+    # said.
+    def self.note: (String status, Integer exit, String message, Settings settings) -> report
+
+    # What every report starts with.
+    def self.head: (String status, Integer exit, String? message, Settings settings) -> report
+
+    def initialize: (Runner runner, Array[Result] results, settings: Settings, exit: Integer, baseline: Hash[String, String?],
+                     candidate: Hash[String, String | bool | nil]) -> void
+
+    def to_h: () -> report
+
+    private
+
+    def benchmark: (Result result) -> report
+
+    # Each timed measure, by metric.
+    def timed: (Result result) -> Hash[String, report]
+
+    # Each counted measure, by metric.
+    def counted: (Result result) -> Hash[String, report]
+
+    def peak_memory: (Result result) -> report?
+
+    # The verdicts across the board, by metric.
+    def across: () -> Hash[String, report]
+  end
+end

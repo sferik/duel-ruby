@@ -1,0 +1,98 @@
+# What the plugin uses of Rails, Active Record, Active Support, Rack, Rake
+# and Faker, which have no signatures of their own. For type checking the
+# plugin only: not in the gem.
+module Rails
+  def self.application: () -> untyped
+
+  def self.root: () -> untyped
+
+  def self.env: () -> String
+
+  class Railtie
+    def self.rake_tasks: () { () -> void } -> void
+  end
+
+  module Generators
+    class Base
+      def self.source_root: (String path) -> void
+
+      def self.desc: (String description) -> void
+
+      def self.class_option: (Symbol name, **untyped options) -> void
+
+      def options: () -> Hash[Symbol, untyped]
+
+      def destination_root: () -> String
+
+      def template: (String source, String destination) -> void
+
+      def gem: (String name, **untyped options) -> void
+    end
+  end
+end
+
+module ActiveRecord
+  class Base
+    def self.connection_handler: () -> untyped
+
+    def self.connection_db_config: () -> untyped
+
+    def self.with_connection: [T] () { (untyped connection) -> T } -> T
+
+    def self.configurations: () -> untyped
+  end
+
+  class Schema
+    def self.verbose=: (bool verbose) -> void
+  end
+
+  module Tasks
+    module DatabaseTasks
+      def self.load_schema: (untyped db_config) -> void
+    end
+  end
+
+  class FixtureSet
+    def self.reset_cache: () -> void
+
+    def self.create_fixtures: (path directory, Array[Symbol | String] names) -> untyped
+  end
+end
+
+module ActiveJob
+  class Base
+    def self.queue_adapter=: (untyped adapter) -> void
+
+    def self.execute: (Hash[String, untyped] job_data) -> untyped
+  end
+end
+
+module ActiveSupport
+  module Notifications
+    def self.subscribe: (String pattern, untyped listener) -> untyped
+
+    def self.unsubscribe: (untyped subscription) -> void
+  end
+end
+
+module Rack
+  class MockRequest
+    def self.env_for: (String uri, Hash[untyped, untyped] options) -> Hash[String, untyped]
+  end
+end
+
+module Rake
+  class Task
+    def self.task_defined?: (String name) -> bool
+  end
+end
+
+module Faker
+  module Config
+    def self.random=: (Random random) -> void
+  end
+end
+
+module Bundler
+  def self.unbundled_env: () -> Hash[String, String?]
+end

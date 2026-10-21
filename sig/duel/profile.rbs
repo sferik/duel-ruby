@@ -1,0 +1,64 @@
+module Duel
+  # Where a regression's time went: StackProf profiles of each version.
+  # @api private
+  class Profile
+    # A frame: its name, and its samples of its own and in total.
+    type frame = [String, Integer, Integer]
+
+    # A version's profile, as its worker reports it.
+    type profile = { "samples" => Integer, "frames" => Array[frame] }
+
+    # [frame, own, total]: what a frame gained, as a share of the
+    # baseline's samples.
+    type growth = [String, Float, Float]
+
+    # Its report: what grew, what garbage collection gained, and each
+    # version's profile (its top frames).
+    type report = { "grew" => Array[growth], "gc" => Float, "baseline" => profile, "candidate" => profile }
+
+    UNAVAILABLE: String
+    TOP: Integer
+    KEPT: Integer
+
+    # StackProf's frames for garbage collection.
+    GC: String
+    GC_FRAMES: Array[String]
+
+    @baseline: profile
+    @candidate: profile
+
+    # The frames that mark a benchmark's measured work: its iterations,
+    # what pauses them, and an iteration inside its around_iteration hooks.
+    ITERATE: String
+    PAUSE: String
+    ITERATION: String
+
+    # A version's profile, from StackProf's raw results: the benchmark's
+    # work, and garbage collection.
+    def self.of: (Hash[Symbol, untyped] results) -> profile
+
+    # Whether a sample, by its stack's frames' names, is kept.
+    def self.kept?: (Array[String] stack) -> bool
+
+    def initialize: (Hash[String, profile] profiles) -> void
+
+    # The TOP frames that gained the most samples of their own.
+    def grew: () -> Array[growth]
+
+    # What garbage collection gained, as a share of the baseline's samples.
+    def gc: () -> Float
+
+    def to_h: () -> report
+
+    private
+
+    def samples: () -> Float
+
+    # A profile's samples in garbage collection.
+    def collecting: (profile profile) -> Integer
+
+    def counts: (profile profile) -> Hash[String, [Integer, Integer]]
+
+    def trimmed: (profile profile) -> profile
+  end
+end

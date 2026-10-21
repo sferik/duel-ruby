@@ -1,0 +1,181 @@
+module Duel
+  # What Duel knows about a project (.duel.rb changes what doesn't follow
+  # from the conventions).
+  class Config
+    # A prepare block (see #prepare): given a Resource for a version or a
+    # worker, it returns the environment variables it gets.
+    type prepare = ^(Resource resource) -> Hash[String, String?]
+
+    # The Ruby each version runs on (see #ruby): nil for the runner's, its
+    # version file's, a path, or what a block makes of the version's tree.
+    type ruby = :version_file | String | ^(String root) -> String | nil
+
+    @root: String
+    @benchmarks: String
+    @watch: Array[String]
+    @library: String | :conventional | nil
+    @build: String | :conventional | nil
+    @main_branch: String?
+    @release_tags: String
+    @prepares: Hash[Symbol, Array[prepare]]
+    @ruby: ruby
+    @metrics: Array[singleton(Metric)]
+    @in_workers: Array[^(Stops stops) -> void]
+    @hooks: Hash[Symbol, Array[hook]]
+    @used: Hash[Symbol, Used]
+    @measures: Hash[String, Hash[Symbol, untyped]]
+    @loader: (^(String version_root) -> void)?
+
+    # Where the project is (and its config file).
+    attr_reader root: String
+
+    # A glob, from the root, of the files defining benchmarks.
+    attr_accessor benchmarks: String
+
+    # Paths, from the root, whose changes a comparison is about.
+    attr_accessor watch: Array[String]
+
+    # The library to require from each version, or nil for none.
+    attr_writer library (): String?
+
+    # A shell command that builds a checked-out tree, or nil for none.
+    attr_writer build (): String?
+
+    # The branch a comparison defaults to (nil: the one origin/HEAD names).
+    attr_accessor main_branch: String?
+
+    # The glob release tags match (for `--base last-release`).
+    attr_accessor release_tags: String
+
+    # The Ruby each version runs on: nil for the runner's own,
+    # :version_file for the one its version file names, a path, or a block
+    # given the version's tree.
+    attr_accessor ruby: ruby
+
+    # What #prepare was given, by scope.
+    # @api private
+    attr_reader prepares: Hash[Symbol, Array[prepare]]
+
+    # The metrics #metric added, in order.
+    attr_reader metrics: Array[singleton(Metric)]
+
+    # What #in_worker was given.
+    # @api private
+    attr_reader in_workers: Array[^(Stops stops) -> void]
+
+    # What the hooks were given, by name.
+    # @api private
+    attr_reader hooks: Hash[Symbol, Array[hook]]
+
+    # Each measure's settings changed, by name.
+    # @api private
+    attr_reader measures: Hash[String, Hash[Symbol, untyped]]
+
+    # A configuration of the conventions, for the project at +root+.
+    def initialize: (?String root) -> void
+
+    # What #prepare prepares: each version, or each worker.
+    # @api private
+    SCOPES: Array[Symbol]
+
+    # The library: the gem the project's only .gemspec names, unless set.
+    %a{pure} def library: () -> String?
+
+    # The build command: `bundle exec rake compile` for a project with
+    # ext/ and a Rakefile, unless set.
+    %a{pure} def build: () -> String?
+
+    # How a worker loads one version of the code, from the tree at the
+    # root it's given, instead of the convention.
+    def load: () { (String version_root) -> void } -> void
+
+    # Loads the version at +version_root+.
+    # @api private
+    def load_into: (String version_root) -> void
+
+    # Uses a plugin, by its name: requires duel/+name+, and configures Duel
+    # for it with +options+, once. Returns what that returned.
+    def use: (Symbol name, **untyped options) -> untyped
+
+    # The plugins used, by name, in the order they were first used.
+    def plugins: () -> Array[Symbol]
+
+    # A plugin as #use installed it.
+    # @api private
+    class Used
+      @options: Hash[Symbol, untyped]
+      @value: untyped
+
+      attr_reader options: Hash[Symbol, untyped]
+
+      attr_accessor value: untyped
+
+      def initialize: (Hash[Symbol, untyped] options) -> void
+
+      # What using it again with +given+ options returns, or fails.
+      def again: (Symbol name, Hash[Symbol, untyped] given) -> untyped
+    end
+
+    # Prepares each version (once for a run, in the runner, before any of
+    # its workers start), or each worker (as it starts). Returns the
+    # environment the version's workers, or the worker, get.
+    def prepare: (Symbol scope) { (Resource resource) -> Hash[String, String?] } -> void
+
+    # Adds a metric to every benchmark: a Duel::Metric subclass, or
+    # running totals the block reads (see Snapshot), one by name (with its
+    # settings) or several by their settings. Returns the metric: running
+    # totals' takes what explains them (.details), typed by what the block
+    # read with them, C.
+    def metric: (singleton(Metric) klass) -> singleton(Metric)
+              # (Totals alone, each a T: no context.)
+              | [T < Metric::value] (String name, **untyped settings) { () -> Snapshot::read_totals[T] } -> Snapshot::_Explained[T, nil]
+              | [T < Metric::value] (Hash[String, Metric::settings] measures) { () -> Snapshot::read_totals[T] } -> Snapshot::_Explained[T, nil]
+              | [T < Metric::value] (**Metric::settings measures) { () -> Snapshot::read_totals[T] } -> Snapshot::_Explained[T, nil]
+              # (Totals and their context, C.)
+              | [T < Metric::value, C] (String name, **untyped settings) { () -> [Snapshot::read_totals[T], C] } -> Snapshot::_Explained[T, C]
+              | [T < Metric::value, C] (Hash[String, Metric::settings] measures) { () -> [Snapshot::read_totals[T], C] } -> Snapshot::_Explained[T, C]
+              | [T < Metric::value, C] (**Metric::settings measures) { () -> [Snapshot::read_totals[T], C] } -> Snapshot::_Explained[T, C]
+
+    # Runs the block in each worker, once its version and the benchmarks
+    # have loaded and before its metrics are made. Returns what it
+    # returns, in the worker.
+    def in_worker: [T] () { (Stops worker) -> T } -> InWorker[T]
+
+    # The configuration's hooks (see Duel::HOOKS), for every benchmark,
+    # run where they were written, before its file's and its own.
+    def setup: () { (?Definition benchmark) -> void } -> void
+
+    def teardown: () { (?Definition benchmark) -> void } -> void
+
+    def before_sample: () { (?Definition benchmark) -> void } -> void
+
+    def around_iteration: () { (Iteration iteration) -> void } -> void
+
+    def after_iterations: () { () -> void } -> void
+
+    # Changes a measure's settings, by its name (skip: true leaves it out).
+    def measure: (String name, **untyped settings) -> void
+
+    # Whether a measure is skipped (see #measure).
+    def skip?: (String name) -> bool
+
+    # The files that define benchmarks, in order.
+    # @api private
+    def benchmark_files: () -> Array[String]
+
+    private
+
+    def add_hook: (Symbol name, Proc? block) -> void
+  end
+
+  # Silences warnings about redefined constants, while loading a version
+  # over files of another's (see Config#load_into).
+  # @api private
+  module QuietRedefinition : Warning
+    REDEFINITION: Regexp
+
+    def self.during: [T] () { () -> T } -> T
+
+    def warn: (String message, ?category: Symbol?) -> nil
+  end
+end

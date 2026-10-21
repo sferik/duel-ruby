@@ -1,0 +1,48 @@
+name: Perf
+
+on:
+  pull_request:
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  push:
+    branches: [main]
+    # The plugins (plugins/*) have workflows of their own (plugin-*.yml).
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  duel:
+    name: Duel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the baseline comes from history, tags included
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      # Against the main branch for a pull request, what was there before
+      # for a push, and the last release on a schedule (slow creep).
+      - name: Compare
+        env:
+          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || '' }}
+          # (Run by hand, it compares anyway: with nothing changed, the code
+          # with itself, which checks the setup.)
+          DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+        run: |
+          # (A branch's first push, or one that rewrote history, has no
+          # commit before it here to compare against.)
+          if [ "$GITHUB_EVENT_NAME" = push ] && ! git cat-file -e "$DUEL_BASE^{commit}" 2>/dev/null; then
+            echo "::notice::No commit before this push to compare against"
+            exit 0
+          fi
+          bundle exec duel

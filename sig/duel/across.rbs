@@ -1,0 +1,21 @@
+module Duel
+  # Whether the candidate is slower across the board.
+  # @api private
+  class Across
+    # A timed metric's verdict across the board ("confirmed": slower in a
+    # second measurement too, see Runner#across).
+    type verdict = { "median" => Float, "interval" => Array[Float]?, "limit" => Float, "benchmarks" => Integer,
+                     "verdict" => String, ?"confirmed" => bool }
+
+    @results: Array[Result]
+    @confidence: Float
+
+    # The across-the-board limit for a metric whose own limit is +limit+.
+    def self.limit: (Float limit) -> Float
+
+    def initialize: (Array[Result] results, confidence: Float) -> void
+
+    # Every timed metric any benchmark was judged on, by name.
+    def verdicts: () -> Hash[String, verdict]
+  end
+end

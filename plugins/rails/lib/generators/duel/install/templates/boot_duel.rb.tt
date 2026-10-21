@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+# How long the app takes to boot, in the benchmark environment: every run
+# is a fresh `bin/rails runner`, and each sample the fastest of a few runs
+# of each version (one, for a boot that takes a second or more), judged on
+# its CPU time (its children's too) and its peak memory. It boots without a
+# database of its own, so it measures boot alone: if your app's boot
+# queries the database, leave this benchmark out.
+duel_process "boot: the app", "bin/rails", "runner", "1"

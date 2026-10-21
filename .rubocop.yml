@@ -1,0 +1,34 @@
+plugins:
+  - rubocop-performance
+  - rubocop-minitest
+
+inherit_gem:
+  standard: config/base.yml
+  standard-performance: config/base.yml
+
+# (.duel.rb is a dotfile, which RuboCop leaves out unless told.)
+inherit_mode:
+  merge:
+    - Include
+
+AllCops:
+  Include:
+    - ".duel.rb"
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "tmp/**/*"
+    - "vendor/**/*"
+    - "pkg/**/*"
+    - "coverage/**/*"
+    # Each plugin has a configuration of its own, in its directory.
+    - "plugins/**/*"
+
+# End-to-end tests check several facets of one comparison.
+Minitest/MultipleAssertions:
+  Max: 15
+
+Style/OneClassPerFile:
+  Exclude:
+    - "test/**/*"

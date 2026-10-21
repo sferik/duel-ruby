@@ -1,0 +1,387 @@
+module Duel
+  # What a benchmark's run is measured by: a Sample, or a Trial,
+  # MemorySample or ProfileSample.
+  # @api private
+  interface _Sample
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block with measuring paused, and returns what it does.
+    def pause: [T] () { () -> T } -> T
+
+    # Runs the block (around_iteration hooks, around each iteration)
+    # paused, and returns what it does.
+    def between: [T] () { () -> T } -> T
+
+    # Runs the block measured, inside #between's, and returns what it
+    # does.
+    def unpause: [T] () { () -> T } -> T
+  end
+
+  # What a benchmark's blocks run in (its file's hooks, and its own,
+  # too): its state lives in instance variables. Its
+  # methods are the two a benchmark calls, and the helpers that files of
+  # benchmarks define.
+  class Context
+    @__duel_harness: Harness
+
+    # @api private
+    def initialize: (Harness harness) -> void
+
+    # Runs the block the first time the benchmark runs: its trial, or its
+    # first peak memory sample in a worker that ran none.
+    def once: () { () -> void } -> void
+
+    # Runs the block with measuring paused, and returns what it does.
+    def untimed: [T] () { () -> T } -> T
+
+    # Fails if a helper has the name of a method Duel gives benchmarks.
+    # @api private
+    def self.check: () -> void
+  end
+
+  # A benchmark as a worker runs it: its Context, its hooks, its trial
+  # and its samples.
+  # @api private
+  class Harness
+    # Nothing left by pausing and resuming.
+    NO_LEAK: Hash[String, Float]
+
+    # The iterations each calibration sample pauses and resumes.
+    STRETCHES: Integer
+
+    # The iterations of each sample that learns what around_iteration
+    # hooks add to the metrics costly to read.
+    HOOKED: Integer
+
+    # The benchmark's body (or a hook), as a method of the context's, or
+    # a hook of the configuration's.
+    interface _Bound
+      def call: (?) -> untyped
+
+      def arity: () -> Integer
+    end
+
+    @definition: Definition
+    @context: Context
+    @setup: Array[_Bound]
+    @teardown: Array[_Bound]
+    @before_sample: Array[_Bound]
+    @after: Array[_Bound]
+    @body: _Bound
+    # Whether its block takes the number of iterations.
+    @given_n: bool
+    @iteration: Iteration?
+    @trial: bool
+    @sample: _Sample?
+    # Whether its once blocks have run (false: they run in the sample
+    # running, a worker's first for peak memory, and nil: no trial yet).
+    @once_done: bool?
+    @leak: Hash[String, Float]?
+
+    attr_reader definition: Definition
+
+    attr_reader context: Context
+
+    def initialize: (Definition definition, ?Hash[Symbol, Array[hook]] hooks) -> void
+
+    def once: () { () -> void } -> void
+
+    def untimed: [T] () { () -> T } -> T
+
+    # Runs its setup hooks.
+    def prepare: () -> void
+
+    # Runs its teardown hooks.
+    def finish: () -> void
+
+    # Runs the benchmark once, measuring nothing, with its once blocks.
+    def trial: () -> void
+
+    # Runs one sample for its peak memory (its once blocks too, if there
+    # was no trial).
+    def run_memory: (Integer n, MemorySample sample) -> void
+
+    # Runs one sample of +n+ iterations, measured by +sample+.
+    def run: (Integer n, _Sample sample) -> void
+
+    # Whether it runs inside around_iteration hooks.
+    def around?: () -> bool
+
+    # A Sample of +n+ iterations of it, measured by +metrics+.
+    def sample: (Array[Metric] metrics, n: Integer, ?counting: bool) -> Sample
+
+    # What a benchmark with around_iteration hooks leaves in each
+    # measure, an iteration, that isn't the iteration's own.
+    def leak: (Array[Metric] metrics) -> Hash[String, Float]
+
+    # Runs one iteration, measured, then its after_iterations hooks.
+    def iteration: () -> untyped
+
+    private
+
+    # The hooks +name+d: the configuration's, then its file's and its own.
+    def hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
+
+    # +hook+, given the benchmark, if it takes it.
+    def given: (_Bound hook) -> _Bound
+
+    # What pausing and resuming leaves in each measure, an iteration.
+    def paused: (Array[Metric] metrics) -> Hash[String, Float]
+
+    # What the around_iteration hooks add to each measure (of metrics
+    # costly to read), an iteration.
+    def hooked: (Array[Metric] metrics) -> Hash[String, Float]
+
+    # Each measure's least in +runs+, over +stretches+.
+    def least: (Array[Hash[String, Metric::value]] runs, Integer stretches) -> Hash[String, Float]
+
+    def iterate: (Integer n, _Sample sample) -> void
+
+    def bound: (^(?) [self: Context] -> untyped block) -> _Bound
+  end
+
+  # An iteration of a benchmark with around_iteration hooks, which a hook
+  # is given to run.
+  class Iteration
+    @harness: Harness
+    @hook: Harness::_Bound
+    @inner: Iteration?
+    @ran: bool
+    # What its iteration did, the last time it ran.
+    @done: untyped
+
+    # @api private
+    def initialize: (Harness harness, Harness::_Bound hook, Iteration? inner) -> void
+
+    # Runs the iteration, measured, and returns what it does.
+    def call: () -> untyped
+
+    # Runs its hook, given it, and returns what its iteration did.
+    # @api private
+    def run: () -> untyped
+  end
+
+  # One measured stretch of a benchmark: every metric's measurement of it,
+  # and (CRuby) about how many bytes it allocated. A metric's #start_sample gets
+  # it: its #benchmark and #n are the metric's to read, and the rest is the
+  # worker's.
+  class Sample
+    # Zero bytes allocated: what JRuby tells.
+    # @api private
+    NO_HEAP: ^() -> Integer
+
+    # Bytes allocated so far, roughly (zero on JRuby).
+    # @api private
+    HEAP: ^() -> Integer
+
+    # Collects the garbage left so far, then holds off collecting.
+    # @api private
+    QUIET_GC: ^() -> void
+
+    @benchmark: Definition
+    @n: Integer
+    @counting: bool
+    @metrics: Array[Metric]
+    # Those paused around each iteration: not those costly to read.
+    @paused: Array[Metric]
+    @timed: Hash[String, Metric::value]
+    @counted: Hash[String, Metric::value]
+    @details: Hash[String, String]
+    @started: true?
+    @stopped: true?
+    @heap: Integer
+
+    # What a metric learns of the sample: its benchmark and its iterations.
+    attr_reader benchmark: Definition
+
+    attr_reader n: Integer
+
+    # @api private
+    attr_reader started: true?
+
+    # @api private
+    attr_reader stopped: true?
+
+    # Each timed measure's total, by name.
+    # @api private
+    attr_reader timed: Hash[String, Metric::value]
+
+    # Each counted measure's total, by name (when counting).
+    # @api private
+    attr_reader counted: Hash[String, Metric::value]
+
+    # Bytes allocated (once it's stopped).
+    # @api private
+    attr_reader heap: Integer
+
+    # What metrics said of it (Metric#details), by measure.
+    # @api private
+    attr_reader details: Hash[String, String]
+
+    # @api private
+    def initialize: (Definition benchmark, Array[Metric] metrics, n: Integer, ?counting: bool, ?around: bool) -> void
+
+    # @api private
+    def start: () -> void
+
+    # @api private
+    def stop: () -> void
+
+    # Runs the block with the metrics paused, and returns what it does.
+    # @api private
+    def pause: [T] () { () -> T } -> T
+
+    # Runs the block (around_iteration hooks) with the metrics paused, but those
+    # costly to read, and returns what it does.
+    # @api private
+    def between: [T] () { () -> T } -> T
+
+    # Runs the block measured, inside #between's, and returns what it
+    # does.
+    # @api private
+    def unpause: [T] () { () -> T } -> T
+
+    # Takes +leak+ away from each measure, once an iteration.
+    # @api private
+    def less: (Hash[String, Float] leak) -> void
+
+    private
+
+    # Keeps what a metric says of the sample, by measure.
+    def explain: (Metric metric) -> void
+
+    # Files a metric's measurement (or several, by name) by kind.
+    def record: (Metric metric, Metric::measurement value) -> void
+
+    # Adds +measured+ to +name+'s total, of its kind.
+    def file: (Hash[String, Metric::kind] kinds, String name, Metric::value? measured) -> void
+  end
+
+  # A sample of what around_iteration hooks add to the metrics costly to
+  # read: all but the iterations measured.
+  # @api private
+  class Hooked
+    @sample: Sample
+
+    def initialize: (Sample sample) -> void
+
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block (an untimed one, inside an iteration): paused already.
+    def pause: [T] () { () -> T } -> T
+
+    # Runs the block (the around_iteration hooks): measured.
+    def between: [T] () { () -> T } -> T
+
+    # Runs the block (an iteration) paused.
+    def unpause: [T] () { () -> T } -> T
+  end
+
+  # A run of a benchmark that measures nothing: to see that it runs.
+  # @api private
+  class Trial
+    @started: true?
+    @stopped: true?
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    def start: () -> true
+
+    def stop: () -> true
+
+    def pause: [T] () { () -> T } -> T
+
+    def between: [T] () { () -> T } -> T
+
+    def unpause: [T] () { () -> T } -> T
+  end
+
+  # A stretch of a benchmark run for its peak memory.
+  # @api private
+  class MemorySample
+    @started: true?
+    @stopped: true?
+    # Resident memory where it started, plus what paused blocks left.
+    @base: Integer
+    # The most above it the watcher saw, outside paused blocks.
+    @peak: Integer
+    @paused: bool?
+    # Resident memory when it last stopped watching.
+    @unwatched: Integer
+    @watcher: Thread
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    # Bytes (once it's stopped).
+    attr_reader peak: Integer
+
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block unwatched: what it leaves resident isn't counted.
+    def pause: [T] () { () -> T } -> T
+
+    # Runs the block (around_iteration hooks) unwatched, as #pause does.
+    def between: [T] () { () -> T } -> T
+
+    # Runs the block watched, inside #between's.
+    def unpause: [T] () { () -> T } -> T
+
+    private
+
+    def unwatched: () -> void
+
+    def watched: () -> void
+
+    def resident: () -> Integer
+
+    def watch: () -> void
+  end
+
+  # A stretch of a benchmark profiled with StackProf, the garbage
+  # collector held off, and untimed blocks and around_iteration hooks'
+  # own work left out.
+  # @api private
+  class ProfileSample
+    # Microseconds between samples.
+    INTERVAL: Integer
+
+    # What StackProf samples by here (see .mode).
+    MODE: :cpu | :wall
+
+    @started: true?
+    @stopped: true?
+
+    # What StackProf samples by on +platform+: CPU time, but elapsed time
+    # on macOS.
+    def self.mode: (?String platform) -> (:cpu | :wall)
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block (an untimed one, or around_iteration hooks' work) left
+    # out of the profile.
+    def pause: [T] () { () -> T } -> T
+
+    # Runs the block (around_iteration hooks) in #pause.
+    def between: [T] () { () -> T } -> T
+
+    # Runs the block (an iteration, inside its hooks) profiled,
+    # inside #pause's.
+    def unpause: [T] () { () -> T } -> T
+  end
+end

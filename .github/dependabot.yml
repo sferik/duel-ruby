@@ -1,0 +1,68 @@
+version: 2
+
+updates:
+  # The actions every workflow uses (Duel's and the plugins', all here).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+
+  # The Gemfile.
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+
+  # Each plugin's Gemfile.
+  - package-ecosystem: bundler
+    directory: /plugins/activerecord
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/gvl
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/memcached
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/mysql
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/postgresql
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/rails
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/redis
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+  - package-ecosystem: bundler
+    directory: /plugins/retained
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7

@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+D = Steep::Diagnostic
+
+target :lib do
+  signature "sig"
+  # Signatures of what the plugin uses from Rails (which has none): only
+  # for checking the plugin, so not in the gem.
+  signature "steep"
+  check "lib"
+  library "duel", "duel-activerecord", "digest", "json", "open3", "pathname"
+  configure_code_diagnostics(D::Ruby.strict)
+end

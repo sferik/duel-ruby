@@ -1,0 +1,27 @@
+# The environment Duel benchmarks the app in (see .duel.rb): production's,
+# run locally, without what needs a deployment (SSL, a real secret, other
+# databases) and without logging.
+require_relative "production"
+
+Rails.application.configure do
+  config.secret_key_base = "duel-benchmark" * 4
+  config.require_master_key = false
+
+  config.logger = ActiveSupport::Logger.new(nil)
+  config.log_level = :fatal
+
+  # Requests come from Duel, without a server in front.
+  config.force_ssl = false
+  config.assume_ssl = false
+  config.hosts.clear
+  config.action_controller.allow_forgery_protection = false
+  config.public_file_server.enabled = true
+
+  # Each worker has one database of its own (DATABASE_URL): the cache and
+  # jobs stay in the worker. (While a benchmark runs, duel-rails performs
+  # the jobs it enqueues, and measures them with it: see .duel.rb.)
+  config.cache_store = :memory_store
+  config.active_job.queue_adapter = :test if config.respond_to?(:active_job)
+  config.solid_queue.connects_to = nil if config.respond_to?(:solid_queue)
+  config.action_mailer.delivery_method = :test if config.respond_to?(:action_mailer)
+end

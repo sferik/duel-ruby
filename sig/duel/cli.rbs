@@ -1,0 +1,95 @@
+module Duel
+  # The `duel` command.
+  # @api private
+  class CLI
+    # The environment (ENV, or a Hash in its place).
+    interface _Env
+      def reject: () { (String name, String value) -> boolish } -> _Variables
+    end
+
+    # What's left of it.
+    interface _Variables
+      def key?: (String name) -> bool
+
+      def fetch: (String name) -> String
+    end
+
+    USAGE: String
+
+    # Where GitHub Actions has a step add to its job's summary.
+    STEP_SUMMARY: String
+
+    # The variables that set options, to their options.
+    ENV_OPTIONS: Hash[String, String]
+
+    # The variables that set a flag by being set at all.
+    ENV_FLAGS: Hash[String, String]
+
+    @argv: Array[String]
+    @env: _Env
+    @out: _Output
+    @err: _Output
+    @clean: bool?
+    @markdown: String?
+    @json: String?
+    @settings: Settings?
+
+    def initialize: (Array[String] argv, ?env: _Env, ?out: _Output, ?err: _Output) -> void
+
+    # Runs, and returns the exit status: 0 not slower (or nothing to compare),
+    # 1 slower (or a benchmark failed), 2 couldn't compare.
+    def run: () -> Integer
+
+    # The settings, from the environment and then the options.
+    # +source+ as a Regexp, or an option's invalid argument.
+    def self.regexp: (String source) -> Regexp
+
+    def parse: () -> Settings
+
+    private
+
+    # What #run does, holding the project's lock.
+    def compare: (Config config, Settings settings) -> Integer
+
+    # Says there's nothing to compare, and why, and passes.
+    def nothing: (String why) -> Integer
+
+    # Reports a run that didn't compare, and returns +exit+.
+    def unfinished: (String title, String status, String message, Integer exit) -> Integer
+
+    # Writes the reports where they're asked for, each made only if it's
+    # written.
+    def publish: (^() -> String markdown, ^() -> JSONReport::report json) -> void
+
+    # Writes +text+ to +path+, in a directory made for it.
+    def write: (String path, String text) -> void
+
+    # The baseline, in Markdown.
+    def described_baseline: (Config config, Settings settings, Baseline baseline) -> String
+
+    # The candidate, in Markdown.
+    def described_candidate: (Config config, Settings settings) -> String
+
+    # The baseline, for JSON: the ref that named it, its commit, and its
+    # tree.
+    def baseline_json: (Config config, Settings settings, Baseline baseline, String root) -> Hash[String, String?]
+
+    # The candidate, for JSON: its commit, whether it has changes not
+    # committed, and its tree.
+    def candidate_json: (Config config, Settings settings) -> Hash[String, String | bool | nil]
+
+    # Git's output, and its status, in +dir+.
+    def git: (String dir, *String args) -> [String, Process::Status]
+
+    # Says so if the two versions' paths differ in length.
+    def uneven: (String base_root, String candidate) -> void
+
+    # The DUEL_* variables set, as options.
+    def env_options: () -> Array[String]
+
+    # The environment's variables that are set.
+    def variables: () -> _Variables
+
+    def parser: (Settings settings) -> OptionParser
+  end
+end

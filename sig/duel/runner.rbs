@@ -1,0 +1,530 @@
+module Duel
+  # Where reports go ($stdout, or a StringIO in its place).
+  # @api private
+  interface _Output
+    def puts: (*_ToS objects) -> void
+
+    def print: (*_ToS objects) -> void
+  end
+
+  # Seconds each benchmark runs before it's measured, unless --warm says.
+  # @api private
+  JIT_WARM: Float
+
+  # Seconds each benchmark runs before it's measured where a worker has
+  # YJIT on, unless --warm says.
+  # @api private
+  YJIT_WARM: Float
+
+  # How a run is set up (see Duel::CLI for where each comes from).
+  # @api private
+  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | nil]
+    attr_accessor base: String?
+    attr_accessor base_dir: String?
+    attr_accessor candidate_dir: String?
+    attr_accessor filter: Regexp
+    attr_accessor jobs: Integer
+    attr_accessor processes: Integer
+    attr_accessor limit: Float
+    attr_accessor confidence: Float
+    attr_accessor warm: Float?
+    attr_accessor force: bool
+    attr_accessor config_path: String?
+    attr_accessor timeout: Float
+    # Each version's Ruby (--ruby), over Config#ruby.
+    attr_accessor ruby: Config::ruby
+
+    def self.new: (?String? base, ?String? base_dir, ?String? candidate_dir, ?Regexp filter, ?Integer jobs,
+                   ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
+                   ?Float timeout, ?Config::ruby ruby) -> instance
+                | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
+                   ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
+                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby) -> instance
+
+    def self.defaults: () -> Settings
+  end
+
+  # One version as a run has it: its tree, the Ruby its processes run on,
+  # and what they get in their environment.
+  # @api private
+  class Side < Struct[String | Hash[String, String?]]
+    attr_accessor name: String
+    attr_accessor root: String
+    attr_accessor ruby: String
+    attr_accessor env: Hash[String, String?]
+
+    def self.new: (String name, String root, String ruby, Hash[String, String?] env) -> instance
+
+    # Each version with nothing prepared: its tree, on the runner's Ruby.
+    def self.unprepared: (Config config, Settings settings, String base_root) -> Hash[String, Side]
+  end
+
+  # A worker process (Duel::Worker) running one version of the code.
+  # @api private
+  class WorkerProcess
+    # A worker's reply to a request (see Worker#handle), parsed from JSON.
+    type reply = untyped
+
+    LIB: String
+    POLL: Float
+    STOP_WAIT: Integer
+    # The gems that are Duel's: Duel, and its plugins.
+    DUEL_GEM: Regexp
+
+    @label: String
+    @timeout: Float
+    @root: String
+    @dir: String
+    @env: Hash[String, String?]
+    @ruby: String
+    @runs: ProcessSample?
+    @description: String
+    @extensions: Hash[String, String]
+    @gem_dirs: Array[String]
+    @pid: Integer
+    @socket: UNIXSocket
+    @benchmarks: Hash[String, Definition::summary]
+    @metrics: Array[Metric::spec]
+    @memory: bool
+    @profiler: bool
+    @yjit: bool
+
+    attr_reader label: String
+
+    attr_reader benchmarks: Hash[String, Definition::summary]
+
+    attr_reader metrics: Array[Metric::spec]
+
+    attr_reader memory: bool
+
+    attr_reader profiler: bool
+
+    attr_reader yjit: bool
+
+    # The Ruby it runs on (RUBY_DESCRIPTION).
+    attr_reader description: String
+
+    # The native extensions it loaded, by feature.
+    attr_reader extensions: Hash[String, String]
+
+    # The directories gems are installed in, as real paths ending in "/".
+    attr_reader gem_dirs: Array[String]
+
+    # Where a worker on +ruby+ loads Duel from, ahead of anything else.
+    def self.load_path: (String ruby, ?specs: Hash[String, Gem::BasicSpecification]) -> Array[String]
+
+    def initialize: (String label, String root, String candidate_root, String dir, config_path: String?,
+                     env: Hash[String, String?], timeout: Float, ruby: String) -> void
+
+    # Sends a request, and returns the reply, or raises Failed with its
+    # error.
+    def request: (String op, String name, **untyped args) -> reply
+
+    def sample: (String name, Integer n, ?runs: Integer, ?count: bool) -> reply
+
+    # A run of a process benchmark: its process, fresh, started as this
+    # worker was.
+    def run: (Definition::process process) -> ProcessSample::sampled
+
+    # Closing the connection ends the worker. One still running +wait+
+    # seconds later is killed.
+    def stop: (?wait: Numeric) -> void
+
+    private
+
+    def accept: (UNIXServer server, String path) -> UNIXSocket
+
+    def read: () -> reply
+
+    # Kills a worker that didn't +what+ within the timeout, and fails.
+    def hung: (String what) -> bot
+
+    def kill: () -> void
+
+    def monotonic: () -> Float
+  end
+
+  # What Duel raises when something a run needs fails: a resource that
+  # didn't start, a worker that died or hung.
+  class Failed < Error
+  end
+
+  # Workers of both versions, taking turns.
+  # @api private
+  class Lane
+    TARGET_NS: Integer
+    RUNS: Integer
+    WARMUP: Integer
+    HEAP_CAP: Integer
+    STEP: Integer
+    MAX_PAIRS: Integer
+    COUNTS: Integer
+    MEMORY_SAMPLES: Integer
+    PROFILE_SAMPLES: Integer
+    # A process benchmark's pairs before any are measured, and its runs a
+    # sample (unless it says), each sample the fastest of them, as many
+    # as take PROCESS_SAMPLE_NS of CPU time.
+    PROCESS_WARMUP: Integer
+    PROCESS_RUNS: Integer
+    PROCESS_SAMPLE_NS: Integer
+    # The longest TMPDIR a lane's directory goes in.
+    SHORT: Integer
+
+    @dir: String
+    @resources: Array[Resource]
+    @workers: Array[WorkerProcess]
+    @lock: Thread::Mutex
+    @config: Config
+    @settings: Settings
+    @sides: Hash[String, Side]
+    # A process benchmark's peak memory samples, by version.
+    @peaks: Hash[String, Array[Integer?]]
+    @bases: Array[WorkerProcess]
+    @candidates: Array[WorkerProcess]
+    @profiler: bool
+    # The warm-up's seconds (see #warm).
+    @warm: Float
+
+    attr_reader profiler: bool
+
+    def initialize: (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) -> void
+
+    # A directory for a lane's sockets.
+    def self.tmpdir: () -> String
+
+    # Where lanes' directories go: TMPDIR if it's short, else /tmp.
+    def self.short_tmp: (?String tmpdir) -> String
+
+    # Opens a lane, yields it and always closes it.
+    def self.open: [T] (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) { (Lane lane) -> T } -> T
+
+    def benchmarks: () -> Hash[String, Definition::summary]
+
+    # The Ruby each version runs on, by version.
+    def rubies: () -> Hash[String, String]
+
+    def stop: () -> void
+
+    # Measures one benchmark on both versions.
+    def compare: (String name) -> Result
+
+    # Profiles of the benchmark on each version, or nil without StackProf.
+    def profile: (String name, Integer n) -> Hash[String, Profile::profile]?
+
+    private
+
+    def spawn: (String side, Integer index) -> WorkerProcess
+
+    # Fails if a version's workers loaded a native extension that isn't a
+    # build of its own.
+    def check_builds: () -> void
+
+    # Whether +path+ (that +worker+ loaded) is in +side+'s tree, and not
+    # in an installed gem.
+    def inside?: (String path, String side, WorkerProcess worker) -> bool
+
+    def each_worker: () { (WorkerProcess worker) -> void } -> void
+
+    def set_up: (String name, Result result) -> void
+
+    def metrics: () -> Array[Metric::spec]
+
+    # What the block returns for each item, each on a thread of its own.
+    # Adds an item to a list, from a thread of its own.
+    def keep: [T] (Array[T] list, T item) -> void
+
+    # Whether workers start (and stop) at once.
+    PARALLEL: bool
+
+    # (Untyped: Steep loses a generic in a thread's block.)
+    def in_parallel: (Array[untyped] items) { (untyped item) -> untyped } -> Array[untyped]
+
+    def measure: (String name, Result result) -> void
+
+    # A process benchmark's samples.
+    def measure_process: (String name, Result result) -> void
+
+    # The runs a process benchmark's sample takes, by its warm-up's.
+    def process_runs: (Array[[WorkerProcess::reply, WorkerProcess::reply]] floors) -> Integer
+
+    def warm: (String name, Integer n) -> void
+
+    def judge: (String name, Integer n, Array[[WorkerProcess::reply, WorkerProcess::reply]] floors, Result result) -> void
+
+    # Whether both versions' CPU time is below its floor.
+    def below_cpu_floor?: (Array[[Worker::sampled, Worker::sampled]] floors) -> bool
+
+    # Whether one version's samples are above a spec's floors.
+    def above_floors?: (Array[Hash[String, Metric::value]] samples, Metric::spec spec) -> bool
+
+    def limit: (Metric::spec spec) -> Float
+
+    def verdict: (Array[Float] ratios, Metric::spec spec) -> Stats::verdict
+
+    # The verdicts that decide a measure at the end of a round, and after
+    # any other pair.
+    DECISIVE: Hash[bool, Array[Stats::verdict]]
+
+    # Whether +verdict+ decides a measure, at the end of a round or not.
+    def decided?: (Stats::verdict verdict, bool round) -> bool
+
+    def calibrate: (String name, Integer target, Integer n) -> Integer
+
+    # The most iterations whose allocations fit HEAP_CAP (infinite when it
+    # allocated nothing).
+    def most_iterations: (Integer n, Integer heap) -> (Integer | Float)
+
+    # The +index+th pair: [baseline's reply, candidate's].
+    def pair: (String name, Integer n, Integer index, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
+
+    def count: (String name, Integer n, Result result) -> void
+
+    def peak_memory: (String name, Integer n, Result result) -> void
+
+    def fresh: [T] (String side) { (WorkerProcess worker) -> T } -> T
+
+    def monotonic: () -> Float
+  end
+
+  # What one comparison of a benchmark found (Testing::Comparison#results
+  # has them).
+  class Result
+    # A ratio metric's verdict, and each version's (the median of its
+    # samples).
+    type timed = { "median" => Float, "limit" => Float, "across" => bool, "unit" => String?, "plural" => String?, "interval" => Array[Float]?, "pairs" => Integer,
+                   "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
+
+    # A counted metric's fewest, on each version, in +n+ iterations.
+    type counted = { "baseline" => Metric::value, "candidate" => Metric::value, "n" => Integer,
+                     "tolerance" => Metric::value, "allowance" => Metric::value, "unit" => String?, "plural" => String? }
+
+    # Where a regression's time went (see Profile#to_h), or why there's no
+    # telling.
+    # @api private
+    type profile = Profile::report | { "unavailable" => String }
+
+    # Peak memory grows by more than MEMORY_RATIO, and by MEMORY_FLOOR
+    # bytes at least, before it's worse.
+    # @api private
+    MEMORY_RATIO: Float
+
+    # @api private
+    MEMORY_FLOOR: Integer
+
+    # What a sample says when no metric said anything.
+    # @api private
+    NOTHING_SAID: Hash[String, String]
+
+    # The verdicts that say a timing isn't slower.
+    # @api private
+    CLEARED: Array[String]
+
+    @name: String
+    @timed: Hash[String, timed]
+    @counted: Hash[String, counted]
+    @details: Hash[String, Hash[String, String]]
+    @confirmations: Array[Result]
+    @undecided: Array[Result]
+    @n: Integer?
+    @seconds: Float?
+    @skipped: String?
+    @error: String?
+    @memory: Hash[String, Integer]?
+    @profile: profile?
+
+    # The benchmark's name.
+    attr_reader name: String
+
+    # Each ratio measure's verdict and medians, by name.
+    attr_reader timed: Hash[String, timed]
+
+    # Each counted measure's fewest on each version, by name.
+    attr_reader counted: Hash[String, counted]
+
+    # What metrics said of the latest samples (Metric#details): by
+    # measure, by version.
+    attr_reader details: Hash[String, Hash[String, String]]
+
+    # The measurements that confirmed it was worse.
+    attr_reader confirmations: Array[Result]
+
+    # The measurements again that were too close to call.
+    # @api private
+    attr_reader undecided: Array[Result]
+
+    # Its iterations a sample.
+    attr_reader n: Integer?
+
+    # @api private
+    attr_writer n: Integer?
+
+    # The seconds it took.
+    attr_reader seconds: Float?
+
+    # @api private
+    attr_writer seconds: Float?
+
+    # Why it was skipped (the baseline couldn't run it), or nil.
+    attr_reader skipped: String?
+
+    # @api private
+    attr_writer skipped: String?
+
+    # How it failed, or nil.
+    attr_reader error: String?
+
+    # @api private
+    attr_writer error: String?
+
+    # Each version's peak memory, in bytes.
+    attr_reader memory: Hash[String, Integer]?
+
+    # @api private
+    attr_writer memory: Hash[String, Integer]?
+
+    # Where a regression's time went.
+    # @api private
+    attr_accessor profile: profile?
+
+    # @api private
+    def initialize: (String name) -> void
+
+    # Keeps what metrics said of a pair of samples.
+    # @api private
+    def note: (Worker::sampled base, Worker::sampled candidate, ?String? measure) -> void
+
+    # The metrics on which the candidate did worse.
+    # @api private
+    def worse: () -> Array[String]
+
+    # The timed metrics on which the candidate was slower.
+    # @api private
+    def slower: () -> Array[String]
+
+    # Whether its timings say slower: one is, and none says it isn't.
+    # @api private
+    def slower_in_time?: () -> bool
+
+    # Whether it's to be measured again.
+    # @api private
+    def confirming?: () -> bool
+
+    # Keeps a measurement again as a confirmation, or sets it aside
+    # where it's too close to call. Whether it was set aside.
+    # @api private
+    def confirm: (Result again) -> bool
+
+    # Whether its peak memory grew by too much.
+    # @api private
+    def more_memory?: () -> bool
+
+    # Worse on a metric in the first measurement and in every confirmation,
+    # or slower in time in all of them (see #mixed?).
+    def regressed: () -> Array[String]
+
+    # Whether it regressed in time on one timed metric in some
+    # measurements and on another in the rest.
+    # @api private
+    def mixed?: () -> bool
+
+    # Whether it regressed on nothing, and didn't fail.
+    def passed?: () -> bool
+
+    # Whether a timed measure's verdict was too close to the limit to settle.
+    # @api private
+    def unsettled?: () -> bool
+
+    private
+
+    # The first measurement and its confirmations.
+    def measurements: () -> Array[Result]
+  end
+
+  # Measures every benchmark, confirms what looks worse, and reports.
+  # @api private
+  class Runner
+    CONFIRM: Integer
+
+    # +number+ of +noun+, in its plural for any number but one.
+    def self.count: (Integer number, String noun, ?String plural) -> String
+
+    @config: Config
+    @settings: Settings
+    @base_root: String
+    @out: _Output
+    @across: Hash[String, Across::verdict]
+    @prepared: Array[Resource]
+    @dir: String
+    @sides: Hash[String, Side]
+    # What the first lane learned of the benchmarks.
+    @benchmarks: Hash[String, Definition::summary]
+
+    @rubies: Hash[String, String]
+    @seconds: Float
+
+    # Across the board: {metric => verdict}. Set by #run.
+    attr_reader across: Hash[String, Across::verdict]
+
+    # The Ruby each version ran on, by version. Set by #run.
+    attr_reader rubies: Hash[String, String]
+
+    # The seconds the run took. Set by #run.
+    attr_reader seconds: Float
+
+    def initialize: (Config config, Settings settings, String base_root, ?out: _Output) -> void
+
+    # Returns the Results.
+    def run: () -> Array[Result]
+
+    # Whether nothing got slower, and none failed.
+    def passed?: (Array[Result] results) -> bool
+
+    def regressed_across: () -> Array[String]
+
+    # The plugins the configuration used, by name.
+    def plugins: () -> Array[Symbol]
+
+    # What a regression's report says of it, line by line.
+    def explained: (Result result) -> Array[String]
+
+    private
+
+    # What #run does.
+    def compare_all: (Float started) -> Array[Result]
+
+    # Each version, prepared once for the run.
+    def prepare: () -> Hash[String, Side]
+
+    def with_lanes: [T] () { (Array[Lane] lanes) -> T } -> T
+
+    def judge_across: (Array[Result] results, Array[String] names) -> Hash[String, Across::verdict]
+
+    def open_lane: () -> Lane
+
+    def measure_all: (Array[Lane] lanes, Array[String] names) -> Array[Result]
+
+    def attempt: (Lane lane, String name) -> Result
+
+    def confirm: (Array[Result] suspects) -> void
+
+    def profile: (Array[Result] regressed) -> void
+
+    def report: (Array[Result] results, Float seconds) -> void
+
+    def line: (Result result) -> String
+
+    def mb: (Integer bytes) -> String
+
+    # The unit of +measured+, for +number+ of it: singular for one.
+    def unit: (Metric::value number, Result::timed | Result::counted measured) -> String?
+
+    # What each worse measure measured, an iteration, and what its metric
+    # said of it.
+    def explanation: (Result result) -> Array[String]
+
+    # A sample's value an iteration.
+    def amount: (Metric::value value, Integer n, Result::timed | Result::counted measured) -> String
+
+    def profile_lines: (Result::profile? profile) -> Array[String]
+  end
+end

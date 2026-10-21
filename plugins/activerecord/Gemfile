@@ -1,0 +1,37 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gemspec
+
+# Duel, from this repository: the plugin is tested against it as it
+# is here.
+gem "duel", path: "../.."
+# For Duel's profiles of regressions (duel/: the plugin guards its own
+# speed).
+gem "stackprof", platforms: :mri
+
+# The Active Record the tests run against (ACTIVERECORD for another:
+# "~> 7.2.0", say), on SQLite: through the sqlite3 gem, a C extension,
+# or on JRuby, which can't build it, through JDBC (whose adapter holds
+# Active Record to 7.2 there).
+gem "activerecord", ENV.fetch("ACTIVERECORD", ">= 7.2")
+gem "sqlite3", ">= 2.0", platforms: :ruby
+gem "activerecord-jdbcsqlite3-adapter", ">= 72.0", platforms: :jruby
+
+gem "rake"
+gem "minitest"
+gem "minitest-strict"
+gem "standard", ">= 1.57"
+gem "standard-performance"
+gem "rubocop"
+gem "rubocop-performance"
+gem "rubocop-minitest"
+gem "simplecov", ">= 1.3"
+
+platforms :mri do
+  gem "mutant-minitest"
+  # Type checking (sig/): Steep doesn't run on JRuby.
+  gem "rbs"
+  gem "steep"
+end

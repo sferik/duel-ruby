@@ -1,0 +1,81 @@
+name: Plugins
+
+# Every plugin's tests, against Duel as it is here. A plugin's own
+# workflow (plugin-*.yml) runs only when its directory changes, so this
+# one catches a change to Duel that breaks a plugin. It runs when Duel's
+# code changes (what the gem ships, and its bundle), and only the tests,
+# on one Ruby: the plugins' workflows do the rest.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "sig/**"
+      - "exe/**"
+      - "duel.gemspec"
+      - "Gemfile"
+      - ".github/workflows/plugins.yml"
+  pull_request:
+    paths:
+      - "lib/**"
+      - "sig/**"
+      - "exe/**"
+      - "duel.gemspec"
+      - "Gemfile"
+      - ".github/workflows/plugins.yml"
+  # By hand (Actions > Plugins > Run workflow): to check the plugins
+  # against Duel whatever changed.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.plugin }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [activerecord, gvl, memcached, mysql, postgresql, rails, redis, retained]
+        # What each plugin's tests need installed, as its own workflow
+        # installs it (gvl's extension: `rake test` builds it).
+        include:
+          - plugin: memcached
+            packages: memcached
+          - plugin: mysql
+            packages: mysql-server
+          - plugin: postgresql
+            # PostgreSQL (its programs in /usr/lib/postgresql/*/bin, where
+            # the plugin looks), with pg_stat_statements, and libpq's
+            # headers for pg.
+            packages: postgresql libpq-dev
+          - plugin: redis
+            packages: redis-server
+    # The plugin is a project of its own, in its directory: its Gemfile
+    # (which takes Duel from ../..), Rakefile and tests.
+    defaults:
+      run:
+        working-directory: plugins/${{ matrix.plugin }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.packages
+        run: sudo apt-get install -y ${{ matrix.packages }}
+      # AppArmor confines Ubuntu's mysqld to /var/lib/mysql. Each worker's
+      # server keeps its data in a directory of its own, under /tmp.
+      - if: matrix.plugin == 'mysql'
+        run: |
+          if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
+            sudo ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
+            sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
+          fi
+      # (A bundle cached for each plugin's directory.)
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: plugins/${{ matrix.plugin }}
+      - name: Run tests
+        env:
+          COVERAGE: "false"
+        run: bundle exec rake test

@@ -1,0 +1,22 @@
+usage: opensource
+integration:
+  name: minitest
+includes:
+  - lib
+  - test
+requires:
+  - ./test/test_helper
+coverage_criteria:
+  # A mutation whose tests' process dies before it reports (a crash, a
+  # stack overflow, a kill for its memory) counts as killed, as one that
+  # times out does. Mutant counts it alive unless told.
+  process_abort: true
+  timeout: true
+matcher:
+  subjects:
+    - Duel::MySQL*
+mutation:
+  # A mutant that survives runs every test, and some start servers of
+  # their own (one's a whole comparison): they take a minute or so on CI.
+  # One that runs out of time counts as killed, so this is well above it.
+  timeout: 300.0

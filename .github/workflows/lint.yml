@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+    # The plugins (plugins/*) have workflows of their own (plugin-*.yml).
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  pull_request:
+    paths-ignore:
+      - "plugins/**"
+      - ".github/workflows/plugin-*.yml"
+  # By hand (Actions > Lint > Run workflow): a push GitHub can't diff (a
+  # force-pushed root commit, say) matches no paths, so starts nothing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - run: bundle exec rubocop
+      - run: bundle exec standardrb

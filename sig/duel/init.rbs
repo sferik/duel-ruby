@@ -1,0 +1,97 @@
+module Duel
+  # `duel init`: sets Duel up in a gem or an app that isn't a Rails app.
+  # @api private
+  class Init
+    USAGE: String
+
+    TEMPLATES: String
+
+    # What's added to a Rakefile.
+    RAKE_TASK: String
+
+    # What's added to a Gemfile, for profiles of regressions.
+    STACKPROF: String
+
+    # A Gemfile's development group.
+    DEVELOPMENT: Regexp
+
+    @argv: Array[String]
+    @out: _Output
+    @err: _Output
+    @root: String
+    @force: bool?
+    @dry_run: bool?
+    @stackprof: bool?
+
+    def initialize: (Array[String] argv, ?out: _Output, ?err: _Output, ?root: String) -> void
+
+    # Returns the exit status: 0 set up, 1 a Rails app, 2 a bad option.
+    def run: () -> Integer
+
+    # The files it writes, from the project's root, to what's in them.
+    def files: () -> Hash[String, String]
+
+    private
+
+    def parser: () -> OptionParser
+
+    # Says to use duel-rails's generator instead.
+    def rails: () -> Integer
+
+    # Writes +content+ to +path+, unless it exists, and says what it did.
+    def write: (String path, String content) -> void
+
+    # Adds Duel's Rake task to the Rakefile.
+    def add_rake_task: () -> void
+
+    # Adds StackProf to the Gemfile: in its development group, or at its end.
+    def add_stackprof: () -> void
+
+    # The Gemfile with StackProf last in its development group, or nil.
+    def in_development_group: (String text) -> String?
+
+    # What goes between a file's text and what's added at its end.
+    def gap: (String text) -> String
+
+    # The Gemfile with StackProf at its end.
+    def at_the_end: (String text) -> String
+
+    def said: (String what, String path) -> void
+
+    # What to do next, numbered, after a blank line.
+    def next_steps: () -> String
+
+    def render: (String name) -> String
+
+    # The library the gemspec names, or nil.
+    def library: () -> String?
+
+    # The library, without a gemspec: lib/'s only Ruby file, or nil.
+    def guess: () -> String?
+
+    # What each version's workers require.
+    def required: () -> String?
+
+    def benchmark_file: () -> String
+
+    def gemfile?: () -> bool
+
+    def ext: () -> bool
+
+    def version_file: () -> bool
+
+    # The Ruby the workflow sets up, or none.
+    def ruby_version: () -> String?
+
+    # The root of the project's git repository.
+    def repository: () -> String
+
+    # The project's directory, from its repository's root, or nil.
+    def working_directory: () -> String?
+
+    def workflow_name: () -> String
+
+    # What marks the workflow's comment on a pull request.
+    def marker: () -> String
+  end
+end

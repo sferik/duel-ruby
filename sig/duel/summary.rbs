@@ -1,0 +1,87 @@
+module Duel
+  # A run's report in Markdown, for a pull request.
+  # @api private
+  class Summary
+    # The most characters it has.
+    LIMIT: Integer
+
+    # The most lines of an error it shows.
+    ERROR_LINES: Integer
+
+    # A benchmark's verdict, and where it goes in the table.
+    VERDICTS: Array[String]
+
+    # The verdicts that fail a run.
+    FAILED: Array[String]
+
+    @runner: Runner
+    @results: Array[Result]
+    @settings: Settings
+    @versions: Hash[String, String]
+    @regressed: Array[Result]
+
+    # +text+ as code, in Markdown.
+    def self.code: (String text) -> String
+
+    # A run that didn't compare, with what it said.
+    def self.note: (String title, String message) -> String
+
+    # +text+ in a fenced block of its own.
+    def self.block: (String text) -> String
+
+    # +result+'s verdict.
+    def self.verdict: (Result result) -> String
+
+    # The counted measures that differ, an iteration.
+    def self.changed_counts: (Result result) -> Hash[String, [Float, Float]]
+
+    def initialize: (Runner runner, Array[Result] results, settings: Settings, baseline: String, candidate: String) -> void
+
+    # The Markdown.
+    def markdown: () -> String
+
+    private
+
+    # The Markdown, with the first +explained+ regressions explained.
+    def render: (Integer explained) -> String
+
+    def heading: () -> String
+
+    # Each version, on its Ruby where theirs differ.
+    def versions: () -> String
+
+    def overview: () -> String
+
+    # The results, by verdict.
+    def sorted: () -> Array[Result]
+
+    def table: (Array[Result] changed) -> String?
+
+    # Those that didn't change, collapsed.
+    def unchanged: (Array[Result] same) -> String?
+
+    # A table's row of +cells+.
+    def row: (*String cells) -> String
+
+    # A benchmark's name, for a table's cell.
+    def name: (Result result) -> String
+
+    # Each timed measure's ratio and its interval.
+    def timings: (Result result) -> String
+
+    # Each counted measure that changed, an iteration.
+    def counts: (Result result) -> String
+
+    def mb: (Integer bytes) -> String
+
+    # The first +explained+ regressions, explained.
+    def regressions: (Integer explained) -> String?
+
+    # The verdicts across the board.
+    def across: () -> String?
+
+    def unsettled: () -> String?
+
+    def errors: () -> String?
+  end
+end
