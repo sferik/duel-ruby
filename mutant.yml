@@ -1,0 +1,16 @@
+usage: opensource
+integration:
+  name: minitest
+includes:
+  - lib
+  - test
+requires:
+  - ./test/test_helper
+  # What the tests don't load at once, so mutant finds its subjects.
+  - duel/rake_task
+  - duel/testing
+matcher:
+  subjects:
+    - Duel*
+mutation:
+  timeout: 20.0

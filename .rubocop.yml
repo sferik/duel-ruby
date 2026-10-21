@@ -1,0 +1,25 @@
+plugins:
+  - rubocop-performance
+  - rubocop-minitest
+
+inherit_gem:
+  standard: config/base.yml
+  standard-performance: config/base.yml
+
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "tmp/**/*"
+    - "vendor/**/*"
+    - "pkg/**/*"
+    - "coverage/**/*"
+
+# End-to-end tests check several facets of one comparison.
+Minitest/MultipleAssertions:
+  Max: 15
+
+Style/OneClassPerFile:
+  Exclude:
+    - "test/**/*"

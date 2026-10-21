@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # The actions every workflow uses.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+
+  # The Gemfile.
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7

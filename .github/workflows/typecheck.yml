@@ -1,0 +1,29 @@
+name: Typecheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: ${{ matrix.ruby }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Steep runs on CRuby only.
+        ruby: ["3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      # rbs validate, then steep check: lib/ against sig/, strictly; any
+      # diagnostic fails the run.
+      - name: Check types
+        run: bundle exec rake typecheck

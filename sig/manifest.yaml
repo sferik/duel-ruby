@@ -1,0 +1,4 @@
+# The standard libraries Duel's signatures use, for rbs collection.
+dependencies:
+  - name: optparse
+  - name: socket

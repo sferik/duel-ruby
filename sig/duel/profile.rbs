@@ -1,0 +1,38 @@
+module Duel
+  # Where a regression's time went: StackProf profiles of each version.
+  # @api private
+  class Profile
+    # A frame: its name, and its samples of its own and in total.
+    type frame = [String, Integer, Integer]
+
+    # A version's profile, as its worker reports it.
+    type profile = { "samples" => Integer, "frames" => Array[frame] }
+
+    # [frame, own, total]: what a frame gained, as a share of the
+    # baseline's samples.
+    type growth = [String, Float, Float]
+
+    # Its report: what grew, and each version's profile (its top frames).
+    type report = { "grew" => Array[growth], "baseline" => profile, "candidate" => profile }
+
+    UNAVAILABLE: String
+    TOP: Integer
+    KEPT: Integer
+
+    @baseline: profile
+    @candidate: profile
+
+    def initialize: (Hash[String, profile] profiles) -> void
+
+    # The TOP frames that gained the most samples of their own.
+    def grew: () -> Array[growth]
+
+    def to_h: () -> report
+
+    private
+
+    def counts: (profile profile) -> Hash[String, [Integer, Integer]]
+
+    def trimmed: (profile profile) -> profile
+  end
+end

@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.ruby }}
+    runs-on: ubuntu-latest
+    # Ruby's development version gets an early look, but can't fail the
+    # build.
+    continue-on-error: ${{ matrix.ruby == 'head' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.4", "4.0", "head", "jruby-10.1", "truffleruby-40.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Run tests
+        env:
+          COVERAGE: "false"
+        run: bundle exec rake test
+
+  coverage:
+    name: Coverage (100% line, branch and method)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      # SimpleCov's strict profile fails the run if any criterion drops
+      # below 100%.
+      - run: bundle exec rake test

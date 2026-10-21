@@ -1,0 +1,47 @@
+module Duel
+  # The `duel` command.
+  # @api private
+  class CLI
+    # The environment (ENV, or a Hash in its place).
+    interface _Env
+      def reject: () { (String name, String value) -> boolish } -> _Variables
+    end
+
+    # What's left of it.
+    interface _Variables
+      def key?: (String name) -> bool
+
+      def fetch: (String name) -> String
+    end
+
+    USAGE: String
+
+    # The variables that set options, to their options.
+    ENV_OPTIONS: Hash[String, String]
+
+    # The variables that set a flag by being set at all.
+    ENV_FLAGS: Hash[String, String]
+
+    @argv: Array[String]
+    @env: _Env
+    @out: _Output
+    @err: _Output
+    @clean: bool?
+
+    def initialize: (Array[String] argv, ?env: _Env, ?out: _Output, ?err: _Output) -> void
+
+    # Runs; returns the exit status: 0 not slower (or nothing to compare),
+    # 1 slower (or a benchmark failed), 2 couldn't compare.
+    def run: () -> Integer
+
+    # The settings, from the environment and then the options.
+    def parse: () -> Settings
+
+    private
+
+    # The DUEL_* variables set, as options.
+    def env_options: () -> Array[String]
+
+    def parser: (Settings settings) -> OptionParser
+  end
+end

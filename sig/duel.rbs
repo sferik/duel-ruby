@@ -1,0 +1,172 @@
+# Performance regression guards: every benchmark runs on two versions of
+# a codebase side by side, the baseline and the candidate, and the
+# candidate fails if it's slower at any of them.
+module Duel
+  # What Duel raises when something is used wrong, or fails (see Failed).
+  class Error < StandardError
+  end
+
+  # What a benchmark is judged on, if not both its timings and its
+  # counts (see DSL#duel).
+  type only = :count | :timing
+
+  # A benchmark's body, run in its Context: given the iterations to do
+  # when it takes a parameter, else run once an iteration.
+  # @api private
+  type body = ^(?Integer n) [self: Context] -> void
+
+  # A file's setup or teardown block, run in each benchmark's Context.
+  # @api private
+  type hook = ^() [self: Context] -> void
+
+  # A benchmark (see DSL#duel), defined in +file+, whose setup and
+  # teardown blocks (those defined there too) it gets. What a metric sees
+  # of it (Sample#benchmark): its name, only and peak_memory.
+  class Definition < Struct[String | only | bool | body | nil]
+    # What the runner learns of it (see #to_h).
+    # @api private
+    type summary = { "name" => String, "only" => String?, "peak_memory" => bool }
+
+    # Its name, as DSL#duel was given it.
+    attr_reader name: String
+
+    # @api private
+    attr_writer name: String
+
+    # What it's judged on (DSL#duel's only:): nil for both its timings
+    # and its counts.
+    attr_reader only: only?
+
+    # @api private
+    attr_writer only: only?
+
+    # Whether its peak memory is judged too.
+    attr_reader peak_memory: bool
+
+    # @api private
+    attr_writer peak_memory: bool
+
+    # @api private
+    attr_accessor file: String
+
+    # @api private
+    attr_accessor body: body
+
+    # @api private
+    def self.new: (String name, only? only, bool peak_memory, String file, body body) -> instance
+
+    # Whose CPU time it takes: the benchmark thread's, or the process's.
+    # @api private
+    def cpu: () -> (:thread | :process)
+
+    # What the runner learns of it.
+    # @api private
+    def to_h: () -> summary
+  end
+
+  # The iterations of a benchmark judged on its counts alone.
+  # @api private
+  COUNTS_ONLY: Integer
+
+  # What a benchmark may be judged on: nil for both.
+  # @api private
+  ONLY: Array[only?]
+
+  # What a worker's blocks (Config#worker) are given: blocks to run when
+  # the worker ends.
+  class Stops
+    @blocks: Array[^() -> void]
+
+    # @api private
+    def initialize: () -> void
+
+    # Runs the block when the worker ends.
+    def at_stop: () { () -> void } -> void
+
+    # Runs them, last first.
+    # @api private
+    def run: () -> void
+  end
+
+  # What a worker makes for itself (see Config#per_worker).
+  class PerWorker[T]
+    # The value, boxed (so a nil or false one is made too); nil outside a worker.
+    @made: [T]?
+
+    # The worker's; outside a worker, it fails.
+    def value: () -> T
+
+    # @api private
+    def made: (T value) -> void
+
+    # @api private
+    def forget: () -> void
+  end
+
+  self.@config: Config?
+  self.@benchmarks: Hash[String, Definition]?
+  self.@setups: Hash[String, Array[hook]]?
+  self.@teardowns: Hash[String, Array[hook]]?
+
+  # The configuration: the project's .duel.rb, or the conventions.
+  def self.config: () -> Config
+
+  # @api private
+  def self.config=: (Config config) -> Config
+
+  # Yields the configuration, as .duel.rb does.
+  def self.configure: [T] () { (Config config) -> T } -> T
+
+  self.@measuring: bool?
+
+  # Whether a benchmark is being measured right now: in a worker, inside a
+  # sample, but not in its untimed blocks (or in setup).
+  def self.measuring?: () -> bool
+
+  # Fails while a benchmark is being measured: for a helper, +name+d,
+  # meant for setting up.
+  def self.unmeasured!: (String name) -> void
+
+  # Runs the block with measuring? as +measuring+.
+  # @api private
+  def self.measured: [T] (bool measuring) { () -> T } -> T
+
+  # Loads a config file (.duel.rb): a fresh configuration, rooted where
+  # the file is.
+  # @api private
+  def self.load_config: (String path) -> Config
+
+  # Every benchmark defined, by name.
+  # @api private
+  def self.benchmarks: () -> Hash[String, Definition]
+
+  # Each file's setup and teardown blocks, by its path.
+  # @api private
+  def self.setups: () -> Hash[String, Array[hook]]
+
+  # @api private
+  def self.teardowns: () -> Hash[String, Array[hook]]
+
+  # What files of benchmarks call (the worker gives it to its main
+  # object).
+  module DSL
+    # Defines a benchmark: its block is timed, run as many times as a
+    # sample needs or, with a parameter, once a sample, given how many
+    # iterations to do.
+    def duel: (String name, ?only: only?, ?peak_memory: bool) { (?Integer n) [self: Context] -> void } -> void
+
+    # En garde.
+    # @api private
+    alias `⚔️` duel
+
+    # @api private
+    alias ⚔ duel
+
+    # Runs the block once in each worker before the samples of every
+    # duel in its file.
+    def setup: () { () [self: Context] -> void } -> void
+
+    # Runs the block once in each worker after them.
+    def teardown: () { () [self: Context] -> void } -> void
+  end
+end

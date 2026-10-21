@@ -1,0 +1,30 @@
+# What Duel uses of Fiddle, which has no RBS of its own (nor in
+# gem_rbs_collection). For type checking Duel only: not in the gem.
+module Fiddle
+  RUBY_FREE: Integer
+
+  class Error < StandardError
+  end
+
+  class DLError < Error
+  end
+
+  def self.dlopen: (String? library) -> Handle
+
+  class Handle
+    def []: (String symbol) -> Integer
+  end
+
+  class Function
+    def initialize: (Integer pointer, Array[Integer] args, Integer return_type) -> void
+
+    # What it returns depends on its return type.
+    def call: (*untyped args) -> untyped
+  end
+
+  class Pointer
+    def self.malloc: (Integer size, ?Integer free) -> Pointer
+
+    def []: (Integer offset, Integer length) -> String
+  end
+end

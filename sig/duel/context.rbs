@@ -1,0 +1,210 @@
+module Duel
+  # What a benchmark's run is measured by: a Sample, or a Trial,
+  # MemorySample or ProfileSample.
+  # @api private
+  interface _Sample
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block with measuring paused; returns what it does.
+    def pause: [T] () { () -> T } -> T
+  end
+
+  # What a benchmark's blocks run in (its file's setup and teardown
+  # blocks too): its state lives in instance variables. Its #setup and
+  # #untimed are a benchmark's to call; the rest is the worker's.
+  class Context
+    @definition: Definition
+    @trial: bool
+    @sample: _Sample?
+    # Whether its setup blocks have run (false: they run in the sample
+    # running, a worker's first for peak memory; nil: no trial yet).
+    @set_up: bool?
+
+    # @api private
+    attr_reader definition: Definition
+
+    # @api private
+    def initialize: (Definition definition) -> void
+
+    # Runs the block the first time the benchmark runs: its trial, or its
+    # first peak memory sample in a worker that ran none.
+    def setup: () { () -> void } -> void
+
+    # Runs the block with measuring paused; returns what it does.
+    def untimed: [T] () { () -> T } -> T
+
+    # Runs its file's setup blocks.
+    # @api private
+    def prepare: () -> void
+
+    # Runs its file's teardown blocks, last first.
+    # @api private
+    def finish: () -> void
+
+    # Runs the benchmark once, measuring nothing, with its setup blocks.
+    # @api private
+    def trial: () -> void
+
+    # Runs one sample of +n+ iterations, measured by +sample+.
+    # @api private
+    def run: (Integer n, _Sample sample) -> void
+
+    # Runs one sample for its peak memory (its setup blocks too, if there
+    # was no trial).
+    # @api private
+    def run_memory: (Integer n, MemorySample sample) -> void
+  end
+
+  # One measured stretch of a benchmark: every metric's measurement of it,
+  # and (CRuby) about how many bytes it allocated. A metric's #start gets
+  # it: its #benchmark and #n are the metric's to read; the rest is the
+  # worker's.
+  class Sample
+    # Zero bytes allocated: what JRuby tells.
+    # @api private
+    NO_HEAP: ^() -> Integer
+
+    # Bytes allocated so far, roughly (zero on JRuby).
+    # @api private
+    HEAP: ^() -> Integer
+
+    # Collects the garbage left so far, then holds off collecting.
+    # @api private
+    QUIET_GC: ^() -> void
+
+    @benchmark: Definition
+    @n: Integer
+    @counting: bool
+    @metrics: Array[Metric]
+    @timed: Hash[String, Metric::value]
+    @counted: Hash[String, Metric::value]
+    @details: Hash[String, String]
+    @started: true?
+    @stopped: true?
+    @heap: Integer
+
+    # What a metric learns of the sample: its benchmark and its iterations.
+    attr_reader benchmark: Definition
+
+    attr_reader n: Integer
+
+    # @api private
+    attr_reader started: true?
+
+    # @api private
+    attr_reader stopped: true?
+
+    # Each timed measure's total, by name.
+    # @api private
+    attr_reader timed: Hash[String, Metric::value]
+
+    # Each counted measure's total, by name (when counting).
+    # @api private
+    attr_reader counted: Hash[String, Metric::value]
+
+    # Bytes allocated (once it's stopped).
+    # @api private
+    attr_reader heap: Integer
+
+    # What metrics said of it (Metric#details), by measure.
+    # @api private
+    attr_reader details: Hash[String, String]
+
+    # @api private
+    def initialize: (Definition benchmark, Array[Metric] metrics, n: Integer, counting: bool) -> void
+
+    # @api private
+    def start: () -> void
+
+    # @api private
+    def stop: () -> void
+
+    # Runs the block with the metrics paused; returns what it does.
+    # @api private
+    def pause: [T] () { () -> T } -> T
+
+    private
+
+    # Keeps what a metric says of the sample, by measure.
+    def explain: (Metric metric) -> void
+
+    # Files a metric's measurement (or several, by name) by kind.
+    def record: (singleton(Metric) metric, Metric::measurement value) -> void
+  end
+
+  # A run of a benchmark that measures nothing: to see that it runs.
+  # @api private
+  class Trial
+    @started: true?
+    @stopped: true?
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    def start: () -> true
+
+    def stop: () -> true
+
+    def pause: [T] () { () -> T } -> T
+  end
+
+  # A stretch of a benchmark run for its peak memory.
+  # @api private
+  class MemorySample
+    @started: true?
+    @stopped: true?
+    # Resident memory where it started, plus what paused blocks left.
+    @base: Integer
+    # The most above it the watcher saw, outside paused blocks.
+    @peak: Integer
+    @paused: bool?
+    @watcher: Thread
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    # Bytes (once it's stopped).
+    attr_reader peak: Integer
+
+    def start: () -> void
+
+    def stop: () -> void
+
+    # Runs the block unwatched; what it leaves resident isn't counted.
+    def pause: [T] () { () -> T } -> T
+
+    private
+
+    def resident: () -> Integer
+
+    def watch: () -> void
+  end
+
+  # A stretch of a benchmark profiled with StackProf (in CPU time).
+  # @api private
+  class ProfileSample
+    # Microseconds between samples.
+    INTERVAL: Integer
+
+    @started: true?
+    @stopped: true?
+    @results: Hash[Symbol, untyped]
+
+    attr_reader started: true?
+
+    attr_reader stopped: true?
+
+    # StackProf's results (once it's stopped).
+    attr_reader results: Hash[Symbol, untyped]
+
+    def start: () -> void
+
+    def stop: () -> void
+
+    def pause: [T] () { () -> T } -> T
+  end
+end

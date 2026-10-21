@@ -1,0 +1,9 @@
+module Duel
+  # A rake task running `duel` with +args+:
+  #
+  #   Duel::RakeTask.new(:perf)
+  #   Duel::RakeTask.new(:perf_since_release, "--base", "last-release")
+  class RakeTask
+    def initialize: (?Symbol | String name, *String args) -> void
+  end
+end

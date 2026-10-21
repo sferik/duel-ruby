@@ -1,0 +1,51 @@
+name: Push gem to RubyGems
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    if: github.repository == 'sferik/duel-ruby'
+    runs-on: ubuntu-latest
+    environment:
+      name: rubygems.org
+      url: https://rubygems.org/gems/duel
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ruby
+      # Trusted publishing: RubyGems.org trusts this workflow, no API key.
+      - uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - name: Update RubyGems
+        run: gem update --system
+      # The tag must be the version the gem builds as (v0.1.0: 0.1.0).
+      - name: Build the gem
+        run: |
+          gem build duel.gemspec
+          test -f "duel-${GITHUB_REF_NAME#v}.gem"
+      - name: Sign the gem with Sigstore
+        run: gem exec sigstore-cli sign "duel-${GITHUB_REF_NAME#v}.gem" --bundle "duel-${GITHUB_REF_NAME#v}.gem.sigstore.json"
+      - name: Push the gem
+        run: |
+          gem="duel-${GITHUB_REF_NAME#v}.gem"
+          gem push "$gem" --attestation "$gem.sigstore.json" || {
+            echo "gem push failed: checking whether it's published already"
+            gem exec rubygems-await "$gem" && echo "Already published, continuing" || exit 1
+          }
+      - name: Wait for the release
+        run: gem exec rubygems-await "duel-${GITHUB_REF_NAME#v}.gem"
+      - name: Create the GitHub release
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

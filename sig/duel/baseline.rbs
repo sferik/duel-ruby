@@ -1,0 +1,39 @@
+module Duel
+  # The version to compare against: a directory, or a git commit checked
+  # out (and built) in tmp/duel/base.
+  # @api private
+  class Baseline
+    LAST_RELEASE: String
+
+    @config: Config
+    @settings: Settings
+    @ref: String?
+
+    def initialize: (Config config, Settings settings) -> void
+
+    # The commit, or nil for "last-release" with no release yet.
+    def ref: () -> String?
+
+    # Whether nothing Config#watch names changed since the baseline.
+    def unchanged?: () -> bool
+
+    # The baseline's tree, checked out and built if it's a commit.
+    def root: () -> String
+
+    # Removes what Duel keeps in tmp/duel.
+    def clean: () -> void
+
+    # The main branch.
+    def main_branch: () -> String
+
+    # Builds the tree in +dir+ (Config#build), if there's a build.
+    def build: (String dir, String what) -> void
+
+    private
+
+    # Git's output; raises Error when it fails, unless +allow_failure+
+    # (then nil).
+    def git: (*String args) -> String
+           | (*String args, allow_failure: bool) -> String?
+  end
+end

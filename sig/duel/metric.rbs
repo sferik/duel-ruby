@@ -1,0 +1,291 @@
+module Duel
+  # Something measured around every sample of every benchmark (see
+  # Config#metric). Subclasses name what they measure, and each one's
+  # settings, in +measures+, and say whether they can measure here with
+  # +available?+.
+  class Metric
+    # :ratio (noisy: judged on paired ratios with a confidence interval)
+    # or :counted (exact).
+    type kind = :ratio | :counted
+
+    # What a measure measures.
+    type value = Integer | Float
+
+    # What it's in: a symbol ("B", "ns"), or a word as [singular, plural].
+    type unit = String | [String, String]
+
+    # A measure's settings, as declared: any left out as by default. (+calibrate+:
+    # running totals' only, see Snapshot; +skip+: Config#measure's only.)
+    type settings = { ?kind: kind, ?unit: unit?, ?floor: value, ?cpu_floor: value, ?limit: Float?, ?unit_ns: value,
+                      ?sizes_samples: bool, ?across: bool, ?tolerance: value, ?allowance: value, ?calibrate: bool, ?skip: bool }
+
+    # What #stop returns: the measurement, a Hash of them (by name), or
+    # nil (none this time).
+    type measurement = value | Hash[String, value?] | nil
+
+    # A measure as the runner learns it.
+    # @api private
+    type spec = { "name" => String, "kind" => String, "unit" => String?, "plural" => String?, "floor" => value, "cpu_floor" => value, "limit" => Float?,
+                  "unit_ns" => value, "sizes_samples" => bool, "across" => bool, "tolerance" => value, "allowance" => value }
+
+    # A measure's settings, every one, resolved (see Metric.resolve).
+    type resolved = { kind: kind, unit: String?, plural: String?, floor: value, cpu_floor: value, limit: Float?, unit_ns: value,
+                      sizes_samples: bool, across: bool, tolerance: value, allowance: value }
+
+    # No measure's settings changed.
+    # @api private
+    UNCHANGED: Hash[String, Hash[Symbol, untyped]]
+
+    # No change to a measure's settings.
+    # @api private
+    NO_CHANGE: Hash[Symbol, untyped]
+
+    # Every setting there is.
+    # @api private
+    SETTINGS: Array[Symbol]
+
+    # A unit that's a word (or words), which needs its plural given.
+    # @api private
+    WORD: Regexp
+
+    # The units that are time, and the nanoseconds in each.
+    # @api private
+    TIME_UNITS: Hash[String, Integer]
+
+    @settings: Hash[String, resolved]?
+
+    # Whether it can measure here at all (false leaves it out).
+    def self.available?: () -> bool
+
+    # The metric's name in reports: by default, its class's, in snake case.
+    def self.metric_name: () -> String
+
+    # What it measures, by name.
+    def self.measures: () -> Hash[String, settings]
+
+    # Whether +more+ (what a count grew by, over +n+ iterations) is still
+    # within +tolerance+ an iteration and +allowance+ a sample.
+    def self.within?: (value more, Integer n, tolerance: value, allowance: value) -> bool
+
+    # Each measure's kind, by name.
+    # @api private
+    def self.kinds: () -> Hash[String, kind]
+
+    # Fails unless +settings+ (a measure's) are settings there are, with a
+    # kind there is.
+    # @api private
+    def self.check: (String name, Hash[Symbol, untyped] settings) -> void
+
+    # Each measure's settings, by name, every one filled in. (+overrides+:
+    # @api private.)
+    def self.settings: (?Hash[String, Hash[Symbol, untyped]] overrides) -> Hash[String, resolved]
+
+    # A measure's settings: those given, and the rest as by default.
+    # @api private
+    def self.resolve: (Hash[Symbol, untyped] given) -> resolved
+
+    # Its measures as the runner learns them, with +overrides+ by name.
+    # @api private
+    def self.specs: (?Hash[String, Hash[Symbol, untyped]] overrides) -> Array[spec]
+
+    # Each measure's settings, by name, with Config#measure's changes.
+    def settings: () -> Hash[String, resolved]
+
+    # @api private
+    def settings=: (Hash[String, resolved] settings) -> Hash[String, resolved]
+
+    # A setting of +measure+: by default, of the one it measures.
+    def setting: (:kind key, ?String measure) -> kind
+               | (:unit | :plural key, ?String measure) -> String?
+               | (:floor | :cpu_floor | :unit_ns | :tolerance | :allowance key, ?String measure) -> value
+               | (:limit key, ?String measure) -> Float?
+               | (:sizes_samples | :across key, ?String measure) -> bool
+
+    # Whether +more+ (what +measure+'s count grew by, over +n+ iterations)
+    # is still within its tolerance and allowance.
+    def within?: (value more, Integer n, ?String measure) -> bool
+
+    # Begins measuring +sample+ (its benchmark, n).
+    def start: (Sample sample) -> void
+
+    # Ends it; returns the measurement, a Hash of them, or nil.
+    def stop: () -> measurement
+
+    # Pauses it, for an untimed block; returns what it measured so far.
+    def pause: () -> measurement
+
+    # Resumes it after an untimed block.
+    def resume: (Sample sample) -> void
+
+    # What it would say of the sample it last stopped: text, text by
+    # measure name, or nil.
+    def details: () -> (String | Hash[String, String] | nil)
+
+    private
+
+    # The one measure it measures; one that measures several (or none) fails.
+    def only_measure: () -> String
+  end
+
+  # A metric of running totals that its block reads (see Config#metric):
+  # a sample measures what they grew by, less what reading them adds to a
+  # counted one. Config#metric makes one; it isn't made or subclassed
+  # otherwise.
+  class Snapshot < Metric
+    # Pairs of readings each worker takes to learn what reading costs.
+    # @api private
+    CALIBRATION: Integer
+
+    # Totals by name, each a T (Integer, say: see Config#metric); one it
+    # can't read this time is nil.
+    type totals[T] = Hash[String, T?]
+
+    # What a read block reads: the totals (a T, for one), or nil.
+    type read_totals[T] = T | totals[T] | nil
+
+    # What a read block returns: the totals, or them and what else was
+    # read with them (+C+: whatever its details block needs).
+    type read[T, C] = read_totals[T] | [read_totals[T], C]
+
+    # One reading: the totals, and what else was read with them (nil if
+    # nothing was).
+    class Reading[T, C] < Struct[untyped]
+      # The totals, by name.
+      attr_reader totals: totals[T]
+
+      # @api private
+      attr_writer totals: totals[T]
+
+      # What the block read with them, or nil.
+      attr_reader context: C
+
+      # @api private
+      attr_writer context: C
+
+      # @api private
+      def self.new: [T, C] (totals[T] totals, C context) -> Reading[T, C]
+
+      # The total named +name+ (it fails for one it couldn't read).
+      def total: (String name) -> T
+    end
+
+    # A sample's stretches: [started, stopped] readings.
+    type stretches[T, C] = Array[[Reading[T, C], Reading[T, C]]]
+
+    # What a sample's explained by: text, text by measure name, or nil.
+    type explained = String | Hash[String, String] | nil
+
+    # What explains a sample, given its stretches and the sample.
+    # @api private
+    type explainer[T, C] = ^(stretches[T, C] stretches, Sample sample) -> explained
+
+    # Running totals as Config#metric returns them: to explain them, typed
+    # by what their block read: the totals' T, and C with them.
+    interface _Explained[T, C]
+      # Explains each sample by the block.
+      def details: () { (stretches[T, C] stretches, Sample sample) -> explained } -> nil
+    end
+
+    # (Inside, the context is whatever the block gave: Config#metric types it.)
+    self.@measures: Hash[String, Metric::settings]
+    self.@read: ^() -> read[Metric::value, untyped]
+    self.@explainer: explainer[Metric::value, untyped]?
+
+    @overhead: Hash[String, Metric::value]
+    @sample: Sample
+    @stretches: stretches[Metric::value, untyped]
+    @started: Reading[Metric::value, untyped]
+
+    attr_reader self.measures: Hash[String, Metric::settings]
+
+    # A Snapshot for +measures+, read by +read+.
+    # @api private
+    # (Its measures as Config#metric takes them: from keywords too.)
+    def self.define: (Hash[untyped, untyped] measures, (^() -> read[Metric::value, untyped])? read) -> singleton(Snapshot)
+
+    # Sets what it measures and how it reads them; returns it.
+    # @api private
+    def self.reading: (Hash[untyped, untyped] measures, ^() -> read[Metric::value, untyped] read) -> singleton(Snapshot)
+
+    # Explains its samples by the block.
+    def self.details: () { (stretches[Metric::value, untyped] stretches, Sample sample) -> explained } -> nil
+
+    # What explains a sample, or nil.
+    # @api private
+    def self.explainer: () -> explainer[Metric::value, untyped]?
+
+    # A Reading: the totals (those it measures, or it fails), and their
+    # context.
+    # @api private
+    def self.read: () -> Reading[Metric::value, untyped]
+
+    # @api private
+    def initialize: () -> void
+
+    # A sample begins: its first stretch.
+    def start: (Sample sample) -> void
+
+    # Another stretch of the same sample, after an untimed block.
+    def resume: (Sample sample) -> void
+
+    def stop: () -> totals[Metric::value]
+
+    # What its details block says of the sample it last stopped.
+    def details: () -> (String | Hash[String, String] | nil)
+
+    private
+
+    # What +name+'s total grew by in a reading after +before+.
+    def grew: (totals[Metric::value] before, String name) -> Metric::value
+  end
+
+  # CPU time in nanoseconds: the benchmark thread's, or the process's.
+  # @api private
+  module Clock
+    def self.thread: () -> Integer
+
+    def self.process: () -> Integer
+  end
+
+  # The built-in metrics: their measures are named ("cpu",
+  # "instructions", "allocations"), as Config#measure takes them.
+  # @api private
+  module Metrics
+    # CPU time, in nanoseconds.
+    class CPU < Metric
+      @clock: :thread | :process
+      @started: Integer
+
+      def start: (Sample sample) -> void
+
+      def stop: () -> Integer
+    end
+
+    # Instructions retired in user space, from the CPU's own counters.
+    class Instructions < Metric
+      self.@counter: Native::Counter?
+
+      @counter: Native::Counter
+      @counting: bool
+      @started: Integer
+
+      # This process's counter (see Native::Counter.open), or nil.
+      def self.counter: () -> Native::Counter?
+
+      def initialize: () -> void
+
+      def start: (Sample sample) -> void
+
+      def stop: () -> Integer?
+    end
+
+    # Ruby objects allocated (CRuby).
+    class Allocations < Metric
+      @started: Integer
+
+      def start: (Sample _sample) -> void
+
+      def stop: () -> Integer
+    end
+  end
+end

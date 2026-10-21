@@ -1,0 +1,7 @@
+# JRuby's access to Java packages (java.lang...), which Duel uses on
+# JRuby only. For type checking Duel only: not in the gem.
+module Kernel
+  private
+
+  def java: () -> untyped
+end

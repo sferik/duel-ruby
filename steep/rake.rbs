@@ -1,0 +1,18 @@
+# What Duel uses of Rake (gem_rbs_collection has Rake's RBS, but Duel's
+# check doesn't depend on fetching it). For type checking Duel only: not
+# in the gem, whose signatures don't depend on Rake's.
+module Rake
+  module DSL
+    private
+
+    def desc: (String description) -> void
+
+    def task: (Symbol | String name) { () -> void } -> void
+  end
+end
+
+module Duel
+  class RakeTask
+    include Rake::DSL
+  end
+end

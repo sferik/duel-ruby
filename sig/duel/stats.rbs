@@ -1,0 +1,27 @@
+module Duel
+  # The statistics behind a verdict: a distribution-free confidence
+  # interval for the median of paired ratios, and the decision it supports.
+  # @api private
+  module Stats
+    type verdict = :slower | :faster | :same | :undecided
+
+    # P(X <= k) for X ~ Binomial(n, 1/2).
+    def self.binomial_cdf: (Integer k, Integer n) -> Float
+
+    def self.binomial: (Integer n, Integer k) -> Integer
+
+    # The 1-based ranks [lower, upper] bounding a +confidence+ interval for
+    # the median of +n+ samples, or nil when +n+ is too small for one.
+    def self.median_ranks: (Integer n, Float confidence) -> [Integer, Integer]?
+
+    # [low, high] bounds of the +confidence+ interval for the median of
+    # +samples+, or nil.
+    def self.median_interval: (Array[Float] samples, Float confidence) -> [Float, Float]?
+
+    def self.median: (Array[Float] samples) -> Float
+                   | (Array[Metric::value] samples) -> Metric::value
+
+    # What paired ratios say against +limit+.
+    def self.verdict: (Array[Float] ratios, limit: Float, confidence: Float) -> verdict
+  end
+end

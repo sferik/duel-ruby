@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "duel/cli"
+
+exit Duel::CLI.new(ARGV).run

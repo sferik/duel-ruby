@@ -1,0 +1,65 @@
+# What RBS's core signatures lack, or leave broader than Duel's uses of
+# them need. For type checking Duel only: not in the gem.
+
+module Process
+  # Process.spawn([env,] command...), which RBS declares only as
+  # Kernel.spawn, and without the environment.
+  def self.spawn: (Hash[String, String?] env, *String command, ?in: String, ?close_others: bool) -> Integer
+  # And as Resource#spawn passes on what it's given (anything spawn
+  # takes), with its log redirections.
+              | (*untyped command, **untyped options) -> Integer
+end
+
+class Thread::Queue[E = untyped]
+  # A queue of +items+ (Ruby 3.1+).
+  def initialize: (?_Each[E] items) -> void
+end
+
+module Kernel
+  # Code in a file (as all of Duel's is) has a directory.
+  def __dir__: () -> String
+             | ...
+end
+
+class Proc
+  # A block (as DSL#duel, #setup and #teardown take) has a location.
+  def source_location: () -> [String, Integer]
+                     | ...
+end
+
+class Exception
+  # An exception rescued (as Worker#handle's is) has a backtrace.
+  def backtrace: () -> Array[String]
+               | ...
+end
+
+class String
+  # An unsigned 64-bit integer (Duel reads only those).
+  def unpack1: ("Q" template, ?offset: int) -> Integer
+             | ...
+end
+
+module Open3
+  # Open3 passes options on to Process.spawn: Duel's is chdir:.
+  def self.capture2e: (*String command, chdir: String) -> [String, Process::Status]
+                    | ...
+end
+
+class Integer
+  # Arithmetic with an Integer or a Float (a Metric::value, say), whose
+  # overloads Steep doesn't try one by one.
+  def +: (Integer) -> Integer
+       | (Float) -> Float
+       | (Integer | Float) -> (Integer | Float)
+       | ...
+
+  def -: (Integer) -> Integer
+       | (Float) -> Float
+       | (Integer | Float) -> (Integer | Float)
+       | ...
+
+  def *: (Integer) -> Integer
+       | (Float) -> Float
+       | (Integer | Float) -> (Integer | Float)
+       | ...
+end
