@@ -73,6 +73,10 @@ class BaselineTest < DuelTest
     git("push", "-q", "origin", "master")
 
     assert_equal "origin/master", baseline.send(:main_branch)
+    @config.main_branch = "origin/trunk"
+
+    assert_equal "origin/2-x-stable", baseline(target: "origin/2-x-stable").send(:main_branch), "a pull request's target, first"
+    assert_equal "origin/trunk", baseline.send(:main_branch)
   end
 
   # Without a remote: main, or else master.

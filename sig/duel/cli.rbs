@@ -94,6 +94,9 @@ module Duel
     # pull request.
     def outside_pull_request?: () -> bool
 
+    # Whether this is a run on GitHub Actions for a pull request.
+    def pull_request?: () -> bool
+
     # Whether this is a run on GitHub Actions for a push.
     def pushed?: () -> bool
 

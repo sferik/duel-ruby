@@ -140,7 +140,10 @@ iteration, as they are in the explanation of a regression.
 The main branch is the one that `origin/HEAD` names. Without
 `origin/HEAD`, Duel uses `origin/main`, and then `origin/master`. In a
 repository without a remote, it uses `main`, and then `master`. To name
-another branch, set `c.main_branch`.
+another branch, set `c.main_branch`. On GitHub Actions, for a pull
+request, the main branch is the one that the pull request targets
+(`GITHUB_BASE_REF`), such as a stable branch, or another pull request's
+branch in a stack of them.
 
 Duel checks out a git baseline as a git worktree next to your project,
 under a hidden name that's as long as your project's directory name, for

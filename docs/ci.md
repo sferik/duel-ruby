@@ -54,12 +54,12 @@ jobs:
         with:
           ruby-version: "3.4" # (or none, with a .ruby-version)
           bundler-cache: true
-      # Against the main branch for a pull request, what was there before
-      # for a push (or as c.push_base in .duel.rb says, the last commit Duel
-      # passed), and the last release on a schedule (slow creep). Duel adds
-      # its report to the job's summary, writes it to duel.md for the
-      # comment, and sets the step's outputs to say whether to comment, as
-      # c.comment in .duel.rb says, whatever the outcome.
+      # Against the branch it targets for a pull request, what was there
+      # before for a push (or as c.push_base in .duel.rb says, the last
+      # commit Duel passed), and the last release on a schedule (slow
+      # creep). Duel adds its report to the job's summary, writes it to
+      # duel.md for the comment, and sets the step's outputs to say whether
+      # to comment, as c.comment in .duel.rb says, whatever the outcome.
       - name: Compare
         id: compare
         env:
@@ -178,7 +178,9 @@ jobs:
 
 The workflow compares the following:
 
-- A pull request, against the main branch.
+- A pull request, against the branch that it targets: usually `main`,
+  but a stable branch, or another pull request's branch in a stack of
+  them, too.
 - A push to `main`, against the commit before the push, or with
   [`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
   the last commit that Duel passed. If that commit isn't in the history,
@@ -326,19 +328,19 @@ match. `duel init` adds these steps for a project that has a
       # .duel.rb). When the baseline's names another Ruby than this code's,
       # that one is installed too, and linked where Duel finds it (as
       # chruby would), before the project's own Ruby, which runs Duel. The
-      # baseline is the Compare step's: where HEAD left the main branch
-      # (for a pull request, and run by hand), the commit before a push (or
-      # the last commit Duel passed, PASSED, if there is one: see the Mark
-      # the commit passed job), or on a schedule the last release, the
-      # newest tag before HEAD that RELEASE_TAGS matches. (If .duel.rb sets
-      # c.main_branch or c.release_tags, set MAIN_BRANCH or RELEASE_TAGS to
-      # match.)
+      # baseline is the Compare step's: where HEAD left the branch a pull
+      # request targets (or run by hand, the main branch), the commit
+      # before a push (or the last commit Duel passed, PASSED, if there is
+      # one: see the Mark the commit passed job), or on a schedule the last
+      # release, the newest tag before HEAD that RELEASE_TAGS matches. (If
+      # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
+      # RELEASE_TAGS to match.)
       - name: Find the baseline's Ruby
         id: baseline
         env:
           BEFORE: ${{ github.event.before }}
           PASSED: origin/duel/passed
-          MAIN_BRANCH: origin/${{ github.event.repository.default_branch }}
+          MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
           RELEASE_TAGS: "v*"
         run: |
           case "$GITHUB_EVENT_NAME" in

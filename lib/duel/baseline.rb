@@ -11,7 +11,8 @@ module Duel
   # git commit checked out (and built, see Config#build) where #checkout
   # says. Settings#base names the commit:
   #
-  # - nil: where HEAD left the main branch (their merge base):
+  # - nil: where HEAD left the main branch (their merge base): for a
+  #   pull request, the branch it targets (Settings#target), or else
   #   Config#main_branch, or the one origin/HEAD names, or origin/main, or
   #   origin/master, or (a repository without a remote) main, or master
   # - "last-release": the newest release tag (Config#release_tags) before
@@ -135,7 +136,7 @@ module Duel
 
     # The main branch (see #ref).
     def main_branch
-      @config.main_branch ||
+      @settings.target || @config.main_branch ||
         git("symbolic-ref", "--short", "refs/remotes/origin/HEAD", allow_failure: true) ||
         BRANCHES.find { |branch| git("rev-parse", branch, allow_failure: true) } ||
         raise(Error, "no main branch to compare with (set c.main_branch in .duel.rb, or --base)")

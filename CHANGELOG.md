@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there's no commit to compare against, and passes, from `duel` itself.
   The workflow no longer checks this in its Compare step.
 
+### Fixed
+
+- On GitHub Actions, a pull request is compared with the branch that it
+  targets (`GITHUB_BASE_REF`), not the main branch. A pull request into
+  a stable branch, or into another pull request's branch, was compared
+  with `main`.
+
 ## [0.1.1] - 2026-10-26
 
 ### Added

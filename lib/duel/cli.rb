@@ -116,6 +116,7 @@ module Duel
       parser(settings).parse!(env_options + @argv)
       set = variables
       settings.pushed = pushed? && set.key?("DUEL_BASE") && settings.base == set.fetch("DUEL_BASE")
+      settings.target = "origin/#{set.fetch("GITHUB_BASE_REF")}" if set.key?("GITHUB_BASE_REF") && pull_request?
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
       settings
@@ -191,6 +192,13 @@ module Duel
     def outside_pull_request?
       set = variables
       set.key?("GITHUB_EVENT_NAME") && !PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
+    end
+
+    # Whether this is a run on GitHub Actions for a pull request (or a
+    # merge queue: see PULL_REQUESTS).
+    def pull_request?
+      set = variables
+      set.key?("GITHUB_EVENT_NAME") && PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
     end
 
     # Whether this is a run on GitHub Actions for a push.

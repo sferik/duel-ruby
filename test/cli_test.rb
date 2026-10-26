@@ -133,6 +133,19 @@ class CLITest < DuelTest
     refute cli(env: push.slice("DUEL_BASE")).parse.pushed, "no event"
   end
 
+  # The branch a pull request targets, on GitHub Actions: on origin, for
+  # a pull request (or a merge queue's run) only.
+  def test_target
+    pr = {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_BASE_REF" => "2-x-stable"}
+
+    assert_equal "origin/2-x-stable", cli(env: pr).parse.target
+    assert_equal "origin/2-x-stable", cli(env: pr.merge("GITHUB_EVENT_NAME" => "pull_request_target")).parse.target
+    assert_nil cli(env: pr.merge("GITHUB_EVENT_NAME" => "push")).parse.target, "not a pull request"
+    assert_nil cli(env: pr.merge("GITHUB_BASE_REF" => "")).parse.target, "none"
+    assert_nil cli(env: pr.slice("GITHUB_EVENT_NAME")).parse.target, "unset"
+    assert_nil cli(env: pr.slice("GITHUB_BASE_REF")).parse.target, "not on GitHub Actions"
+  end
+
   # A baseline that's a directory, by --base (or DUEL_BASE): the last
   # given wins, a ref or a directory.
   def test_a_base_directory

@@ -30,7 +30,7 @@ module Duel
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
   Settings = Struct.new(:base, :base_dir, :candidate_dir, :filter, :jobs, :processes, :limit, :confidence, :warm, :force,
-    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed) do
+    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target) do
     # @type self: singleton(Settings)
     def self.defaults = new(filter: //, jobs: 1, processes: 3, limit: 1.02, confidence: 0.99, warm: nil, force: false,
       timeout: 60.0)
