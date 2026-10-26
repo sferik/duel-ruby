@@ -52,10 +52,10 @@ module Duel
     def compare: (Config config, Settings settings) -> Integer
 
     # Says there's nothing to compare, and why, and passes.
-    def nothing: (String why) -> Integer
+    def nothing: (String title, String why) -> Integer
 
-    # Reports a run that didn't compare, and returns +exit+.
-    def unfinished: (String title, String status, String message, Integer exit) -> Integer
+    # Reports a run that didn't compare, and why, and returns +exit+.
+    def unfinished: (String mark, String title, String status, String why, Integer exit) -> Integer
 
     # Writes the reports where they're asked for, each made only if it's
     # written.

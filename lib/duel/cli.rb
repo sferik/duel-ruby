@@ -49,7 +49,7 @@ module Duel
       Lock.hold(File.join(config.root, "tmp", "duel")) { compare(config, settings) }
     rescue Error => e
       @err.puts "duel: #{e}"
-      unfinished("couldn't compare", "error", "duel: #{e}", 2)
+      unfinished(Summary::FAILED_MARK, "couldn't compare", "error", e.to_s, 2)
     rescue OptionParser::ParseError => e
       @err.puts "duel: #{e}"
       2
@@ -83,9 +83,12 @@ module Duel
         @out.puts "duel: removed tmp/duel and its baseline's worktree"
         return 0
       end
-      return nothing("no release tag (#{config.release_tags}) before HEAD to compare against") if settings.base_dir.nil? && baseline.ref.nil?
+      if settings.base_dir.nil? && baseline.ref.nil?
+        return nothing("no release to compare against", "no release tag (#{config.release_tags}) before HEAD to compare against")
+      end
       if !settings.force && baseline.unchanged?
-        return nothing("#{baseline.watched.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
+        return nothing("nothing to compare",
+          "#{baseline.watched.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
       end
 
       candidate = settings.candidate_dir || config.root
@@ -108,18 +111,19 @@ module Duel
       status
     end
 
-    # Says there's nothing to compare, and why, and passes.
-    def nothing(why)
+    # Says there's nothing to compare (+title+, in Markdown), and +why+,
+    # and passes.
+    def nothing(title, why)
       @out.puts "duel: #{why}"
-      unfinished("nothing to compare", "nothing_to_compare", "duel: #{why}", 0)
+      unfinished(Summary::NEUTRAL_MARK, title, "nothing_to_compare", why, 0)
     end
 
-    # Reports a run that didn't compare (+title+ says why in Markdown,
-    # and +status+ in JSON) with +message+, and returns +exit+.
-    def unfinished(title, status, message, exit)
+    # Reports a run that didn't compare (+mark+ and +title+ say so in
+    # Markdown, and +status+ in JSON), and +why+, and returns +exit+.
+    def unfinished(mark, title, status, why, exit)
       # (Parsed, so set, where there's JSON to write: see #publish.)
       settings = @settings #: Settings
-      publish(-> { Summary.note(title, message) }, -> { JSONReport.note(status, exit, message, settings) })
+      publish(-> { Summary.note(mark, title, why) }, -> { JSONReport.note(status, exit, "duel: #{why}", settings) })
       exit
     end
 
@@ -145,31 +149,42 @@ module Duel
       File.write(path, text)
     end
 
-    # The baseline, in Markdown: its directory, or its commit, and what
-    # named it.
+    # The baseline, in Markdown: its directory, or its commit, bare (so
+    # GitHub links it) and followed by a space, never punctuation, and
+    # what chose it: the main branch, the push (on GitHub Actions, the
+    # commit before it, from DUEL_BASE), the last release, or --base.
     def described_baseline(config, settings, baseline)
       dir = settings.base_dir
       return Summary.code(dir) if dir
 
       # (There's one: #compare checked.)
       ref = baseline.ref #: String
-      commit = Summary.code(git(config.root, "rev-parse", "--short", "#{ref}^{commit}").first.chomp)
-      case settings.base
-      when nil then "#{commit}, where HEAD left #{Summary.code(baseline.main_branch)}"
-      when Baseline::LAST_RELEASE then "#{Summary.code(ref)} (#{commit}), the last release"
-      else ref.match?(/\A\h+\z/) ? commit : "#{Summary.code(ref)} (#{commit})"
+      commit = git(config.root, "rev-parse", "--short", "#{ref}^{commit}").first.chomp
+      set = variables
+      chosen = case settings.base
+      when nil then "where HEAD left #{Summary.code(baseline.main_branch)}"
+      when Baseline::LAST_RELEASE then "the last release, #{Summary.code(ref)}"
+      else
+        pushed = set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "push" && set.key?("DUEL_BASE") &&
+          set.fetch("DUEL_BASE") == ref
+        if !ref.match?(/\A\h+\z/) then Summary.code(ref)
+        elsif pushed then "the commit before the push"
+        else "from --base"
+        end
       end
+      "#{commit} (#{chosen})"
     end
 
-    # The candidate, in Markdown: its directory, or its commit, and
-    # whether what's watched (Baseline#watched) has changes not committed.
+    # The candidate, in Markdown: its directory, or its commit, bare (see
+    # #described_baseline), and whether what's watched (Baseline#watched)
+    # has changes not committed.
     def described_candidate(config, settings)
       dir = settings.candidate_dir || config.root
       head, found = git(dir, "rev-parse", "--short", "HEAD")
       return Summary.code(dir) unless found.success?
 
       _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
-      "#{Summary.code(head.chomp)}#{", with changes not committed" unless clean.success?}"
+      "#{head.chomp}#{" (with changes not committed)" unless clean.success?}"
     end
 
     # The baseline, for JSON: the ref that named it (the main branch,

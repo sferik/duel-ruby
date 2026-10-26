@@ -14,17 +14,33 @@ module Duel
     # The verdicts that fail a run.
     FAILED: Array[String]
 
+    # What the heading starts with.
+    PASSED_MARK: String
+    FAILED_MARK: String
+    NEUTRAL_MARK: String
+
+    # What an unsettled timing means.
+    UNSETTLED: String
+
+    # How Duel decides that a timing is slower, in its docs.
+    DECIDES: String
+
     @runner: Runner
     @results: Array[Result]
     @settings: Settings
-    @versions: Hash[String, String]
+    @baseline: String
+    @candidate: String
     @regressed: Array[Result]
+    @failed: Array[Result]
 
     # +text+ as code, in Markdown.
     def self.code: (String text) -> String
 
-    # A run that didn't compare, with what it said.
-    def self.note: (String title, String message) -> String
+    # +text+ as it is, in Markdown.
+    def self.escape: (String text) -> String
+
+    # A run that didn't compare, and why.
+    def self.note: (String mark, String title, String reason) -> String
 
     # +text+ in a fenced block of its own.
     def self.block: (String text) -> String
@@ -45,26 +61,35 @@ module Duel
     # The Markdown, with the first +explained+ regressions explained.
     def render: (Integer explained) -> String
 
+    # The verdict.
     def heading: () -> String
 
-    # Each version, on its Ruby where theirs differ.
-    def versions: () -> String
+    # The two versions, and why any benchmark was skipped.
+    def compared: () -> String
 
-    def overview: () -> String
+    # The benchmarks that failed.
+    def failures: () -> String?
+
+    # What got worse, or the error's first line.
+    def failure: (Result result) -> String
+
+    # The frame whose own share of the CPU grew the most.
+    def top: (Result result) -> String
+
+    # The rest, collapsed.
+    def details: (Integer explained) -> String
 
     # The results, by verdict.
     def sorted: () -> Array[Result]
 
-    def table: (Array[Result] changed) -> String?
-
-    # Those that didn't change, collapsed.
-    def unchanged: (Array[Result] same) -> String?
+    # Every benchmark.
+    def table: () -> String?
 
     # A table's row of +cells+.
-    def row: (*String cells) -> String
+    def row: (Array[String] cells) -> String
 
-    # A benchmark's name, for a table's cell.
-    def name: (Result result) -> String
+    # +text+ for a table's cell, on one line.
+    def cell: (String text) -> String
 
     # Each timed measure's ratio and its interval.
     def timings: (Result result) -> String
@@ -75,13 +100,18 @@ module Duel
     def mb: (Integer bytes) -> String
 
     # The first +explained+ regressions, explained.
-    def regressions: (Integer explained) -> String?
+    def regressions: (Integer explained) -> Array[String]
 
     # The verdicts across the board.
-    def across: () -> String?
+    def across: (confirmed: bool) -> String?
 
-    def unsettled: () -> String?
+    # The errors of more than a line.
+    def errors: () -> Array[String]
 
-    def errors: () -> String?
+    # Each version's Ruby, where they differ.
+    def rubies: () -> String?
+
+    # How Duel decides that a timing is slower.
+    def decides: () -> String
   end
 end

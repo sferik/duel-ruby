@@ -67,7 +67,8 @@ class CLISummaryTest < DuelTest
     assert_equal [:results], results
     assert_equal %i[passed? run], runner.singleton_methods.sort
     assert_equal File.join(tmpdir, "base"), options.fetch(:settings).base_dir
-    assert_equal ["`#{File.join(tmpdir, "base")}`", "`#{Dir.chdir(tmpdir) { Dir.pwd }}`"], options.values_at(:baseline, :candidate)
+    assert_equal ["`#{File.join(tmpdir, "base")}`", "`#{Dir.chdir(tmpdir) { Dir.pwd }}`"], options.values_at(:baseline, :candidate),
+      "directories, as code"
     assert_equal 0, run_faked("--markdown", markdown)
     assert_equal "MARKDOWN\n", File.read(markdown), "replaced"
   end
@@ -117,18 +118,20 @@ class CLISummaryTest < DuelTest
 
   def short(repo, ref = "HEAD") = IO.popen(["git", "-C", repo, "rev-parse", "--short", ref], &:read).chomp
 
-  # A run that has nothing to compare says so, in Markdown too.
+  # A run that has nothing to compare says so, in Markdown too: no
+  # release, or nothing changed.
   def test_nothing_to_compare
     repo = git_repo
-    status = Dir.chdir(repo) { cli("--base", "last-release", "--markdown", markdown).run }
+    status = Dir.chdir(repo) { cli("--base", "last-release", "--markdown", markdown, "--json", json).run }
 
     assert_equal 0, status
-    assert_equal "### Duel: nothing to compare\n\n```text\nduel: no release tag (v*) before HEAD to compare against\n```\n",
-      File.read(markdown)
+    assert_equal "### ⚪ Duel: no release to compare against\n\nno release tag (v\\*) before HEAD to compare against\n", File.read(markdown)
+    assert_equal ["nothing_to_compare", "duel: no release tag (v*) before HEAD to compare against"], written.values_at("status", "message")
     @git.call("commit", "-q", "--allow-empty", "-m", "two")
     Dir.chdir(repo) { cli("--base", "HEAD^", "--markdown", markdown).run }
 
-    assert_includes File.read(markdown), "\nduel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)\n"
+    assert_equal "### ⚪ Duel: nothing to compare\n\nlib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare " \
+      "(--force to anyway)\n", File.read(markdown)
     Dir.chdir(repo) { cli("--base", "HEAD^", "--json", json, "--limit", "1.05").run }
 
     assert_equal ["nothing_to_compare", 0, "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
@@ -142,7 +145,8 @@ class CLISummaryTest < DuelTest
     repo = git_repo
 
     assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", "--markdown", markdown).run }
-    assert_match(/\A### Duel: couldn't compare\n\n```text\nduel: git rev-parse nope/, File.read(markdown))
+    assert_match(/\A### 🟥 Duel: couldn't compare\n\ngit rev-parse nope\^\{commit\} failed: fatal: .*\n\n<details>\n<summary>The whole message<\/summary>\n\n```text\ngit rev-parse nope/,
+      File.read(markdown))
     summary = File.join(tmpdir, "summary.md")
 
     assert_equal 2, cli("--nope", env: {"GITHUB_STEP_SUMMARY" => summary}).run
@@ -171,13 +175,34 @@ class CLISummaryTest < DuelTest
     end
 
     assert_equal "`#{tmpdir}`", described.call(nil, base_dir: tmpdir)
-    assert_equal "`#{short(repo)}`, where HEAD left `main`", described.call(nil)
-    assert_equal "`v1` (`#{first}`), the last release", described.call("last-release")
-    assert_equal "`HEAD^` (`#{first}`)", described.call("HEAD^")
+    assert_equal "#{short(repo)} (where HEAD left `main`)", described.call(nil), "bare, so GitHub links it"
+    assert_equal "#{first} (the last release, `v1`)", described.call("last-release")
+    assert_equal "#{first} (`HEAD^`)", described.call("HEAD^")
     sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD^"], &:read).chomp
 
-    assert_equal "`#{first}`", described.call(sha), "a commit, by its hash"
-    assert_equal "`#{first}`", described.call(sha[0, 9]), "or part of it"
+    assert_equal "#{first} (from --base)", described.call(sha), "a commit, by its hash"
+    assert_equal "#{first} (from --base)", described.call(sha[0, 9]), "or part of it"
+  end
+
+  # On GitHub Actions, a push's baseline (DUEL_BASE) is the commit before
+  # it.
+  def test_the_baseline_of_a_push
+    repo = git_repo
+    first = short(repo)
+    sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    @git.call("commit", "-q", "--allow-empty", "-m", "two")
+    config = Duel::Config.new(repo)
+    described = lambda do |env, base = sha|
+      cli(env: env).send(:described_baseline, config, settings(base: base), Duel::Baseline.new(config, settings(base: base)))
+    end
+    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha}
+
+    assert_equal "#{first} (the commit before the push)", described.call(push)
+    assert_equal "#{first} (from --base)", described.call(push.merge("GITHUB_EVENT_NAME" => "pull_request")), "not a push"
+    assert_equal "#{first} (from --base)", described.call(push.slice("GITHUB_EVENT_NAME")), "no DUEL_BASE"
+    assert_equal "#{first} (from --base)", described.call(push.slice("DUEL_BASE")), "no event"
+    assert_equal "#{first} (from --base)", described.call(push.merge("DUEL_BASE" => "HEAD^")), "--base, not DUEL_BASE"
+    assert_equal "#{first} (`HEAD^`)", described.call(push.merge("DUEL_BASE" => "HEAD^"), "HEAD^"), "a ref, named"
   end
 
   # The baseline, for JSON: a directory, or the ref that named it and its
@@ -239,21 +264,21 @@ class CLISummaryTest < DuelTest
     config = Duel::Config.new(repo)
     described = ->(**overrides) { cli.send(:described_candidate, config, settings(**overrides)) }
 
-    assert_equal "`#{short(repo)}`", described.call
+    assert_equal short(repo), described.call, "bare, so GitHub links it"
     File.write(File.join(repo, "notes.txt"), "x")
     @git.call("add", "notes.txt")
     @git.call("commit", "-qm", "notes")
     File.write(File.join(repo, "notes.txt"), "y")
 
-    assert_equal "`#{short(repo)}`", described.call, "only what's watched"
+    assert_equal short(repo), described.call, "only what's watched"
     File.write(File.join(repo, "duel", "a_duel.rb"), "x")
 
-    assert_equal "`#{short(repo)}`, with changes not committed", described.call, "the benchmarks too"
+    assert_equal "#{short(repo)} (with changes not committed)", described.call, "the benchmarks too"
     @git.call("checkout", "-q", "--", "duel")
     File.write(File.join(repo, "lib", "a.rb"), "x")
     @git.call("add", "-A")
 
-    assert_equal "`#{short(repo)}`, with changes not committed", described.call, "staged too"
+    assert_equal "#{short(repo)} (with changes not committed)", described.call, "staged too"
     other = FileUtils.mkdir_p(File.join(tmpdir, "other")).first
 
     assert_equal "`#{other}`", described.call(candidate_dir: other)
@@ -281,7 +306,7 @@ class CLISummaryTest < DuelTest
     end
 
     assert_equal 0, status
-    assert_equal ["`HEAD^` (`#{first}`)", "`#{short(repo)}`"], summarized.first.values_at(:baseline, :candidate)
+    assert_equal ["#{first} (`HEAD^`)", short(repo)], summarized.first.values_at(:baseline, :candidate)
     sha = ->(ref) { IO.popen(["git", "-C", repo, "rev-parse", ref], &:read).chomp }
 
     assert_equal [{"ref" => "HEAD^", "commit" => sha.call("HEAD^")}, sha.call("HEAD")],

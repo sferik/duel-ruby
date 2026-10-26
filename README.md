@@ -242,28 +242,27 @@ comment, use `--markdown`:
 duel --markdown tmp/duel.md
 ```
 
-The report starts with the verdict and the two versions that Duel
-compared, with each version's Ruby when they differ. A table lists the
-benchmarks that changed, regressions first, with each timing's ratio and
-its interval, and the counts that changed. Each regression is explained
-as it is in the terminal, with what its metrics said and where the extra
-CPU time went. Then come the benchmarks whose timings were too close to
-call, and the benchmarks that failed. The benchmarks that didn't change
-are collapsed, so the report stays short with hundreds of benchmarks:
+The report is short. In view, it has the verdict, the two commits that
+Duel compared (bare, so GitHub links them), and how the baseline was
+chosen. When a benchmark fails, a table shows what got worse and by how
+much, or the error, and the frame where the most extra CPU time went.
+Everything else is collapsed: each regression explained as it is in the
+terminal, every benchmark's timings, the timings too close to call, the
+verdicts across the board, each version's Ruby when they differ, and
+how Duel decides. So the report stays short with hundreds of
+benchmarks:
 
 ````markdown
-### Duel failed: 1 regression
+### 🟥 Duel: 1 benchmark failed
 
-- **Baseline:** `3f9c2a1`, where HEAD left `origin/main`
-- **Candidate:** `8e4d0b7`
+Compared 8e4d0b7 with 3f9c2a1 (where HEAD left `origin/main`).
 
-12 benchmarks in 14s. A timing is slower when a 99.0% confidence interval for its ratio, the candidate's to the baseline's, is above 1.02.
+| Benchmark | Failure | Most extra CPU in |
+|---|---|---|
+| `parse: a large document` | instructions +7.1%, cpu +8.1%, allocations 5790 → 5791 | `MyParser::Lexer#next_token` +6.8% |
 
-| Benchmark | Verdict | Timings (ratio [interval]) | Counts an iteration |
-|---|---|---|---|
-| `parse: a large document` | **regressed** | instructions 1.071 [1.069, 1.073] slower<br>cpu 1.081 [1.062, 1.097] slower | allocations 5790 → 5791 |
-
-#### Regressions
+<details>
+<summary>Details: 12 benchmarks in 14s</summary>
 
 **`parse: a large document`**: worse instructions, cpu, allocations in every measurement
 
@@ -276,13 +275,23 @@ where the extra CPU went (as a share of the baseline's: in each frame itself, an
    +0.4%   +0.4%  String#byteslice
 ```
 
-<details>
-<summary>11 benchmarks unchanged</summary>
+| Benchmark | Verdict | Timings (ratio [interval]) | Counts an iteration |
+|---|---|---|---|
+| `parse: a large document` | **regressed** | instructions 1.071 [1.069, 1.073] slower<br>cpu 1.081 [1.062, 1.097] slower | allocations 5790 → 5791 |
+| `parse: a short line` | same | instructions 1.000 [1.000, 1.000]<br>cpu 1.002 [0.992, 1.017] |  |
 
 ...
 
 </details>
 ````
+
+When every benchmark passes, the heading says `🟢 Duel: 100% of
+benchmarks passed`, and only the commits are in view. A timing too
+close to the limit to call doesn't fail the run, and is in the details.
+A benchmark that the baseline can't run (a new one, say) is skipped, and
+the heading counts it. A run that has nothing to compare, or no release
+to compare against, says so under ⚪, and one that couldn't compare
+says why under 🟥.
 
 The workflow that `duel init` writes posts this report as a comment on
 the pull request, and updates the same comment on every push. For more

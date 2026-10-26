@@ -4,11 +4,11 @@ require_relative "runner"
 
 module Duel
   # A run's report in Markdown, for a pull request: GitHub Actions' job
-  # summary, or a comment (see CLI). It has the verdict, the two versions
-  # (and their Rubies, where they differ), a table of the benchmarks that
-  # changed, regressions first, each regression explained as the terminal
-  # report explains it, those unsettled and those that failed. The rest
-  # are collapsed, so it stays short with hundreds of benchmarks.
+  # summary, or a comment (see CLI). In view, only what the author needs:
+  # the verdict, the two commits, and what failed, in a table. The rest is
+  # collapsed: what made each regression, every benchmark's timings, the
+  # verdicts across the board, each version's Ruby where they differ, and
+  # how Duel decides. So it stays short with hundreds of benchmarks.
   # @api private
   class Summary
     # The most characters it has (a GitHub comment has at most 65,536):
@@ -26,6 +26,19 @@ module Duel
     # The verdicts that fail a run, which stand out.
     FAILED = %w[regressed error].freeze
 
+    # What the heading starts with: a run that passed, one that failed (or
+    # couldn't compare), and one with nothing compared.
+    PASSED_MARK = "🟢"
+    FAILED_MARK = "🟥"
+    NEUTRAL_MARK = "⚪"
+
+    # What an unsettled timing means.
+    UNSETTLED = "An unsettled timing was too close to the limit to settle. It doesn't fail the run, but one that's unsettled " \
+      "in run after run is noisy."
+
+    # How Duel decides that a timing is slower, in its docs.
+    DECIDES = "https://github.com/sferik/duel-ruby/blob/main/docs/how-it-works.md#how-duel-tells-a-regression-from-noise"
+
     # +text+ as code, in Markdown: in a span of more backticks than any it
     # has (and spaced from one at either end).
     def self.code(text)
@@ -34,8 +47,17 @@ module Duel
       "#{ticks}#{padded}#{ticks}"
     end
 
-    # A run that didn't compare (+title+ says why), with what it said.
-    def self.note(title, message) = "### Duel: #{title}\n\n#{block(message)}\n"
+    # +text+ as it is, in Markdown: what Markdown, or the HTML in it, would
+    # take for something else, escaped.
+    def self.escape(text) = text.gsub(/[\\`*_\[\]<>|~&#]/) { |char| "\\#{char}" }
+
+    # A run that didn't compare: a heading of +mark+ and +title+, and the
+    # first line of +reason+, with all of it collapsed if it has more.
+    def self.note(mark, title, reason)
+      first, _, rest = reason.partition("\n")
+      more = "\n\n<details>\n<summary>The whole message</summary>\n\n#{block(reason)}\n\n</details>" unless rest.empty?
+      "### #{mark} Duel: #{title}\n\n#{escape(first)}#{more}\n"
+    end
 
     # +text+ in a fenced block of its own: fenced with more backticks than
     # any run of them it has, three at least.
@@ -67,13 +89,16 @@ module Duel
     end
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
-    # +candidate+ (each a description, in Markdown) as +settings+ say.
+    # +candidate+ (each a description, in Markdown, whose commit stands
+    # bare, so GitHub links it) as +settings+ say.
     def initialize(runner, results, settings:, baseline:, candidate:)
       @runner = runner
       @results = results
       @settings = settings
-      @versions = {"baseline" => baseline, "candidate" => candidate}
+      @baseline = baseline
+      @candidate = candidate
       @regressed = results.select { |r| Summary.verdict(r) == "regressed" }
+      @failed = @regressed + results.select(&:error)
     end
 
     # The Markdown: every regression explained, or as many as LIMIT has
@@ -89,38 +114,89 @@ module Duel
 
     # The Markdown, with the first +explained+ regressions explained.
     def render(explained)
-      same, changed = sorted.partition { |r| Summary.verdict(r) == "same" }
-      [heading, versions, overview, table(changed), regressions(explained), across, unsettled, errors, unchanged(same)]
-        .compact.join("\n\n") + "\n"
+      [heading, compared, failures, across(confirmed: true), details(explained)].compact.join("\n\n") + "\n"
     end
 
+    # The verdict: what failed (benchmarks, or a metric across the board),
+    # or that every benchmark compared passed, and those skipped.
     def heading
-      errors = @results.count(&:error)
-      failed = [(Runner.count(@regressed.size, "regression") unless @regressed.empty?),
-        ("slower across the board" unless @runner.regressed_across.empty?),
-        (Runner.count(errors, "error") unless errors.zero?)].compact
-      return "### Duel failed: #{failed.join(", ")}" unless failed.empty?
-
-      "### Duel passed: none of #{Runner.count(@results.size, "benchmark")} slower"
-    end
-
-    # Each version, on its Ruby where theirs differ, and the plugins
-    # used.
-    def versions
-      rubies = @runner.rubies
-      plugins = @runner.plugins
-      lines = @versions.map do |side, described|
-        ruby = " on #{Summary.code(rubies.fetch(side))}" if rubies.values.uniq.size > 1
-        "- **#{side.capitalize}:** #{described}#{ruby}"
+      skipped = @results.count(&:skipped)
+      compared = @results.size > skipped
+      slower = @runner.regressed_across
+      said = [("#{Runner.count(@failed.size, "benchmark")} failed" unless @failed.empty?),
+        ("slower across the board in #{slower.join(", ")}" unless slower.empty?)].compact
+      mark = if said.any? then FAILED_MARK
+      elsif compared then PASSED_MARK
+      else NEUTRAL_MARK
       end
-      lines << "- **Plugins:** #{plugins.map { |plugin| Summary.code(plugin.to_s) }.join(", ")}" unless plugins.empty?
-      lines.join("\n")
+      said << (compared ? "100% of benchmarks passed" : "no benchmarks compared") if said.empty?
+      said << "#{skipped} skipped" if skipped.positive?
+      "### #{mark} Duel: #{said.join(", ")}"
     end
 
-    def overview
-      format("%s in %.0fs. A timing is slower when a %s%% confidence interval for its ratio, the candidate's to the " \
-        "baseline's, is above %s.", Runner.count(@results.size, "benchmark"), @runner.seconds,
-        (@settings.confidence * 100).round(1), @settings.limit)
+    # The two versions, and why any benchmark was skipped.
+    def compared
+      skipped = @results.count(&:skipped)
+      why = " The baseline can't run the skipped #{(skipped == 1) ? "benchmark" : "benchmarks"}." if skipped.positive?
+      "Compared #{@candidate} with #{@baseline}.#{why}"
+    end
+
+    # The benchmarks that failed: what got worse and by how much, or the
+    # error, and where the most extra CPU went, if a profile says.
+    def failures
+      return if @failed.empty?
+
+      header = ["Benchmark", "Failure"]
+      header << "Most extra CPU in" unless @failed.all? { |r| top(r).empty? }
+      rows = @failed.map { |r| row([Summary.code(cell(r.name)), failure(r), top(r)].first(header.size)) }
+      ([row(header), "|#{"---|" * header.size}"] + rows).join("\n")
+    end
+
+    # What got worse, or the error's first line.
+    def failure(result)
+      error = result.error
+      return "error: #{Summary.code(cell(error.partition("\n").first))}" if error
+
+      worse = result.regressed.map do |metric|
+        timed = result.timed[metric]
+        counted = result.counted[metric]
+        if timed then format("%s %+.1f%%", metric, (timed.fetch("median") - 1) * 100)
+        elsif counted
+          n = counted.fetch("n")
+          format("%s %.4g → %.4g", metric, counted.fetch("baseline").fdiv(n), counted.fetch("candidate").fdiv(n))
+        else
+          # (Peak memory, which grew too much.)
+          memory = result.memory #: Hash[String, Integer]
+          "#{metric} #{mb(memory.fetch("baseline"))} → #{mb(memory.fetch("candidate"))}"
+        end
+      end
+      worse.join(result.mixed? ? " or " : ", ")
+    end
+
+    # The frame whose own share of the CPU grew the most, and by how much,
+    # if there's a profile with one (or "").
+    def top(result)
+      profile = result.profile
+      return "" unless profile && !profile.key?("unavailable")
+
+      # (A Profile's: Steep doesn't narrow on key?.)
+      grew = profile.fetch("grew") #: Array[Profile::growth]
+      most = grew.first
+      return "" unless most
+
+      frame, own, = most
+      format("%s %+.1f%%", Summary.code(cell(frame)), own * 100)
+    end
+
+    # The rest, collapsed: each regression explained, the errors, every
+    # benchmark, the verdicts across the board, the Rubies, and how Duel
+    # decides.
+    def details(explained)
+      unsettled = @results.count { |r| Summary.verdict(r) == "unsettled" }
+      title = format("Details: %s in %.0fs%s", Runner.count(@results.size, "benchmark"), @runner.seconds,
+        (", #{unsettled} unsettled" if unsettled.positive?))
+      body = [*regressions(explained), *errors, table, (UNSETTLED if unsettled.positive?), across(confirmed: false), rubies, decides]
+      "<details>\n<summary>#{title}</summary>\n\n#{body.compact.join("\n\n")}\n\n</details>"
     end
 
     # The results, in the order of their VERDICTS, and the run's order in
@@ -130,36 +206,30 @@ module Duel
       VERDICTS.flat_map { |shown| grouped.fetch(shown, []) }
     end
 
-    def table(changed)
-      return if changed.empty?
+    # Every benchmark, with its timings, and its counts where any changed.
+    def table
+      return if @results.empty?
 
-      rows = changed.map do |r|
+      rows = sorted.map do |r|
         shown = Summary.verdict(r)
-        row(Summary.code(name(r)), FAILED.include?(shown) ? "**#{shown}**" : shown, timings(r), counts(r))
+        [Summary.code(cell(r.name)), FAILED.include?(shown) ? "**#{shown}**" : shown, timings(r), counts(r)]
       end
-      ([row("Benchmark", "Verdict", "Timings (ratio [interval])", "Counts an iteration"), "|---|---|---|---|"] + rows).join("\n")
-    end
-
-    # Those that didn't change, collapsed.
-    def unchanged(same)
-      return if same.empty?
-
-      rows = same.map { |r| row(Summary.code(name(r)), timings(r)) }
-      "<details>\n<summary>#{Runner.count(same.size, "benchmark")} unchanged</summary>\n\n" \
-        "#{[row("Benchmark", "Timings (ratio [interval])"), "|---|---|", *rows].join("\n")}\n\n</details>"
+      header = ["Benchmark", "Verdict", "Timings (ratio [interval])", "Counts an iteration"]
+      columns = (rows.any? { |cells| !cells.last.empty? }) ? 4 : 3
+      ([row(header.first(columns)), "|#{"---|" * columns}"] + rows.map { |cells| row(cells.first(columns)) }).join("\n")
     end
 
     # A table's row of +cells+.
-    def row(*cells) = "| #{cells.join(" | ")} |"
+    def row(cells) = "| #{cells.join(" | ")} |"
 
-    # A benchmark's name, for a table's cell.
-    def name(result) = result.name.tr("\n", " ").gsub("|", "\\|")
+    # +text+ for a table's cell, on one line.
+    def cell(text) = text.tr("\n", " ").gsub("|", "\\|")
 
     # Each timed measure's ratio and its interval, with its verdict where
     # it isn't the same (or why it was skipped).
     def timings(result)
       skipped = result.skipped
-      return skipped.gsub("|", "\\|") if skipped
+      return cell(skipped) if skipped
 
       result.timed.map do |metric, t|
         low, high = t.fetch("interval")
@@ -186,8 +256,6 @@ module Duel
     # The first +explained+ regressions, explained as the terminal report
     # explains them (and the rest named).
     def regressions(explained)
-      return if @regressed.empty?
-
       shown = @regressed.first(explained).map do |r|
         what = r.mixed? ? "slower in every measurement, by one of #{r.regressed.join(", ")}" : "worse #{r.regressed.join(", ")} in every measurement"
         lines = @runner.explained(r)
@@ -196,42 +264,46 @@ module Duel
       end
       rest = @regressed.size - shown.size
       shown << "#{Runner.count(rest, shown.empty? ? "regression" : "more regression")} explained in the job's log." if rest.positive?
-      "#### Regressions\n\n#{shown.join("\n\n")}"
+      shown
     end
 
     # The verdicts across the board, of the metrics with enough
-    # benchmarks to tell.
-    def across
+    # benchmarks to tell: those slower in both measurements, which fail
+    # the run (+confirmed+), or the rest.
+    def across(confirmed:)
       lines = @runner.across.filter_map do |metric, v|
         low, high = v.fetch("interval")
-        next unless low
+        next unless low && v.fetch("confirmed", false) == confirmed
 
-        confirmed = " in both measurements" if v["confirmed"]
-        format("- %s %.3f [%.3f, %.3f] %s%s (limit %.4f, %s)", metric, v.fetch("median"), low, high, v.fetch("verdict"), confirmed,
-          v.fetch("limit"), Runner.count(v.fetch("benchmarks"), "benchmark"))
+        format("- %s %.3f [%.3f, %.3f] %s%s (limit %.4f, %s)", metric, v.fetch("median"), low, high, v.fetch("verdict"),
+          (" in both measurements" if confirmed), v.fetch("limit"), Runner.count(v.fetch("benchmarks"), "benchmark"))
       end
-      "#### Across the board\n\n#{lines.join("\n")}" unless lines.empty?
+      "Across the board:\n\n#{lines.join("\n")}" unless lines.empty?
     end
 
-    def unsettled
-      names = @results.select { |r| Summary.verdict(r) == "unsettled" }.map { |r| Summary.code(r.name) }
-      return if names.empty?
-
-      "#### Unsettled\n\nA timing too close to the limit to settle doesn't fail the run, but one that's unsettled in run " \
-        "after run is noisy: #{names.join(", ")}."
-    end
-
+    # The errors of more than a line, all of them (up to ERROR_LINES):
+    # their first lines are in view.
     def errors
-      failed = @results.select(&:error)
-      return if failed.empty?
-
-      shown = failed.map do |r|
+      @failed.select { |r| r.error.to_s.chomp.include?("\n") }.map do |r|
         error = r.error #: String
         lines = error.lines
         cut = "\n(#{Runner.count(lines.size - ERROR_LINES, "more line")} in the job's log)" if lines.size > ERROR_LINES
         "**#{Summary.code(r.name)}**\n\n#{Summary.block(lines.first(ERROR_LINES).join)}#{cut}"
       end
-      "#### Errors\n\n#{shown.join("\n\n")}"
+    end
+
+    # Each version's Ruby, where they differ.
+    def rubies
+      rubies = @runner.rubies
+      return if rubies.values.uniq.size == 1
+
+      "Baseline on #{Summary.code(rubies.fetch("baseline"))}, candidate on #{Summary.code(rubies.fetch("candidate"))}."
+    end
+
+    # How Duel decides that a timing is slower, as the settings have it.
+    def decides
+      format("A timing is slower when a %s%% confidence interval for its ratio, the candidate's to the baseline's, is above %s. " \
+        "[How Duel decides](%s)", (@settings.confidence * 100).round(1), @settings.limit, DECIDES)
     end
   end
 end
