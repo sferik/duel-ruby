@@ -35,13 +35,16 @@ jobs:
     # (Nightly, only the comparison with the last release runs.)
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    # A hang fails the job, rather than running for GitHub's six hours
+    timeout-minutes: 20
     # The development versions (Ruby's, JRuby's and TruffleRuby's) get an
     # early look, but can't fail the build.
     continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
     strategy:
       fail-fast: false
       matrix:
-        ruby-version: ["3.4", "4.0", "ruby-head", "jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head"]
+        # The slowest first, so they start before the rest of the queue
+        ruby-version: ["jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head", "3.4", "4.0", "ruby-head"]
     steps:
       - uses: actions/checkout@v7
       - run: sudo apt-get install -y memcached
@@ -57,6 +60,8 @@ jobs:
         continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
         env:
           COVERAGE: "false"
+          # JRuby's --dev starts each process faster, and the tests start many
+          JRUBY_OPTS: ${{ startsWith(matrix.ruby-version, 'jruby') && '--dev' || '' }}
         run: bundle exec rake test
       - name: Note an advisory failure
         if: steps.tests.outcome == 'failure'
