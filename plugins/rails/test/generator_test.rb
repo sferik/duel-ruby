@@ -19,9 +19,13 @@ class GeneratorTest < PluginTest
 
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
-  # How .duel.rb ends: when the workflow comments, the default shown.
+  # How .duel.rb ends: when the workflow comments, and which runs a
+  # regression fails, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
-    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\nend\n"
+    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
+    "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
+    "  # project where people push to main directly (on GitHub Actions, another\n" \
+    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\nend\n"
 
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
@@ -48,7 +52,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel comment], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel comment commit-comment], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -87,6 +91,8 @@ class GeneratorTest < PluginTest
     assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  comment:\n.*?^          marker=/m],
       workflow[/^  comment:\n.*?^          marker=/m], "Duel's own"
+    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  commit-comment:\n.*?^          marker=/m],
+      workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
   end
 
   # A benchmark of the app's boot, in a process of its own.

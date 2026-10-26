@@ -201,6 +201,52 @@ class CLISummaryTest < DuelTest
     assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "nowhere: not on GitHub Actions"
   end
 
+  # Where only a pull request fails (c.fail_on, or --fail-on), a
+  # regression on GitHub Actions outside one passes, with a warning, and
+  # a push's commit gets the comment that c.comment says. Elsewhere, and
+  # by default, it fails, and a push gets no comment.
+  def test_failing_only_on_a_pull_request
+    output = File.join(tmpdir, "output")
+    outcome = lambda do |*argv, event: "push", passed: false|
+      File.write(output, "")
+      env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => event}
+      [run_faked(*argv, "--json", json, passed: passed, env: env), File.read(output), @reported.first.last.fetch(:exit), @out.string.lines.grep(/warning/).join]
+    end
+    warning = "::warning::Duel: slower, but only a pull request fails (c.fail_on), so this push passes\n"
+
+    assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call, "by default"
+    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call("--fail-on", "pull_requests")
+    assert_equal [0, "comment=change\nstatus=passed\n", 0, ""], outcome.call("--fail-on", "pull_requests", passed: true)
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "pull_request")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "pull_request_target")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "merge_group")
+    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning.sub("push", "schedule")],
+      outcome.call("--fail-on", "pull_requests", event: "schedule")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: ""),
+      "not on GitHub Actions"
+    File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+
+    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call, "c.fail_on"
+    assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "every_run"), "--fail-on over c.fail_on"
+    assert_equal({"PULL_REQUESTS" => %w[pull_request pull_request_target merge_group], "frozen" => true},
+      {"PULL_REQUESTS" => Duel::CLI::PULL_REQUESTS, "frozen" => Duel::CLI::PULL_REQUESTS.frozen?})
+  end
+
+  # A push that couldn't compare fails either way, and its commit gets a
+  # comment only where a regression in a push passes.
+  def test_a_push_that_couldnt_compare
+    repo = git_repo
+    output = File.join(tmpdir, "output")
+    env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push"}
+
+    assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", env: env).run }
+    assert_equal "comment=none\nstatus=failed\n", File.read(output)
+    File.write(output, "")
+
+    assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", "--fail-on", "pull_requests", env: env).run }
+    assert_equal "comment=post\nstatus=failed\n", File.read(output)
+  end
+
   # Nothing to compare is neutral, and couldn't compare failed, as
   # c.comment says, or by default where .duel.rb didn't load.
   def test_the_step_outputs_without_a_comparison

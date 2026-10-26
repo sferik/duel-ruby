@@ -13,6 +13,9 @@ module Duel
     # When the workflow comments on a pull request (see #comment).
     type comment = :always | :results | :failures | :never
 
+    # Which runs a regression fails (see #fail_on).
+    type fail_on = :every_run | :pull_requests
+
     @root: String
     @benchmarks: String
     @watch: Array[String]
@@ -23,6 +26,7 @@ module Duel
     @prepares: Hash[Symbol, Array[prepare]]
     @ruby: ruby
     @comment: comment
+    @fail_on: fail_on
     @metrics: Array[singleton(Metric)]
     @in_workers: Array[^(Stops stops) -> void]
     @hooks: Hash[Symbol, Array[hook]]
@@ -66,6 +70,16 @@ module Duel
 
     # Sets #comment, or fails for a value it doesn't take.
     def comment=: (untyped mode) -> untyped
+
+    # Which runs a regression fails: :every_run (the default), or
+    # :pull_requests.
+    attr_reader fail_on: fail_on
+
+    # The values #fail_on takes.
+    FAIL_ON: Array[fail_on]
+
+    # Sets #fail_on, or fails for a value it doesn't take.
+    def fail_on=: (untyped runs) -> untyped
 
     # What #prepare was given, by scope.
     # @api private

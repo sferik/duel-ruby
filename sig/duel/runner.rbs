@@ -18,7 +18,7 @@ module Duel
 
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
-  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | nil]
+  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | Config::fail_on | nil]
     attr_accessor base: String?
     attr_accessor base_dir: String?
     attr_accessor candidate_dir: String?
@@ -36,13 +36,17 @@ module Duel
     # When the workflow comments on a pull request (--comment), over
     # Config#comment.
     attr_accessor comment: Config::comment?
+    # Which runs a regression fails (--fail-on), over Config#fail_on.
+    attr_accessor fail_on: Config::fail_on?
 
     def self.new: (?String? base, ?String? base_dir, ?String? candidate_dir, ?Regexp filter, ?Integer jobs,
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
-                   ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment) -> instance
+                   ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment,
+                   ?Config::fail_on? fail_on) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
-                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?) -> instance
+                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?,
+                   ?fail_on: Config::fail_on?) -> instance
 
     def self.defaults: () -> Settings
   end

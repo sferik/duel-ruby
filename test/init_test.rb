@@ -27,9 +27,13 @@ class InitTest < DuelTest
 
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
-  # How .duel.rb ends: when the workflow comments, the default shown.
+  # How .duel.rb ends: when the workflow comments, and which runs a
+  # regression fails, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
-    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\nend\n"
+    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
+    "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
+    "  # project where people push to main directly (on GitHub Actions, another\n" \
+    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\nend\n"
 
   def test_a_gem
     gem
@@ -70,6 +74,7 @@ class InitTest < DuelTest
 
     assert_equal %w[checkout setup-ruby Compare Keep], steps.call("duel")
     assert_equal %w[Get Comment], steps.call("comment")
+    assert_equal %w[Get Comment], steps.call("commit-comment")
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
@@ -95,6 +100,31 @@ class InitTest < DuelTest
       comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
     assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
+    refute_includes comment.to_s, "checkout"
+    refute_includes comment.to_s, "bundle"
+  end
+
+  # On a push, a job of its own comments on the commit, as Duel says
+  # (only where a regression in a push passes: see Config#fail_on), with
+  # the permission that takes, and running none of the code either.
+  def test_the_comment_on_a_pushed_commit
+    gem
+    init.run
+    jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
+    duel, comment = jobs.values_at("duel", "commit-comment")
+
+    assert_includes duel.fetch("steps").last.fetch("if"), "github.event_name == 'push'", "the report kept for a push too"
+    assert_equal ["duel", {"contents" => "write"}, "Comment on the commit"], comment.values_at("needs", "permissions", "name")
+    assert_equal "${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || " \
+      "needs.duel.outputs.comment == 'change') }}", comment.fetch("if")
+    assert_equal({"COMMENT" => "${{ needs.duel.outputs.comment }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
+      comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
+    run = comment.dig("steps", 1, "run")
+
+    assert_equal ["POST"], run.scan(/--method (\w+)/).flatten, "a new comment, never an edit"
+    assert_includes run, %("repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments")
+    assert_includes run, %("repos/$GITHUB_REPOSITORY/comments"), "the last on any commit"
+    assert_equal comment.fetch("steps").first, jobs.dig("comment", "steps").first
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
   end

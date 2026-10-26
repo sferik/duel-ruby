@@ -28,6 +28,9 @@ module Duel
     # A run's status as the comment's marker has it.
     MARKED: Hash[String, String]
 
+    # The GitHub Actions events of a pull request.
+    PULL_REQUESTS: Array[String]
+
     # The variables that set options, to their options.
     ENV_OPTIONS: Hash[String, String]
 
@@ -61,6 +64,13 @@ module Duel
     # The mode --comment names, or an invalid argument.
     def self.comment_mode: (String name) -> Config::comment
 
+    # The runs --fail-on names, or an invalid argument.
+    def self.fail_on: (String name) -> Config::fail_on
+
+    # Which of +values+ an option's argument names, or an invalid
+    # argument.
+    def self.named: [T < Symbol] (String name, Array[T] values) -> T
+
     def parse: () -> Settings
 
     private
@@ -68,14 +78,28 @@ module Duel
     # What #run does, holding the project's lock.
     def compare: (Config config, Settings settings) -> Integer
 
+    # The exit status of a run that was slower: 1, or 0 where only a pull
+    # request fails, outside one.
+    def slower: (Config config, Settings settings) -> Integer
+
+    # Whether a regression fails only a pull request.
+    def pull_requests_only?: (Config config, Settings settings) -> bool
+
+    # Whether this is a run on GitHub Actions for something other than a
+    # pull request.
+    def outside_pull_request?: () -> bool
+
+    # Whether this is a run on GitHub Actions for a push.
+    def pushed?: () -> bool
+
     # Says there's nothing to compare, and why, and passes.
     def nothing: (String title, String why) -> Integer
 
     # Reports a run that didn't compare, and why, and returns +exit+.
     def unfinished: (String mark, String title, String status, String why, Integer exit) -> Integer
 
-    # What the workflow does about its comment on a pull request, for a
-    # run of +status+.
+    # What the workflow does about its comment on a pull request, or on a
+    # pushed commit, for a run of +status+.
     def commenting: (String status) -> String
 
     # Writes the reports where they're asked for, each made only if it's

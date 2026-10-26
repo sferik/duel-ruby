@@ -37,4 +37,9 @@ Duel.configure do |c|
   # :results (passed or failed), :failures (failed, or couldn't compare),
   # or :never.
   # c.comment = :failures
+
+  # Which runs a regression fails: :every_run, or :pull_requests, for a
+  # project where people push to main directly (on GitHub Actions, another
+  # run warns and passes, and a pushed commit gets the comment instead).
+  # c.fail_on = :every_run
 end

@@ -74,6 +74,8 @@ class CLITest < DuelTest
               --json PATH                  Also write the report to PATH as JSON, for a program to read
               --comment MODE               When the workflow comments on a pull request: always, results (passed or failed),
                                            failures, or never (default: c.comment, or failures)
+              --fail-on RUNS               Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another
+                                           warns and passes) (default: c.fail_on, or every_run)
               --clean                      Remove tmp/duel, and the baseline's git worktree, and stop
           -v, --version                    Print the version
     HELP
@@ -108,6 +110,14 @@ class CLITest < DuelTest
     assert_equal [:always, :results, :failures, :never, nil], [*%w[always results failures never].map { |mode| cli("--comment", mode).parse.comment }, cli.parse.comment]
     assert_equal 2, cli("--comment", "failure").run
     assert_equal "duel: invalid argument: --comment failure (give always, results, failures, never)\n", @err.string
+  end
+
+  # Which runs a regression fails: by name, or c.fail_on's (nil), and a
+  # name that isn't one fails.
+  def test_fail_on
+    assert_equal [:every_run, :pull_requests, nil], [*%w[every_run pull_requests].map { |runs| cli("--fail-on", runs).parse.fail_on }, cli.parse.fail_on]
+    assert_equal 2, cli("--fail-on", "pushes").run
+    assert_equal "duel: invalid argument: --fail-on pushes (give every_run, pull_requests)\n", @err.string
   end
 
   # A baseline that's a directory, by --base (or DUEL_BASE): the last

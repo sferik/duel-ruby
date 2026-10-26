@@ -126,6 +126,23 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::COMMENTS, :frozen?
   end
 
+  # Which runs a regression fails: every run unless set, and only when
+  # set to runs there are.
+  def test_fail_on
+    config = Duel::Config.new
+
+    assert_equal :every_run, config.fail_on
+    config.fail_on = :pull_requests
+
+    assert_equal :pull_requests, config.fail_on
+    error = assert_raises(Duel::Error) { config.fail_on = "every_run" }
+
+    assert_equal 'c.fail_on = "every_run": give :every_run, :pull_requests', error.message
+    assert_equal :pull_requests, config.fail_on, "unchanged"
+    assert_equal %i[every_run pull_requests], Duel::Config::FAIL_ON
+    assert_predicate Duel::Config::FAIL_ON, :frozen?
+  end
+
   # Each version's Ruby: the runner's unless set.
   def test_ruby
     config = Duel::Config.new

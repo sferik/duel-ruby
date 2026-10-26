@@ -17,6 +17,7 @@ Duel.configure do |c|
   c.release_tags = "release-*"           # default: v*
   c.ruby = :version_file                 # each version's own Ruby (default: the runner's)
   c.comment = :results                   # when CI comments on a pull request (default: :failures)
+  c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
   c.use :redis                           # a plugin (see Use plugins)
 
   # How a worker loads one version of your code, instead of the library.
@@ -89,6 +90,34 @@ with a nonzero status, and the job's summary still has the report.
 
 `c.comment` takes only these four values: any other fails the run, and
 says which values it takes.
+
+## Fail only a pull request
+
+By default, a regression fails every run: a pull request's, a push's,
+and the schedule's. In a project where people push to `main` directly,
+a failed push only gets GitHub's email that the run failed. To report a
+regression in a push without failing it, set `c.fail_on`, and
+`duel --fail-on` overrides it:
+
+| Value | Which runs a regression fails |
+|---|---|
+| `:every_run` | Every run. This is the default. |
+| `:pull_requests` | A pull request's (or a merge queue's), and a run outside GitHub Actions. |
+
+```ruby
+Duel.configure do |c|
+  c.fail_on = :pull_requests
+end
+```
+
+With `:pull_requests`, a regression on GitHub Actions outside a pull
+request (a push, the schedule, or a run by hand) passes, with a warning
+in the run's summary, and the job's summary still has the report. The
+[GitHub Actions workflow](ci.md#comment-on-a-pushed-commit) that
+`duel init` writes then comments on a pushed commit with the report,
+as `c.comment` says, which notifies the commit's author. A run that
+couldn't compare fails either way, and on your machine, a regression
+always fails.
 
 ## Prepare each worker
 

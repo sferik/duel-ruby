@@ -304,6 +304,11 @@ but nothing to compare, or never, set
 in `.duel.rb`. For more information, see
 [Comment on a pull request](docs/ci.md#comment-on-a-pull-request).
 
+In a project where people push to `main` directly, set
+[`c.fail_on = :pull_requests`](docs/configuration.md#fail-only-a-pull-request)
+to pass a regression in a push, with a warning, and comment on the
+pushed commit with the report instead.
+
 ### Show that a project is guarded
 
 To show that Duel guards your project, add its badge to your README,

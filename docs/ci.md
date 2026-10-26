@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
 
 # The Duel job runs the branch's code (its benchmarks too), so it only
-# reads. Commenting is the Comment job's, which runs none of it.
+# reads. Commenting is the Comment jobs', which run none of it.
 permissions:
   contents: read
 
@@ -72,9 +72,9 @@ jobs:
             exit 0
           fi
           bundle exec duel --markdown "$RUNNER_TEMP/duel.md"
-      # The report, for the Comment job.
+      # The report, for the Comment jobs.
       - name: Keep the report
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
         uses: actions/upload-artifact@v7
         with:
           name: duel-report
@@ -120,6 +120,41 @@ jobs:
           if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
             { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
+          fi
+
+  # The report, as a new comment on a pushed commit, which notifies its
+  # author, when Duel says to, as for a pull request (see the Comment
+  # job). It does only where a regression in a push passes, with
+  # c.fail_on = :pull_requests in .duel.rb, so the comment says what the
+  # check doesn't. Its last comment is the last one on any commit.
+  commit-comment:
+    name: Comment on the commit
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to comment on the commit with the report
+    steps:
+      - name: Get the report
+        id: report
+        continue-on-error: true # there's none when the Duel job failed before comparing
+        uses: actions/download-artifact@v8
+        with:
+          name: duel-report
+          path: ${{ runner.temp }}/report
+      - name: Comment on the commit
+        if: steps.report.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ needs.duel.outputs.comment }}
+          STATUS: ${{ needs.duel.outputs.status }}
+        run: |
+          marker="<!-- duel"
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\"))" | tail -n 1)
+          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
+            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
 ```
 
@@ -189,6 +224,22 @@ alone gets the `pull-requests: write` permission that commenting takes.
 When the Duel job fails before it compares, there's no report, and no
 comment. A pull request from a fork gets no comment either, because its
 token can't write one, but the Duel job's summary still has the report.
+
+## Comment on a pushed commit
+
+With [`c.fail_on = :pull_requests`](configuration.md#fail-only-a-pull-request),
+a regression in a push to `main` passes, and the workflow's Comment on
+the commit job comments on the pushed commit with the report instead.
+GitHub notifies the commit's author. It comments as `c.comment` says,
+the way the Comment job does on a pull request, but its last comment is
+the workflow's last one on any commit. So with the default, each push
+that fails gets a comment, the first push after them that passes gets
+one, and the passing pushes after it get none.
+
+By default, a push gets no comment: Duel sets the `comment` output to
+`none`, and a regression fails the push's check instead. The Comment on
+the commit job checks nothing out either, and it alone gets the
+`contents: write` permission that a commit comment takes.
 
 ## Run each version on its own Ruby on CI
 

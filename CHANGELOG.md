@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `c.fail_on = :pull_requests` (or `duel --fail-on pull_requests`) fails
+  a regression only in a pull request (or a merge queue), and outside
+  GitHub Actions. On GitHub Actions, a regression in a push, the
+  schedule, or a run by hand passes, with a warning, and the workflow
+  that `duel init` writes comments on a pushed commit with the report,
+  as `c.comment` says, which notifies the commit's author. The default,
+  `:every_run`, fails every run, as before, and comments on no commit.
+
 ## [0.1.1] - 2026-10-26
 
 ### Added

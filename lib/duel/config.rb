@@ -95,6 +95,30 @@ module Duel
       @comment = mode
     end
 
+    # Which runs a regression fails (`duel --fail-on` overrides it):
+    #
+    # - :every_run (the default)
+    # - :pull_requests, only a pull request's (or a merge queue's), and a
+    #   run outside GitHub Actions. On GitHub Actions, a regression in
+    #   any other run (a push, the schedule, run by hand) passes, with a
+    #   warning, and the workflow that `duel init` writes comments on a
+    #   pushed commit with the report, as #comment says, which notifies
+    #   its author.
+    #
+    # A run that couldn't compare fails either way.
+    #
+    #   c.fail_on = :pull_requests
+    attr_reader :fail_on
+
+    # The values #fail_on takes.
+    FAIL_ON = %i[every_run pull_requests].freeze #: Array[fail_on]
+
+    def fail_on=(runs)
+      raise Error, "c.fail_on = #{runs.inspect}: give #{FAIL_ON.map(&:inspect).join(", ")}" unless FAIL_ON.include?(runs)
+
+      @fail_on = runs
+    end
+
     # The metrics #metric added, in order (classes: a Duel::Metric
     # subclass, or running totals' Snapshot), for a plugin's tests to
     # look at (their .measures and .settings).
@@ -115,6 +139,7 @@ module Duel
       @build = :conventional
       @release_tags = "v*"
       @comment = :failures
+      @fail_on = :every_run
       @prepares = SCOPES.to_h { |scope| [scope, []] }
       @metrics = []
       @in_workers = []

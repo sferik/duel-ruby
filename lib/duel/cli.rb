@@ -41,6 +41,10 @@ module Duel
     # has it: passed, failed (or couldn't compare), or neutral.
     MARKED = {"passed" => "passed", "failed" => "failed", "error" => "failed", "nothing_to_compare" => "neutral"}.freeze
 
+    # The GitHub Actions events of a pull request, as GITHUB_EVENT_NAME
+    # has them: a merge queue's too (see Config#fail_on).
+    PULL_REQUESTS = %w[pull_request pull_request_target merge_group].freeze
+
     # The variables that set options, to their values, and the one that
     # sets a flag by being set at all.
     ENV_OPTIONS = {"DUEL_BASE" => "--base", "DUEL_FILTER" => "--filter"}.freeze
@@ -91,9 +95,17 @@ module Duel
 
     # The mode --comment names (see Config#comment), or an invalid
     # argument.
-    def self.comment_mode(name)
-      Config::COMMENTS.find { |mode| mode.to_s == name } or
-        raise OptionParser::InvalidArgument, "#{name} (give #{Config::COMMENTS.join(", ")})"
+    def self.comment_mode(name) = named(name, Config::COMMENTS)
+
+    # The runs --fail-on names (see Config#fail_on), or an invalid
+    # argument.
+    def self.fail_on(name) = named(name, Config::FAIL_ON)
+
+    # Which of +values+ (symbols) an option's argument names, or an
+    # invalid argument.
+    def self.named(name, values)
+      values.find { |value| value.to_s == name } or
+        raise OptionParser::InvalidArgument, "#{name} (give #{values.join(", ")})"
     end
 
     # The settings, from the environment and then the options.
@@ -130,9 +142,10 @@ module Duel
       uneven(base_root, candidate)
       runner = Runner.new(config, settings, base_root, out: @out)
       results = runner.run
-      status = runner.passed?(results) ? 0 : 1
+      passed = runner.passed?(results)
+      status = passed ? 0 : slower(config, settings)
       publish(
-        status.zero? ? "passed" : "failed",
+        passed ? "passed" : "failed",
         -> {
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
             candidate: described_candidate(config, settings)).markdown
@@ -143,6 +156,35 @@ module Duel
         }
       )
       status
+    end
+
+    # The exit status of a run that was slower (or whose benchmark
+    # failed): 1, or 0 on GitHub Actions outside a pull request, where
+    # c.fail_on (or --fail-on) says only a pull request fails, with a
+    # warning that says so.
+    def slower(config, settings)
+      return 1 unless pull_requests_only?(config, settings)
+      return 1 unless outside_pull_request?
+
+      @out.puts "::warning::Duel: slower, but only a pull request fails (c.fail_on), so this #{variables.fetch("GITHUB_EVENT_NAME")} passes"
+      0
+    end
+
+    # Whether a regression fails only a pull request (--fail-on, or else
+    # Config#fail_on).
+    def pull_requests_only?(config, settings) = (settings.fail_on || config.fail_on) == :pull_requests
+
+    # Whether this is a run on GitHub Actions for something other than a
+    # pull request (PULL_REQUESTS): a push, say.
+    def outside_pull_request?
+      set = variables
+      set.key?("GITHUB_EVENT_NAME") && !PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
+    end
+
+    # Whether this is a run on GitHub Actions for a push.
+    def pushed?
+      set = variables
+      set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "push"
     end
 
     # Says there's nothing to compare (+title+, in Markdown), and +why+,
@@ -161,14 +203,19 @@ module Duel
       exit
     end
 
-    # What the workflow does about its comment on a pull request (see
-    # .comment), for a run whose +status+ is the JSON report's: as
-    # --comment says, or else the configuration, or the default where the
-    # configuration didn't load.
+    # What the workflow does about its comment on a pull request, or on
+    # a pushed commit (see .comment), for a run whose +status+ is the
+    # JSON report's: as --comment says, or else the configuration, or the
+    # default where the configuration didn't load. It comments on a push
+    # only where a regression in one passes (Config#fail_on), so the
+    # comment says what the check doesn't.
     def commenting(status)
       # (Parsed, so set: see #run.)
       settings = @settings #: Settings
-      CLI.comment(settings.comment || (@config || Config.new).comment, status)
+      config = @config || Config.new
+      return "none" if pushed? && !pull_requests_only?(config, settings)
+
+      CLI.comment(settings.comment || config.comment, status)
     end
 
     # Writes the reports of a run whose +status+ is the JSON report's
@@ -217,8 +264,7 @@ module Duel
       when nil then "where HEAD left #{Summary.code(baseline.main_branch)}"
       when Baseline::LAST_RELEASE then "the last release, #{Summary.code(ref)}"
       else
-        pushed = set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "push" && set.key?("DUEL_BASE") &&
-          set.fetch("DUEL_BASE") == ref
+        pushed = pushed? && set.key?("DUEL_BASE") && set.fetch("DUEL_BASE") == ref
         if !ref.match?(/\A\h+\z/) then Summary.code(ref)
         elsif pushed then "the commit before the push"
         else "from --base"
@@ -322,6 +368,8 @@ module Duel
         o.on("--json PATH", "Also write the report to PATH as JSON, for a program to read") { |v| @json = v }
         o.on("--comment MODE", "When the workflow comments on a pull request: always, results (passed or failed),",
           "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.comment_mode(v) }
+        o.on("--fail-on RUNS", "Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another",
+          "warns and passes) (default: c.fail_on, or every_run)") { |v| settings.fail_on = CLI.fail_on(v) }
         o.on("--clean", "Remove tmp/duel, and the baseline's git worktree, and stop") { @clean = true }
         o.on("-v", "--version", "Print the version") do
           @out.puts "duel #{VERSION}"
