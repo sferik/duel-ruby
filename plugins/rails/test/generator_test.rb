@@ -19,6 +19,10 @@ class GeneratorTest < PluginTest
 
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
+  # How .duel.rb ends: when the workflow comments, the default shown.
+  ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
+    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\nend\n"
+
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
 
@@ -27,13 +31,8 @@ class GeneratorTest < PluginTest
 
     assert_equal [false, false], ["c.ruby", "require"].map { |text| read(".duel.rb").include?(text) },
       "the runner's Ruby, without a .ruby-version, and no require: c.use requires the plugin"
-    assert_includes read(".duel.rb"), <<~RUBY
-      Duel.configure do |c|
-        # To load test/fixtures, or db/seeds.rb, into each worker's database:
-        # fixtures: :all, or seeds: true.
-        c.use :rails, database: :sqlite
-      end
-    RUBY
+    assert read(".duel.rb").end_with?("Duel.configure do |c|\n  # To load test/fixtures, or db/seeds.rb, into each worker's database:\n" \
+      "  # fixtures: :all, or seeds: true.\n  c.use :rails, database: :sqlite\n#{ENDING}")
     assert_equal File.read(File.expand_path("../lib/generators/duel/install/templates/benchmark.rb.tt", __dir__)),
       read("config/environments/benchmark.rb")
     assert_equal <<~RUBY.lines.last(8).join, read("duel/requests_duel.rb").lines.last(8).join
@@ -67,13 +66,27 @@ class GeneratorTest < PluginTest
     duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
 
     assert_includes workflow, %(          bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
-    assert_includes workflow, %(          marker="<!-- duel -->"\n)
+    assert_includes workflow, %(          marker="<!-- duel"\n)
     assert_equal({"contents" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
     assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
     assert_equal ["Get the report", "Comment on the pull request"], comment.fetch("steps").map { |step| step.fetch("name") }
     refute_includes comment.to_s, "checkout"
+  end
+
+  # Whether it comments is Duel's to say, from .duel.rb: the Comment job
+  # posts a new comment, or none, as Duel's own workflow does.
+  def test_the_workflow_comments_as_duel_says
+    generate
+    workflow = read(".github/workflows/perf.yml")
+    duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
+
+    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}"}, duel.fetch("outputs"))
+    assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
+    assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
+    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  comment:\n.*?^          marker=/m],
+      workflow[/^  comment:\n.*?^          marker=/m], "Duel's own"
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -92,7 +105,7 @@ class GeneratorTest < PluginTest
     File.write(File.join(@dir, ".ruby-version"), "3.4\n")
     generate
 
-    assert_includes read(".duel.rb"), "  c.ruby = :version_file\n  c.use :rails, database: :sqlite, fixtures: :all\nend\n"
+    assert_includes read(".duel.rb"), "  c.ruby = :version_file\n  c.use :rails, database: :sqlite, fixtures: :all\n#{ENDING}"
     workflow = read(".github/workflows/perf.yml")
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
@@ -118,7 +131,7 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_includes workflow, %(          marker="<!-- duel apps/blog -->"\n), "a comment of its own"
+    assert_includes workflow, %(          marker="<!-- duel apps/blog"\n), "a comment of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
       YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment").map { |job| job["defaults"] }, "none where nothing's checked out"
     assert_path_exists File.join(app, ".duel.rb")

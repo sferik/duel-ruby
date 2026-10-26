@@ -16,6 +16,7 @@ Duel.configure do |c|
   c.main_branch = "origin/trunk"
   c.release_tags = "release-*"           # default: v*
   c.ruby = :version_file                 # each version's own Ruby (default: the runner's)
+  c.comment = :results                   # when CI comments on a pull request (default: :failures)
   c.use :redis                           # a plugin (see Use plugins)
 
   # How a worker loads one version of your code, instead of the library.
@@ -54,6 +55,40 @@ Duel.configure do |c|
   c.watch += %w[.github/workflows/perf.yml]
 end
 ```
+
+## Choose when to comment on a pull request
+
+The [GitHub Actions workflow](ci.md#comment-on-a-pull-request) that
+`duel init` writes comments on a pull request with Duel's report.
+`c.comment` chooses when, and `duel --comment` overrides it:
+
+| Value | When the workflow comments |
+|---|---|
+| `:always` | On every run, whatever the outcome. |
+| `:results` | When the run passed or failed, but not when there was nothing to compare. |
+| `:failures` | When a benchmark failed, or Duel couldn't compare. This is the default. |
+| `:never` | Never. |
+
+```ruby
+Duel.configure do |c|
+  c.comment = :results
+end
+```
+
+The workflow never edits a comment: each one is new, so the pull
+request keeps them all. Once the workflow has commented on a pull
+request, it also comments on a run that it otherwise wouldn't, except
+with `:never`, when the run's status (passed, failed, or nothing to
+compare) differs from its last comment's. So with `:failures`, after a
+comment that a benchmark failed, the first run that passes posts a
+comment saying so, and the runs after it post nothing. The last comment
+is never stale.
+
+With `:never`, a regression still fails the check, because `duel` exits
+with a nonzero status, and the job's summary still has the report.
+
+`c.comment` takes only these four values: any other fails the run, and
+says which values it takes.
 
 ## Prepare each worker
 

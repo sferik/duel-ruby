@@ -156,7 +156,8 @@ module Duel
       steps << "Set c.library in .duel.rb to what each version's workers require." unless required
       steps << "Replace the example in #{benchmark_file} with benchmarks of your own code."
       steps << "Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound."
-      steps << "Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the report."
+      steps << "Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the " \
+        "report when a benchmark fails (c.comment in .duel.rb says when)."
       "\nNext:\n#{steps.each_with_index.map { |step, i| "  #{i + 1}. #{step}\n" }.join}"
     end
 

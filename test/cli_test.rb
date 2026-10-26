@@ -72,6 +72,8 @@ class CLITest < DuelTest
               --markdown PATH              Also write the report to PATH in Markdown, for a pull request comment (on GitHub
                                            Actions, it's added to the job's summary too)
               --json PATH                  Also write the report to PATH as JSON, for a program to read
+              --comment MODE               When the workflow comments on a pull request: always, results (passed or failed),
+                                           failures, or never (default: c.comment, or failures)
               --clean                      Remove tmp/duel, and the baseline's git worktree, and stop
           -v, --version                    Print the version
     HELP
@@ -98,6 +100,14 @@ class CLITest < DuelTest
   def test_ruby
     assert_equal [:version_file, "/rubies/3.4/bin/ruby", nil],
       [cli("--ruby", "version-file").parse.ruby, cli("--ruby", "/rubies/3.4/bin/ruby").parse.ruby, cli.parse.ruby]
+  end
+
+  # When the workflow comments on a pull request: a mode by its name, or
+  # c.comment's (nil), and a name that isn't one fails.
+  def test_comment
+    assert_equal [:always, :results, :failures, :never, nil], [*%w[always results failures never].map { |mode| cli("--comment", mode).parse.comment }, cli.parse.comment]
+    assert_equal 2, cli("--comment", "failure").run
+    assert_equal "duel: invalid argument: --comment failure (give always, results, failures, never)\n", @err.string
   end
 
   # A baseline that's a directory, by --base (or DUEL_BASE): the last

@@ -18,7 +18,7 @@ module Duel
 
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
-  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | nil]
+  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | nil]
     attr_accessor base: String?
     attr_accessor base_dir: String?
     attr_accessor candidate_dir: String?
@@ -33,13 +33,16 @@ module Duel
     attr_accessor timeout: Float
     # Each version's Ruby (--ruby), over Config#ruby.
     attr_accessor ruby: Config::ruby
+    # When the workflow comments on a pull request (--comment), over
+    # Config#comment.
+    attr_accessor comment: Config::comment?
 
     def self.new: (?String? base, ?String? base_dir, ?String? candidate_dir, ?Regexp filter, ?Integer jobs,
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
-                   ?Float timeout, ?Config::ruby ruby) -> instance
+                   ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
-                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby) -> instance
+                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?) -> instance
 
     def self.defaults: () -> Settings
   end

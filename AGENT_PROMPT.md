@@ -176,10 +176,11 @@ at the API.
    Duel's baseline comes from git history. Keep its check for a push
    with no commit before it in the history (a branch's first push, or a
    force push), which would otherwise fail the job. Keep its Comment
-   job, which comments on a pull request with Duel's report (Duel also
-   adds the report to the job's summary), and keep `pull-requests: write`
-   on that job alone: the Duel job runs the branch's code, so it only
-   reads. Check that `ruby-version` is one the project supports, unless
+   job, which comments on a pull request with Duel's report when a
+   benchmark fails (Duel also adds the report to the job's summary, and
+   `c.comment` in `.duel.rb` chooses when it comments), and keep
+   `pull-requests: write` on that job alone: the Duel job runs the
+   branch's code, so it only reads. Check that `ruby-version` is one the project supports, unless
    it has a `.ruby-version`. With `c.ruby = :version_file` and another
    version file than `.ruby-version`, add the steps in Duel's
    `docs/ci.md` that install the baseline's Ruby, reading that file

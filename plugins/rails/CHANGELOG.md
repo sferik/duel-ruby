@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The workflow that `rails generate duel:install` writes no longer
+  comments on every pull request. By default, it comments only when a
+  benchmark fails or Duel couldn't compare, and `c.comment` in
+  `.duel.rb` chooses otherwise (`:always` for the old behavior,
+  `:results`, or `:never`). The generated `.duel.rb` shows the setting.
+- The workflow never edits a comment. It used to update one comment on
+  every push, and now posts a new one each time it comments, so the pull
+  request keeps every report. When a run wouldn't get a comment of its
+  own, the workflow still posts one if its last comment on the pull
+  request had another status, so after a failure the first run that
+  passes says so.
+
 ### Security
 
 - The workflow that `rails generate duel:install` writes no longer gives

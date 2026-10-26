@@ -19,6 +19,15 @@ module Duel
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY: String
 
+    # Where GitHub Actions has a step set its outputs.
+    STEP_OUTPUT: String
+
+    # The statuses the workflow comments on, by when it does.
+    COMMENTED: Hash[Config::comment, Array[String]]
+
+    # A run's status as the comment's marker has it.
+    MARKED: Hash[String, String]
+
     # The variables that set options, to their options.
     ENV_OPTIONS: Hash[String, String]
 
@@ -33,6 +42,7 @@ module Duel
     @markdown: String?
     @json: String?
     @settings: Settings?
+    @config: Config?
 
     def initialize: (Array[String] argv, ?env: _Env, ?out: _Output, ?err: _Output) -> void
 
@@ -43,6 +53,13 @@ module Duel
     # The settings, from the environment and then the options.
     # +source+ as a Regexp, or an option's invalid argument.
     def self.regexp: (String source) -> Regexp
+
+    # Whether the workflow comments on a pull request: "post", "change"
+    # or "none".
+    def self.comment: (Config::comment mode, String status) -> String
+
+    # The mode --comment names, or an invalid argument.
+    def self.comment_mode: (String name) -> Config::comment
 
     def parse: () -> Settings
 
@@ -57,9 +74,13 @@ module Duel
     # Reports a run that didn't compare, and why, and returns +exit+.
     def unfinished: (String mark, String title, String status, String why, Integer exit) -> Integer
 
+    # What the workflow does about its comment on a pull request, for a
+    # run of +status+.
+    def commenting: (String status) -> String
+
     # Writes the reports where they're asked for, each made only if it's
-    # written.
-    def publish: (^() -> String markdown, ^() -> JSONReport::report json) -> void
+    # written, and on GitHub Actions, the step's outputs.
+    def publish: (String status, ^() -> String markdown, ^(String comment) -> JSONReport::report json) -> void
 
     # Writes +text+ to +path+, in a directory made for it.
     def write: (String path, String text) -> void

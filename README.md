@@ -227,9 +227,10 @@ Duel::RakeTask.new(:perf_since_release, "--base", "last-release")
 `duel init` writes a GitHub Actions workflow,
 `.github/workflows/perf.yml`. It compares each pull request with the
 main branch, each push to `main` with the commit before it, and, on a
-schedule, your last release, to catch slow creep. It also comments on
-each pull request with Duel's report. For the workflow, and for a branch
-that upgrades Ruby, see [Run Duel in CI](docs/ci.md).
+schedule, your last release, to catch slow creep. It also comments on a
+pull request with Duel's report when a benchmark fails. For the
+workflow, and for a branch that upgrades Ruby, see
+[Run Duel in CI](docs/ci.md).
 
 ### Report on a pull request
 
@@ -294,8 +295,13 @@ to compare against, says so under ⬜, and one that couldn't compare
 says why under 🔻.
 
 The workflow that `duel init` writes posts this report as a comment on
-the pull request, and updates the same comment on every push. For more
-information, see
+the pull request when a benchmark fails, or when Duel couldn't compare.
+After such a comment, the first run that passes posts one more, so the
+last comment is never stale. It never edits a comment, so the pull
+request keeps every report. To comment on every run, on every result
+but nothing to compare, or never, set
+[`c.comment`](docs/configuration.md#choose-when-to-comment-on-a-pull-request)
+in `.duel.rb`. For more information, see
 [Comment on a pull request](docs/ci.md#comment-on-a-pull-request).
 
 ### Show that a project is guarded

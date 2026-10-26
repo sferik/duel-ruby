@@ -15,16 +15,18 @@ module Duel
     @results: Array[Result]
     @settings: Settings
     @exit: Integer
+    @comment: String
     @versions: Hash[String, Hash[String, String | bool | nil]]
 
-    # A run that didn't compare: +status+, its +exit+ status, and what it
-    # said.
-    def self.note: (String status, Integer exit, String message, Settings settings) -> report
+    # A run that didn't compare: +status+, its +exit+ status, what it
+    # said, and what the workflow does about its comment.
+    def self.note: (String status, Integer exit, String message, Settings settings, String comment) -> report
 
     # What every report starts with.
-    def self.head: (String status, Integer exit, String? message, Settings settings) -> report
+    def self.head: (String status, Integer exit, String? message, Settings settings, String comment) -> report
 
-    def initialize: (Runner runner, Array[Result] results, settings: Settings, exit: Integer, baseline: Hash[String, String?],
+    def initialize: (Runner runner, Array[Result] results, settings: Settings, exit: Integer, comment: String,
+                     baseline: Hash[String, String?],
                      candidate: Hash[String, String | bool | nil]) -> void
 
     def to_h: () -> report

@@ -161,6 +161,72 @@ class CLISummaryTest < DuelTest
     refute_path_exists json, "not for a command line that isn't valid"
   end
 
+  # Whether the workflow comments, by when it does and the run's status:
+  # a new comment, one only if the last it posted had another status, or
+  # none.
+  def test_whether_to_comment
+    statuses = %w[passed failed nothing_to_compare error]
+    decided = Duel::Config::COMMENTS.to_h { |mode| [mode, statuses.map { |status| Duel::CLI.comment(mode, status) }] }
+
+    assert_equal({always: %w[post post post post], results: %w[post post change post], failures: %w[change post change post],
+                  never: %w[none none none none]}, decided)
+    assert_equal({"passed" => "passed", "failed" => "failed", "error" => "failed", "nothing_to_compare" => "neutral"}, Duel::CLI::MARKED)
+    assert_predicate Duel::CLI::COMMENTED, :frozen?
+    assert_predicate Duel::CLI::MARKED, :frozen?
+  end
+
+  # On GitHub Actions, the step's outputs say whether the workflow
+  # comments, and the run's status, as --comment says, or c.comment, and
+  # the JSON report says whether too.
+  def test_the_step_outputs
+    output = File.join(tmpdir, "output")
+    File.write(output, "before=1\n")
+    run_faked("--json", json, env: {"GITHUB_OUTPUT" => output})
+
+    assert_equal "before=1\ncomment=change\nstatus=passed\n", File.read(output), "added to"
+    assert_equal "change", @reported.first.last.fetch(:comment)
+    File.write(output, "")
+    run_faked("--comment", "always", env: {"GITHUB_OUTPUT" => output})
+    run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
+
+    assert_equal "comment=post\nstatus=passed\ncomment=post\nstatus=failed\n", File.read(output)
+    File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.comment = :never }\n")
+    File.write(output, "")
+    run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
+    run_faked("--comment", "results", passed: false, env: {"GITHUB_OUTPUT" => output})
+
+    assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "--comment over c.comment"
+    run_faked(env: {"GITHUB_OUTPUT" => ""})
+
+    assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "nowhere: not on GitHub Actions"
+  end
+
+  # Nothing to compare is neutral, and couldn't compare failed, as
+  # c.comment says, or by default where .duel.rb didn't load.
+  def test_the_step_outputs_without_a_comparison
+    repo = git_repo
+    output = File.join(tmpdir, "output")
+    env = {"GITHUB_OUTPUT" => output}
+    Dir.chdir(repo) { cli("--base", "last-release", "--json", json, env: env).run }
+
+    assert_equal ["comment=change\nstatus=neutral\n", "change"], [File.read(output), written.fetch("comment")]
+    File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.comment = :results }\n")
+    File.write(output, "")
+    Dir.chdir(repo) { cli("--base", "nope", "--force", "--json", json, env: env).run }
+
+    assert_equal ["comment=post\nstatus=failed\n", "post"], [File.read(output), written.fetch("comment")]
+    File.write(output, "")
+    Dir.chdir(repo) { cli("--base", "last-release", "--comment", "always", env: env).run }
+
+    assert_equal "comment=post\nstatus=neutral\n", File.read(output)
+    File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.comment = :sometimes }\n")
+    File.write(output, "")
+
+    assert_equal 2, Dir.chdir(repo) { cli("--base", "last-release", env: env).run }
+    assert_equal "duel: c.comment = :sometimes: give :always, :results, :failures, :never\n", @err.string
+    assert_equal "comment=post\nstatus=failed\n", File.read(output), "failed, on failures"
+  end
+
   # The baseline: a directory, or its commit, and what named it.
   def test_the_baseline_described
     repo = git_repo

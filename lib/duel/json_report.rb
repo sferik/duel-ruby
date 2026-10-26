@@ -16,17 +16,18 @@ module Duel
     SCHEMA = 1
 
     # A run that didn't compare: +status+ ("nothing_to_compare", or
-    # "error"), its +exit+ status, and +message+, what it said.
-    def self.note(status, exit, message, settings)
+    # "error"), its +exit+ status, +message+, what it said, and what the
+    # workflow does about its +comment+ (see CLI.comment).
+    def self.note(status, exit, message, settings, comment)
       none = [] #: Array[value]
       nothing = {} #: report
-      head(status, exit, message, settings).merge("seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => none,
+      head(status, exit, message, settings, comment).merge("seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => none,
         "benchmarks" => none, "across" => nothing, "errors" => none)
     end
 
     # What every report starts with.
-    def self.head(status, exit, message, settings)
-      {"schema" => SCHEMA, "duel_version" => VERSION, "status" => status, "exit" => exit, "message" => message,
+    def self.head(status, exit, message, settings, comment)
+      {"schema" => SCHEMA, "duel_version" => VERSION, "status" => status, "exit" => exit, "message" => message, "comment" => comment,
        "settings" => {"confidence" => settings.confidence, "limit" => settings.limit, "filter" => settings.filter.source,
                       "jobs" => settings.jobs, "processes" => settings.processes, "timeout" => settings.timeout,
                       "warm" => settings.warm, "force" => settings.force}}
@@ -34,19 +35,20 @@ module Duel
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
     # +candidate+ (each {"ref", "commit", "root"} or {"commit",
-    # "uncommitted_changes", "root"}) as +settings+ say, and exits with
-    # +exit+.
-    def initialize(runner, results, settings:, exit:, baseline:, candidate:)
+    # "uncommitted_changes", "root"}) as +settings+ say, exits with
+    # +exit+, and has the workflow do +comment+ (see CLI.comment).
+    def initialize(runner, results, settings:, exit:, comment:, baseline:, candidate:)
       @runner = runner
       @results = results
       @settings = settings
       @exit = exit
+      @comment = comment
       @versions = {"baseline" => baseline, "candidate" => candidate}
     end
 
     def to_h
       rubies = @runner.rubies
-      JSONReport.head(@exit.zero? ? "passed" : "failed", @exit, nil, @settings).merge(
+      JSONReport.head(@exit.zero? ? "passed" : "failed", @exit, nil, @settings, @comment).merge(
         "seconds" => @runner.seconds,
         **@versions.to_h { |side, version| [side, version.merge("ruby" => rubies.fetch(side))] },
         "plugins" => @runner.plugins.map(&:to_s),

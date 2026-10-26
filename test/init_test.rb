@@ -27,6 +27,10 @@ class InitTest < DuelTest
 
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
+  # How .duel.rb ends: when the workflow comments, the default shown.
+  ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
+    "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\nend\n"
+
   def test_a_gem
     gem
     write("config/settings.yml")
@@ -42,7 +46,7 @@ class InitTest < DuelTest
         1. Run `bundle install`, for StackProf (added to the Gemfile).
         2. Replace the example in duel/my_gem_duel.rb with benchmarks of your own code.
         3. Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound.
-        4. Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the report.
+        4. Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the report when a benchmark fails (c.comment in .duel.rb says when).
     OUT
     assert_empty @err.string
     assert_includes read(".duel.rb"), <<~RUBY
@@ -50,8 +54,8 @@ class InitTest < DuelTest
         # The library each version's workers require (from the gemspec, unless
         # this says otherwise).
         # c.library = "my_gem"
-      end
     RUBY
+    assert read(".duel.rb").end_with?(%(  # c.library = "my_gem"\n#{ENDING}))
     assert_includes read("duel/my_gem_duel.rb"), "fails if the candidate is slower at any of them. Each version's workers\n" \
       "# load my_gem and every duel/**/*_duel.rb file. See\n"
     assert_includes read("duel/my_gem_duel.rb"), %(\nduel "example: join words" do\n)
@@ -60,7 +64,7 @@ class InitTest < DuelTest
     assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
-    assert_includes workflow, %(marker="<!-- duel -->"\n)
+    assert_includes workflow, %(marker="<!-- duel"\n)
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
@@ -84,6 +88,12 @@ class InitTest < DuelTest
       duel.fetch("steps").last.fetch("with"))
     assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
     assert_includes comment.fetch("if"), "github.event.pull_request.head.repo.full_name == github.repository"
+    assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
+    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}"}, duel.fetch("outputs"))
+    assert_equal "compare", duel.fetch("steps").find { |step| step["name"] == "Compare" }.fetch("id")
+    assert_equal({"COMMENT" => "${{ needs.duel.outputs.comment }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
+      comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
+    assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
@@ -126,7 +136,7 @@ class InitTest < DuelTest
 
     assert_includes read(".duel.rb"), %(  # c.library = "my_gem"\n\n  # Builds each version's C extension, so that each is measured with its\n) +
       %(  # own build.\n  c.build = "bundle exec rake compile"\n\n  # Each version runs on the Ruby that its own .ruby-version names, so a\n) +
-      "  # branch that upgrades Ruby is compared on each version's Ruby.\n  c.ruby = :version_file\nend\n"
+      "  # branch that upgrades Ruby is compared on each version's Ruby.\n  c.ruby = :version_file\n#{ENDING}"
     workflow = read(".github/workflows/perf.yml")
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
@@ -156,13 +166,13 @@ class InitTest < DuelTest
     write("lib/my_app.rb")
     init.run
 
-    assert_includes read(".duel.rb"), %(  # The library each version's workers require, from its lib/.\n  c.library = "my_app"\nend\n)
+    assert_includes read(".duel.rb"), %(  # The library each version's workers require, from its lib/.\n  c.library = "my_app"\n#{ENDING})
     assert_includes @out.string, "  create    duel/my_app_duel.rb\n"
     assert_includes read("duel/my_app_duel.rb"), "# load my_app and every duel/**/*_duel.rb file. See\n"
     write("lib/other.rb")
     init("--force").run
 
-    assert_includes read(".duel.rb"), %(  #   c.load { |root| require File.join(root, "config", "boot") }\n  # c.library = "my_library"\nend\n)
+    assert_includes read(".duel.rb"), %(  #   c.load { |root| require File.join(root, "config", "boot") }\n  # c.library = "my_library"\n#{ENDING})
     assert_includes @out.string, "  create    duel/example_duel.rb\n"
     assert_includes read("duel/example_duel.rb"), "# load every duel/**/*_duel.rb file. See\n"
     assert_includes @out.string, "\n  2. Set c.library in .duel.rb to what each version's workers require.\n  3. Replace the example in duel/example_duel.rb"
@@ -341,7 +351,7 @@ class InitTest < DuelTest
 
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: gems/parser\n    steps:\n"
     assert_includes workflow, "        with:\n          working-directory: gems/parser\n          ruby-version:"
-    assert_includes workflow, %(marker="<!-- duel gems/parser -->"\n)
+    assert_includes workflow, %(marker="<!-- duel gems/parser"\n)
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
     refute YAML.safe_load(workflow).dig("jobs", "comment").key?("defaults"), "nothing checked out there"

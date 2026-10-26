@@ -109,6 +109,23 @@ class ConfigTest < DuelTest
     assert_equal({version: [version], worker: [worker]}, config.prepares, "nothing added")
   end
 
+  # When the workflow comments on a pull request: on failures unless set,
+  # and only when set to a mode there is.
+  def test_comment
+    config = Duel::Config.new
+
+    assert_equal :failures, config.comment
+    config.comment = :results
+
+    assert_equal :results, config.comment
+    error = assert_raises(Duel::Error) { config.comment = "never" }
+
+    assert_equal 'c.comment = "never": give :always, :results, :failures, :never', error.message
+    assert_equal :results, config.comment, "unchanged"
+    assert_equal %i[always results failures never], Duel::Config::COMMENTS
+    assert_predicate Duel::Config::COMMENTS, :frozen?
+  end
+
   # Each version's Ruby: the runner's unless set.
   def test_ruby
     config = Duel::Config.new

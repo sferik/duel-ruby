@@ -47,6 +47,7 @@ A run that found one regression, abridged to two benchmarks:
   "status": "failed",
   "exit": 1,
   "message": null,
+  "comment": "post",
   "settings": {
     "confidence": 0.99,
     "limit": 1.02,
@@ -190,6 +191,7 @@ A run with nothing to compare has the same keys, with nothing compared:
   "status": "nothing_to_compare",
   "exit": 0,
   "message": "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
+  "comment": "change",
   "settings": {"confidence": 0.99, "limit": 1.02, "filter": "", "jobs": 4, "processes": 3, "timeout": 60.0, "warm": null, "force": false},
   "seconds": null,
   "baseline": null,
@@ -217,6 +219,7 @@ jq -r '.benchmarks[] | select(.verdict == "regressed") | .name' tmp/duel.json
 | `status` | `"passed"`, `"failed"`, `"nothing_to_compare"`, or `"error"` (Duel couldn't compare). |
 | `exit` | The exit status of `duel`: `0` for passed or nothing to compare, `1` for failed, `2` for an error. |
 | `message` | What Duel said, for nothing to compare or an error, such as `"duel: no release tag (v*) before HEAD to compare against"`. Otherwise `null`. |
+| `comment` | Whether the workflow that `duel init` writes comments on a pull request with the report, as [`c.comment`](configuration.md#choose-when-to-comment-on-a-pull-request) (or `--comment`) decides for this run: `"post"` a new comment, `"change"`, which posts one only if the workflow commented on the pull request before and its last comment's status differs from this run's, or `"none"`. See [Comment on a pull request](ci.md#comment-on-a-pull-request). |
 | `settings` | The settings that the run used (see below). |
 | `seconds` | How long the comparison took. `null` without a comparison. |
 | `baseline`, `candidate` | The two versions (see below). `null` without a comparison. |

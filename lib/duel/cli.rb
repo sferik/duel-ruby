@@ -16,9 +16,11 @@ module Duel
   # rake task or a CI expression can't pass as an option can be set in
   # the environment (DUEL_BASE, DUEL_FILTER, DUEL_FORCE), and options win.
   # On GitHub Actions (GITHUB_STEP_SUMMARY), it adds its report to the
-  # job's summary, in Markdown (see Summary). --markdown writes that to a
-  # file, and --json the report as JSON (see JSONReport), whatever the
-  # run's outcome, but not for a command line that isn't valid.
+  # job's summary, in Markdown (see Summary), and tells the step's
+  # outputs (GITHUB_OUTPUT) what to do about the comment on a pull
+  # request (see .comment). --markdown writes the Markdown to a file, and
+  # --json the report as JSON (see JSONReport), whatever the run's
+  # outcome, but not for a command line that isn't valid.
   # @api private
   class CLI
     USAGE = "Usage: duel [options]\n       duel init [options]\n\n" \
@@ -26,6 +28,18 @@ module Duel
 
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY = "GITHUB_STEP_SUMMARY"
+
+    # Where GitHub Actions has a step set its outputs.
+    STEP_OUTPUT = "GITHUB_OUTPUT"
+
+    # The statuses (as the JSON report has them) that the workflow
+    # comments on, by when it does (Config#comment, but :never, which
+    # comments on none).
+    COMMENTED = {always: %w[passed failed nothing_to_compare error], results: %w[passed failed error], failures: %w[failed error]}.freeze #: Hash[Config::comment, Array[String]]
+
+    # A run's status (as the JSON report has it) as the comment's marker
+    # has it: passed, failed (or couldn't compare), or neutral.
+    MARKED = {"passed" => "passed", "failed" => "failed", "error" => "failed", "nothing_to_compare" => "neutral"}.freeze
 
     # The variables that set options, to their values, and the one that
     # sets a flag by being set at all.
@@ -45,7 +59,7 @@ module Duel
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
 
       settings = @settings = catch(:version) { parse } or return 0
-      config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
+      config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
       Lock.hold(File.join(config.root, "tmp", "duel")) { compare(config, settings) }
     rescue Error => e
       @err.puts "duel: #{e}"
@@ -61,6 +75,25 @@ module Duel
       Regexp.new(source)
     rescue RegexpError => e
       raise OptionParser::InvalidArgument, "#{source} (#{e})"
+    end
+
+    # Whether the workflow comments on a pull request, when it comments as
+    # +mode+ says (Config#comment) and the run's +status+ is the JSON
+    # report's: "post" a new comment, "change", posting one only if it
+    # commented on the pull request before and its last comment's status
+    # (see MARKED) isn't this run's, or "none". It never edits a comment,
+    # so the pull request keeps every one.
+    def self.comment(mode, status)
+      return "none" if mode == :never
+
+      COMMENTED.fetch(mode).include?(status) ? "post" : "change"
+    end
+
+    # The mode --comment names (see Config#comment), or an invalid
+    # argument.
+    def self.comment_mode(name)
+      Config::COMMENTS.find { |mode| mode.to_s == name } or
+        raise OptionParser::InvalidArgument, "#{name} (give #{Config::COMMENTS.join(", ")})"
     end
 
     # The settings, from the environment and then the options.
@@ -99,13 +132,14 @@ module Duel
       results = runner.run
       status = runner.passed?(results) ? 0 : 1
       publish(
+        status.zero? ? "passed" : "failed",
         -> {
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
             candidate: described_candidate(config, settings)).markdown
         },
-        -> {
-          JSONReport.new(runner, results, settings: settings, exit: status, baseline: baseline_json(config, settings, baseline, base_root),
-            candidate: candidate_json(config, settings)).to_h
+        ->(comment) {
+          JSONReport.new(runner, results, settings: settings, exit: status, comment: comment,
+            baseline: baseline_json(config, settings, baseline, base_root), candidate: candidate_json(config, settings)).to_h
         }
       )
       status
@@ -121,21 +155,39 @@ module Duel
     # Reports a run that didn't compare (+mark+ and +title+ say so in
     # Markdown, and +status+ in JSON), and +why+, and returns +exit+.
     def unfinished(mark, title, status, why, exit)
-      # (Parsed, so set, where there's JSON to write: see #publish.)
+      # (Parsed, so set: see #run.)
       settings = @settings #: Settings
-      publish(-> { Summary.note(mark, title, why) }, -> { JSONReport.note(status, exit, "duel: #{why}", settings) })
+      publish(status, -> { Summary.note(mark, title, why) }, ->(comment) { JSONReport.note(status, exit, "duel: #{why}", settings, comment) })
       exit
     end
 
-    # Writes the reports where they're asked for: the JSON +json+ makes
-    # to the file --json names, and the Markdown +markdown+ makes to the
-    # file --markdown names, and added to the job's summary on GitHub
-    # Actions (STEP_SUMMARY). Each is only made if it's written.
-    def publish(markdown, json)
+    # What the workflow does about its comment on a pull request (see
+    # .comment), for a run whose +status+ is the JSON report's: as
+    # --comment says, or else the configuration, or the default where the
+    # configuration didn't load.
+    def commenting(status)
+      # (Parsed, so set: see #run.)
+      settings = @settings #: Settings
+      CLI.comment(settings.comment || (@config || Config.new).comment, status)
+    end
+
+    # Writes the reports of a run whose +status+ is the JSON report's
+    # where they're asked for: the JSON +json+ makes, given what the
+    # workflow does about its comment (see #commenting), to the file
+    # --json names, and the Markdown +markdown+ makes to the file
+    # --markdown names, and added to the job's summary on GitHub Actions
+    # (STEP_SUMMARY). Each is only made if it's written. On GitHub
+    # Actions, it also sets the step's outputs (STEP_OUTPUT) for the job
+    # that comments on a pull request: +comment+, and +status+ as the
+    # comment's marker has it (MARKED).
+    def publish(status, markdown, json)
+      comment = commenting(status)
+      set = variables
+      File.write(set.fetch(STEP_OUTPUT), "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n", mode: "a") if set.key?(STEP_OUTPUT)
       path = @json
-      write(path, "#{JSON.pretty_generate(json.call)}\n") if path
+      write(path, "#{JSON.pretty_generate(json.call(comment))}\n") if path
       path = @markdown
-      summary = (variables.fetch(STEP_SUMMARY) if variables.key?(STEP_SUMMARY))
+      summary = (set.fetch(STEP_SUMMARY) if set.key?(STEP_SUMMARY))
       return unless path || summary
 
       text = markdown.call
@@ -268,6 +320,8 @@ module Duel
         o.on("--markdown PATH", "Also write the report to PATH in Markdown, for a pull request comment (on GitHub",
           "Actions, it's added to the job's summary too)") { |v| @markdown = v }
         o.on("--json PATH", "Also write the report to PATH as JSON, for a program to read") { |v| @json = v }
+        o.on("--comment MODE", "When the workflow comments on a pull request: always, results (passed or failed),",
+          "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.comment_mode(v) }
         o.on("--clean", "Remove tmp/duel, and the baseline's git worktree, and stop") { @clean = true }
         o.on("-v", "--version", "Print the version") do
           @out.puts "duel #{VERSION}"

@@ -26,8 +26,9 @@ class JSONReportTest < DuelTest
   BASELINE = {"ref" => "main", "commit" => "a" * 40, "root" => "/base"}.freeze
   CANDIDATE = {"commit" => "b" * 40, "uncommitted_changes" => false, "root" => "/candidate"}.freeze
 
-  def report(results, runner: self.runner, exit: 0, **overrides)
-    Duel::JSONReport.new(runner, results, settings: settings(**overrides), exit: exit, baseline: BASELINE, candidate: CANDIDATE).to_h
+  def report(results, runner: self.runner, exit: 0, comment: "change", **overrides)
+    Duel::JSONReport.new(runner, results, settings: settings(**overrides), exit: exit, comment: comment, baseline: BASELINE,
+      candidate: CANDIDATE).to_h
   end
 
   # A result made by hand, of +n+ iterations a sample: +timed+ ({metric
@@ -54,7 +55,7 @@ class JSONReportTest < DuelTest
   # A run that passed, with every key, and a benchmark's every key.
   def test_a_run_that_passed
     expected = {
-      "schema" => 1, "duel_version" => Duel::VERSION, "status" => "passed", "exit" => 0, "message" => nil,
+      "schema" => 1, "duel_version" => Duel::VERSION, "status" => "passed", "exit" => 0, "message" => nil, "comment" => "change",
       "settings" => settings_json, "seconds" => 1.5,
       "baseline" => {"ref" => "main", "commit" => "a" * 40, "root" => "/base", "ruby" => "ruby 3.4"},
       "candidate" => {"commit" => "b" * 40, "uncommitted_changes" => false, "root" => "/candidate", "ruby" => "ruby 4.0"},
@@ -82,10 +83,10 @@ class JSONReportTest < DuelTest
     slow.profile = {"unavailable" => "no StackProf"}
     3.times { slow.confirmations << result("slow", timed: {"cpu" => "slower"}, counted: {"queries" => [2, 4]}) }
     broken = Duel::Result.new("broken").tap { |r| r.error = "Duel::Failed: oops\n  at x" }
-    report = report([slow, broken], exit: 1)
+    report = report([slow, broken], exit: 1, comment: "post")
     benchmark = report.fetch("benchmarks").first
 
-    assert_equal ["failed", 1, nil], report.values_at("status", "exit", "message")
+    assert_equal ["failed", 1, nil, "post"], report.values_at("status", "exit", "message", "comment")
     assert_equal ["regressed", false, %w[cpu queries], 3], benchmark.values_at("verdict", "passed", "regressed", "confirmations")
     assert_equal({"queries" => {"baseline" => 1.0, "candidate" => 2.0, "unit" => "query", "plural" => "queries", "worse" => true},
                   "rows" => {"baseline" => 1.0, "candidate" => 1.0, "unit" => "query", "plural" => "queries", "worse" => false}},
@@ -142,11 +143,11 @@ class JSONReportTest < DuelTest
 
   # A run that didn't compare: the same keys, with nothing compared.
   def test_note
-    assert_equal({"schema" => 1, "duel_version" => Duel::VERSION, "status" => "error", "exit" => 2, "message" => "duel: no",
+    assert_equal({"schema" => 1, "duel_version" => Duel::VERSION, "status" => "error", "exit" => 2, "message" => "duel: no", "comment" => "post",
                   "settings" => settings_json, "seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => [],
                   "benchmarks" => [], "across" => {}, "errors" => []},
-      Duel::JSONReport.note("error", 2, "duel: no", settings))
-    assert_equal report([]).keys, Duel::JSONReport.note("error", 2, "duel: no", settings).keys, "in the same order"
+      Duel::JSONReport.note("error", 2, "duel: no", settings, "post"))
+    assert_equal report([]).keys, Duel::JSONReport.note("error", 2, "duel: no", settings, "none").keys, "in the same order"
   end
 
   # A whole run, as JSON: what JSON.generate takes, and gives back alike.

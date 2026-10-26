@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `c.comment` chooses when the workflow that `duel init` writes
+  comments on a pull request with the report: `:always`, `:results`
+  (when a run passed or failed, but not with nothing to compare),
+  `:failures` (when a benchmark failed or Duel couldn't compare, the
+  default), or `:never`. `duel --comment MODE` overrides it, and any
+  other value fails with the values it takes. On GitHub Actions, `duel`
+  sets the step outputs `comment` (`post`, `change`, or `none`) and
+  `status` (`passed`, `failed`, or `neutral`), whatever the outcome, and
+  the workflow's Comment job acts on them, since it runs none of the
+  branch's code and can't read `.duel.rb`. The JSON report's `comment`
+  key has the same decision.
+
 ### Changed
+
+- The workflow that `duel init` writes no longer comments on every pull
+  request. By default, it comments only when a benchmark fails or Duel
+  couldn't compare. Set `c.comment = :always` for the old behavior.
+- The workflow never edits a comment. It used to update one comment on
+  every push, and now posts a new one each time it comments, so the pull
+  request keeps every report. Each comment's hidden marker records the
+  run's status (`<!-- duel status=failed -->`, say). When a run wouldn't
+  get a comment of its own, the workflow still posts one if its last
+  comment on the pull request had another status, so after a failure the
+  first run that passes says so, and the last comment is never stale. A
+  comment from an earlier version, whose marker has no status, counts
+  as one with another status.
 
 - A change to only the benchmarks or the configuration is compared. Duel
   watches what decides how the code is measured, as well as the code

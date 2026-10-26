@@ -12,8 +12,8 @@ example, a series of changes that are each 1.5% slower would each pass.
 To catch that kind of slow creep, also compare against your last release
 on a schedule. The slowdowns add up there until they're a regression.
 
-The following GitHub Actions workflow does both, and reports on each
-pull request. `duel init` writes it for you, as
+The following GitHub Actions workflow does both, and comments on a pull
+request when a benchmark fails. `duel init` writes it for you, as
 `.github/workflows/perf.yml`:
 
 ```yaml
@@ -37,6 +37,11 @@ jobs:
   duel:
     name: Duel
     runs-on: ubuntu-latest
+    # Whether the Comment job comments (post, change or none), and the
+    # run's status (passed, failed or neutral), from Duel.
+    outputs:
+      comment: ${{ steps.compare.outputs.comment }}
+      status: ${{ steps.compare.outputs.status }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,9 +54,11 @@ jobs:
           bundler-cache: true
       # Against the main branch for a pull request, what was there before
       # for a push, and the last release on a schedule (slow creep). Duel
-      # adds its report to the job's summary, and writes it to duel.md for
-      # the comment.
+      # adds its report to the job's summary, writes it to duel.md for the
+      # comment, and sets the step's outputs to say whether to comment, as
+      # c.comment in .duel.rb says, whatever the outcome.
       - name: Compare
+        id: compare
         env:
           DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
@@ -75,15 +82,17 @@ jobs:
           if-no-files-found: ignore # none when Duel didn't get to compare
           retention-days: 1
 
-  # The report, as a comment on the pull request: one comment, updated on
-  # every push. This job checks nothing out and runs none of the branch's
-  # code, so it alone can write. (A pull request from a fork gets no
-  # comment, as its token can't write one: the Duel job's summary has the
-  # report.)
+  # The report, as a new comment on the pull request, when Duel says to:
+  # always (post), or only when its last comment's status differs from
+  # this run's (change), so the latest comment is never stale. It never
+  # edits or deletes a comment. This job checks nothing out and runs none
+  # of the branch's code, so it alone can write. (A pull request from a
+  # fork gets no comment, as its token can't write one: the Duel job's
+  # summary has the report.)
   comment:
     name: Comment
     needs: duel
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write # to comment on the pull request with the report
@@ -100,14 +109,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          COMMENT: ${{ needs.duel.outputs.comment }}
+          STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          marker="<!-- duel -->"
-          { echo "$marker"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
-          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id")
-          if [ -n "$ids" ]; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/${ids%%$'\n'*}" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
-          else
+          marker="<!-- duel"
+          # The first line of the last comment Duel posted here: its marker,
+          # with its status (none in Duel 0.1.0's, which counts as another).
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\") or . == \"$marker -->\")" | tail -n 1)
+          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
+            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
 ```
@@ -135,10 +146,40 @@ workflow manually.
 
 The workflow writes Duel's report
 ([Report on a pull request](../README.md#report-on-a-pull-request))
-to a file, and then comments on the pull request with it. It updates
-the same comment on every push, rather than adding one each time. It
-finds its comment by the hidden marker on the comment's first line, so
-give each workflow that comments a marker of its own.
+to a file, and comments on the pull request with it when
+[`c.comment`](configuration.md#choose-when-to-comment-on-a-pull-request)
+says to. By default, it comments when a benchmark fails, or when Duel
+couldn't compare. Whatever `c.comment` says, a regression fails the
+check, because `duel` exits with a nonzero status, and the job's
+summary has the report.
+
+The workflow never edits or deletes a comment, so the pull request
+keeps every report that it posted. Each comment starts with a hidden
+marker that records the run's status: `<!-- duel status=passed -->`,
+`status=failed` (a run that couldn't compare too), or `status=neutral`
+(nothing to compare). When a run's outcome wouldn't get a comment of
+its own, the workflow still posts one if it commented on the pull
+request before, and its last comment's status differs from this run's.
+With the default, after a comment that a benchmark failed, the first
+push that passes gets one comment saying so, and the pushes after it
+get none. So the last comment is never stale. A comment from Duel 0.1.0,
+whose marker has no status, counts as a comment with another status.
+
+The workflow finds its comments by the marker's start. For a project
+in a subdirectory of its repository, the marker names the directory,
+such as `<!-- duel gems/parser status=failed -->`, so each of a
+monorepo's workflows has comments of its own.
+
+Duel decides, because it knows the outcome and reads `.duel.rb`. On
+GitHub Actions, the Compare step's `duel` sets two step outputs, which
+the Duel job passes on as its own: `comment`, and `status` (`passed`,
+`failed`, or `neutral`). `comment` is one of the following:
+
+| `comment` | What the Comment job does |
+|---|---|
+| `post` | Posts a new comment. |
+| `change` | Posts a new comment only if the pull request has one from the workflow, and the last one's status isn't this run's. |
+| `none` | Nothing: the Comment job doesn't run. |
 
 The Duel job runs the pull request's code, its benchmarks included, so
 it only reads (`contents: read`), and it keeps the report as an

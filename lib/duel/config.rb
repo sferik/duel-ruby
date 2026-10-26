@@ -66,6 +66,35 @@ module Duel
     #   c.ruby = ->(root) { File.join(Dir.home, ".rubies", File.read(File.join(root, ".ruby-version")).strip, "bin", "ruby") }
     attr_accessor :ruby
 
+    # When the workflow that `duel init` writes comments on a pull request
+    # with the report (`duel --comment` overrides it):
+    #
+    # - :always, on every run
+    # - :results, when a run passed or failed, but not with nothing
+    #   compared
+    # - :failures (the default), only when a run failed or couldn't
+    #   compare
+    # - :never
+    #
+    # It never edits a comment: each is a new one, so the pull request
+    # keeps them all. Once it has commented, a run that it wouldn't
+    # comment on still does, but :never's, when its status differs from
+    # the last comment's, so the last comment is never stale: after a
+    # failure, the first run that passes says so. Duel tells the workflow
+    # which to do (see CLI.comment).
+    #
+    #   c.comment = :results
+    attr_reader :comment
+
+    # The values #comment takes.
+    COMMENTS = %i[always results failures never].freeze #: Array[comment]
+
+    def comment=(mode)
+      raise Error, "c.comment = #{mode.inspect}: give #{COMMENTS.map(&:inspect).join(", ")}" unless COMMENTS.include?(mode)
+
+      @comment = mode
+    end
+
     # The metrics #metric added, in order (classes: a Duel::Metric
     # subclass, or running totals' Snapshot), for a plugin's tests to
     # look at (their .measures and .settings).
@@ -85,6 +114,7 @@ module Duel
       @library = :conventional
       @build = :conventional
       @release_tags = "v*"
+      @comment = :failures
       @prepares = SCOPES.to_h { |scope| [scope, []] }
       @metrics = []
       @in_workers = []
