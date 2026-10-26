@@ -64,7 +64,13 @@ jobs:
         id: baseline-ruby
         if: steps.baseline.outputs.ruby != ''
         with:
+<% if working_directory -%>
+          working-directory: <%= working_directory %>
+<% end -%>
           ruby-version: ${{ steps.baseline.outputs.ruby }}
+          # The bundle for this Ruby too, which the baseline's workers load.
+          # (Gems installed for one Ruby version don't load on another.)
+          bundler-cache: true
       - name: Link the baseline's Ruby where Duel finds it
         if: steps.baseline.outputs.ruby != ''
         env:

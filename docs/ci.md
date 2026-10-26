@@ -163,8 +163,11 @@ Compare step compares with, for each event: where `HEAD` left the main
 branch for a pull request and a manual run, the commit before a push,
 and the last release on a schedule. When its `.ruby-version` names
 another Ruby than yours, install that Ruby with a second
-`ruby/setup-ruby` step, and link it into `~/.rubies`, where Duel looks
-for Rubies the way that chruby does. Without a baseline, such as for a
+`ruby/setup-ruby` step, with the bundle for it (`bundler-cache: true`),
+and link it into `~/.rubies`, where Duel looks for Rubies the way that
+chruby does. The baseline's workers load the same bundle as the
+candidate's, and gems installed for one Ruby version don't load on
+another, so without that bundle they can't load the code to compare. Without a baseline, such as for a
 branch's first push, or before your first release, there's no Ruby to
 install. The step finds the main branch and the last release the way
 Duel does by default: if `.duel.rb` sets `c.main_branch` or
@@ -208,6 +211,9 @@ match. `duel init` adds these steps for a project that has a
         if: steps.baseline.outputs.ruby != ''
         with:
           ruby-version: ${{ steps.baseline.outputs.ruby }}
+          # The bundle for this Ruby too, which the baseline's workers load.
+          # (Gems installed for one Ruby version don't load on another.)
+          bundler-cache: true
       - name: Link the baseline's Ruby where Duel finds it
         if: steps.baseline.outputs.ruby != ''
         env:

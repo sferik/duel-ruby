@@ -131,6 +131,9 @@ class InitTest < DuelTest
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
     assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
+    baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
+
+    assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n), "the last release as Duel finds it"
     assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
     workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
@@ -307,6 +310,21 @@ class InitTest < DuelTest
       "and run `bin/rails generate duel:install` instead\n", @err.string
     assert_empty @out.string
     assert_equal %w[config], Dir.children(root)
+  end
+
+  # In a subdirectory, the baseline's bundle is installed there too.
+  def test_a_project_in_a_subdirectory_with_a_ruby_version
+    system("git", "init", "--quiet", tmpdir, exception: true)
+    project = File.join(tmpdir, "gems", "parser")
+    FileUtils.mkdir_p(File.join(project, "lib"))
+    File.write(File.join(project, "lib", "parser.rb"), "")
+    File.write(File.join(project, ".ruby-version"), "3.4.1\n")
+    init(at: project).run
+    workflow = File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
+    baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
+
+    assert_equal({"working-directory" => "gems/parser", "ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true},
+      baseline.fetch("with"))
   end
 
   # A project in a subdirectory of its repository: the workflow is at the

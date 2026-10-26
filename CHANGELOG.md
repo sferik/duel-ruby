@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With `c.ruby = :version_file`, the workflow installs the bundle for
+  the baseline's Ruby too, when it differs from the candidate's. The
+  baseline's workers load that bundle, and gems installed for one Ruby
+  version don't load on another, so a branch that changed the Ruby's
+  minor version failed before it compared anything.
+
 - With `c.ruby = :version_file`, the workflow that `duel init` writes
   installs the baseline's Ruby for every event that compares, not only
   for a pull request. It finds the baseline that the Compare step uses

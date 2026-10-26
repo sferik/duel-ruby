@@ -96,7 +96,10 @@ class GeneratorTest < PluginTest
     workflow = read(".github/workflows/perf.yml")
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
-    assert_operator workflow.index("id: baseline-ruby"), :<, workflow.index("bundler-cache"), "the baseline's Ruby first"
+    assert_operator workflow.index("id: baseline-ruby"), :<, workflow.rindex("bundler-cache"), "the baseline's Ruby first"
+    baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
+
+    assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
     assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n)
     assert_includes workflow, %(ln -sfn "$PREFIX" ~/.rubies/ruby-)

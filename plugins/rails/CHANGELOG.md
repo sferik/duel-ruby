@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With `c.ruby = :version_file`, the workflow installs the bundle for
+  the baseline's Ruby too, when it differs from the candidate's. The
+  baseline's workers load that bundle, and gems installed for one Ruby
+  version don't load on another, so a branch that changed the Ruby's
+  minor version failed before it compared anything.
+
 - With a `.ruby-version`, the generated workflow installs the baseline's
   Ruby for every event that compares, not only for a pull request: the
   commit before a push, the last release on a schedule, and where HEAD
