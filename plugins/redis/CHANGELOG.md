@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.0] - 2026-10-24
 
 The first release. duel-redis is a Duel plugin, open source under the MIT
@@ -45,5 +49,6 @@ license. It needs Ruby 3.4 or later, Duel 0.1, and `redis-server`
   read the next reply out of step.
 
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.1...HEAD
+[0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.0...duel-redis-v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/duel-redis-v0.1.0

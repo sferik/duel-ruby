@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.0] - 2026-10-24
 
 The first release. duel-postgresql is a Duel plugin, open source under
@@ -73,5 +77,6 @@ later, with `pg_stat_statements`.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.1...HEAD
+[0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.0...duel-postgresql-v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/duel-postgresql-v0.1.0

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
 ### Changed
 
 - The workflow that `rails generate duel:install` writes no longer
@@ -133,5 +135,6 @@ Rails 7.2 or later, and Ruby 3.4 or later.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.1...HEAD
+[0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.0...duel-rails-v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/duel-rails-v0.1.0
