@@ -10,14 +10,15 @@ require_relative "../duel"
 module Duel
   # `duel init`: sets Duel up in a gem or an app that isn't a Rails app
   # (duel-rails's generator sets a Rails app up). It writes .duel.rb, a
-  # benchmark to start from, and a GitHub Actions workflow, adds a Rake
+  # benchmark to start from, and GitHub Actions workflows (Duel's, and
+  # one that comments on a pull request with its report), adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
   # of regressions, on CRuby). It overwrites nothing without --force, and
   # writes nothing with --dry-run.
   # @api private
   class Init
     USAGE = "Usage: duel init [options]\n\n" \
-      "Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, a GitHub Actions workflow,\n" \
+      "Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows,\n" \
       "a Rake task, and StackProf in the Gemfile.\n\n"
 
     TEMPLATES = File.join(__dir__, "templates")
@@ -61,8 +62,9 @@ module Duel
 
     # The files it writes, from the project's root, to what's in them.
     def files
-      workflow = Pathname(File.realpath(repository)).relative_path_from(File.realpath(@root)).join(".github", "workflows", workflow_name)
-      {".duel.rb" => render("duel.rb"), benchmark_file => render("benchmark_duel.rb"), workflow.to_s => render("perf.yml")}
+      workflows = Pathname(File.realpath(repository)).relative_path_from(File.realpath(@root)).join(".github", "workflows")
+      {".duel.rb" => render("duel.rb"), benchmark_file => render("benchmark_duel.rb"), workflows.join(workflow_name).to_s => render("perf.yml"),
+       workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render("perf-comment.yml")}
     end
 
     private

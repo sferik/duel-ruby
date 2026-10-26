@@ -49,6 +49,7 @@ class InitTest < DuelTest
         create    .duel.rb
         create    duel/my_gem_duel.rb
         create    .github/workflows/perf.yml
+        create    .github/workflows/perf-comment.yml
         append    Gemfile (gem "stackprof", platforms: :mri)
 
       Next:
@@ -73,42 +74,79 @@ class InitTest < DuelTest
     assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
-    assert_includes workflow, %(marker="<!-- duel"\n)
+    assert_equal 2, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "each workflow's"
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[checkout setup-ruby Find Compare Keep], steps.call("duel")
-    assert_equal %w[Get Comment], steps.call("comment")
+    assert_equal %w[duel commit-comment passed], jobs.keys
+    assert_equal %w[checkout setup-ruby Find Compare Say Keep], steps.call("duel")
     assert_equal %w[Get Comment], steps.call("commit-comment")
     assert_equal %w[Move], steps.call("passed")
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
-  # and keeps the report. Another, which checks nothing out and runs none
-  # of it, comments with it, on a pull request from the repository.
+  # and keeps the report, with what Duel said about commenting on a pull
+  # request, for the Perf comment workflow.
   def test_the_workflows_permissions
     gem
     init.run
     workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
-    duel, comment = workflow.fetch("jobs").values_at("duel", "comment")
+    duel = workflow.dig("jobs", "duel")
+    said = duel.fetch("steps").find { |step| step["name"] == "Say whether to comment" }
 
     assert_equal({"contents" => "read", "pull-requests" => "read"}, workflow.fetch("permissions"))
     refute duel.key?("permissions")
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
-    assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/duel.md", "if-no-files-found" => "ignore", "retention-days" => 1},
+    assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/duel/", "if-no-files-found" => "ignore", "retention-days" => 1},
       duel.fetch("steps").last.fetch("with"))
-    assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
-    assert_includes comment.fetch("if"), "github.event.pull_request.head.repo.full_name == github.repository"
-    assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
     assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
                   "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
     assert_equal "compare", duel.fetch("steps").find { |step| step["name"] == "Compare" }.fetch("id")
-    assert_equal({"COMMENT" => "${{ needs.duel.outputs.comment }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
-      comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
-    assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
-    assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
+    assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", duel.fetch("steps").find { |step| step["name"] == "Compare" }.fetch("run")
+    assert_equal ["${{ !cancelled() && github.event_name == 'pull_request' }}", {"PR" => "${{ github.event.pull_request.number }}",
+                                                                                 "COMMENT" => "${{ steps.compare.outputs.comment }}", "STATUS" => "${{ steps.compare.outputs.status }}"}], said.values_at("if", "env")
+    env = {"PR" => "12", "COMMENT" => "post", "STATUS" => "failed", "RUNNER_TEMP" => tmpdir}
+
+    assert system(env, "bash", "-ec", said.fetch("run"))
+    assert_equal "pr=12\ncomment=post\nstatus=failed\n", File.read(File.join(tmpdir, "duel", "comment.env"))
+  end
+
+  # The Perf comment workflow comments on a pull request (a fork's too)
+  # once Perf has run, with a token that can write, so it runs none of
+  # the pull request's code, and trusts only what the Duel job could have
+  # said: a number that names the pull request it compared, and a comment
+  # and a status that are Duel's.
+  def test_the_comment_workflow
+    gem
+    init.run
+    workflow = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
+    comment = workflow.dig("jobs", "comment")
+    get, post = comment.fetch("steps")
+
+    assert_equal [{"workflows" => ["Perf"], "types" => ["completed"]}, {}], [workflow.dig(true, "workflow_run"), workflow.fetch("permissions")]
+    assert_equal "${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' }}",
+      comment.fetch("if")
+    assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.fetch("permissions"))
+    assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/report", "run-id" => "${{ github.event.workflow_run.id }}",
+                  "github-token" => "${{ github.token }}"}, get.fetch("with"))
+    assert_equal ["POST"], post.fetch("run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
+    said = lambda do |env|
+      FileUtils.mkdir_p(File.join(tmpdir, "report"))
+      File.write(File.join(tmpdir, "report", "comment.env"), env)
+      script = "#{post.fetch("run")[/\A.*?\|\| exit 0\n/m]}echo \"$PR $COMMENT $STATUS\""
+      IO.popen({"RUNNER_TEMP" => tmpdir}, ["bash", "-c", script], &:read)
+    end
+
+    assert_equal "12 post failed\n", said.call("pr=12\ncomment=post\nstatus=failed\n")
+    assert_equal "12 change neutral\n", said.call("pr=12\ncomment=change\nstatus=neutral\n")
+    assert_empty said.call("pr=12\ncomment=none\nstatus=failed\n"), "none: no comment"
+    assert_empty said.call("pr=12; rm -rf /\ncomment=post\nstatus=failed\n"), "not a number"
+    assert_empty said.call("pr=12\ncomment=post\nstatus=failed -->\n"), "not a status"
+    assert_empty said.call("pr=\ncomment=post\nstatus=failed\n"), "no pull request"
+    assert_includes post.fetch("run"), %([ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)" = "$HEAD_SHA" ] || exit 0\n)
+    assert_equal "${{ github.event.workflow_run.head_sha }}", post.dig("env", "HEAD_SHA")
   end
 
   # Duel gets the labels of a pull request, or of the one that merged a
@@ -164,7 +202,7 @@ class InitTest < DuelTest
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/passed"}, step.fetch("env"))
     assert_equal %(gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||\n) +
       %(  gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null\n), step.fetch("run")
-    assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
+    assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
     assert_equal 1, passed.fetch("steps").size
   end
@@ -189,7 +227,7 @@ class InitTest < DuelTest
     assert_equal ["POST"], run.scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     assert_includes run, %("repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments")
     assert_includes run, %("repos/$GITHUB_REPOSITORY/comments"), "the last on any commit"
-    assert_equal comment.fetch("steps").first, jobs.dig("comment", "steps").first
+    assert_equal [true, {"name" => "duel-report", "path" => "${{ runner.temp }}/report"}], comment.fetch("steps").first.values_at("continue-on-error", "with")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
   end
@@ -240,7 +278,7 @@ class InitTest < DuelTest
 
     assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n), "the last release as Duel finds it"
-    assert_equal 8, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
+    assert_equal 9, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
     workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
   end
 
@@ -324,7 +362,7 @@ class InitTest < DuelTest
     init.run
 
     assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
-    assert_includes @out.string, "  create    .github/workflows/perf.yml\n  append    Rakefile\n  append    Gemfile"
+    assert_includes @out.string, "  create    .github/workflows/perf-comment.yml\n  append    Rakefile\n  append    Gemfile"
     init.run
 
     assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
@@ -448,10 +486,15 @@ class InitTest < DuelTest
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: gems/parser\n    steps:\n"
     assert_includes workflow, "        with:\n          working-directory: gems/parser\n          ruby-version:"
     assert_includes workflow, %(marker="<!-- duel gems/parser"\n)
+    comments = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
+
+    assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [YAML.safe_load(workflow).fetch("name"), comments.dig(true, "workflow_run", "workflows")],
+      "a workflow of its own, and its comments"
+    assert_includes comments.dig("jobs", "comment", "steps", 1, "run"), %(marker="<!-- duel gems/parser"\n)
     assert_equal "duel/passed-gems-parser", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "a branch of its own"
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
-    refute YAML.safe_load(workflow).dig("jobs", "comment").key?("defaults"), "nothing checked out there"
+    refute YAML.safe_load(workflow).dig("jobs", "commit-comment").key?("defaults"), "nothing checked out there"
     init(at: tmpdir).run
 
     assert_includes @out.string, "  create    .github/workflows/perf.yml\n", "at the root"
@@ -464,13 +507,20 @@ class InitTest < DuelTest
     assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
   end
 
+  # And the one that comments on a pull request.
+  def test_the_guides_comment_workflow
+    workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf-comment\.yml\n(.*?)^```$/m, 1]
+
+    assert_equal workflow, init.files.fetch(".github/workflows/perf-comment.yml")
+  end
+
   def test_help
     assert_equal 0, init("--help").run
     assert_empty @err.string
     assert_equal <<~HELP, @out.string
       Usage: duel init [options]
 
-      Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, a GitHub Actions workflow,
+      Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows,
       a Rake task, and StackProf in the Gemfile.
 
               --force                      Overwrite files that exist

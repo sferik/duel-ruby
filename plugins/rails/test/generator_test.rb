@@ -57,7 +57,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel comment commit-comment passed], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel commit-comment passed], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -65,38 +65,35 @@ class GeneratorTest < PluginTest
     assert_equal "source \"https://rubygems.org\"\n#{STACKPROF}", read("Gemfile"), "StackProf, and no plugin for SQLite"
   end
 
-  # The workflow writes Duel's report in Markdown, and comments on a pull
-  # request with it. The job that runs the app's code only reads, and
-  # keeps the report: another, which checks nothing out and runs none of
-  # it, comments.
+  # The workflow writes Duel's report in Markdown, and another, Duel's
+  # own, comments on a pull request with it. The job that runs the app's
+  # code only reads, and keeps the report.
   def test_the_workflow_comments
     generate
     workflow = read(".github/workflows/perf.yml")
-    duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
+    duel = YAML.safe_load(workflow).dig("jobs", "duel")
+    own = File.read(File.expand_path("../../../lib/duel/templates/perf-comment.yml.erb", __dir__))
 
-    assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
-    assert_includes workflow, %(          marker="<!-- duel"\n)
+    assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"\n)
     assert_equal({"contents" => "read", "pull-requests" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
-    assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
-    assert_equal ["Get the report", "Comment on the pull request"], comment.fetch("steps").map { |step| step.fetch("name") }
-    refute_includes comment.to_s, "checkout"
+    assert_equal own.gsub(%(<%= " (\#{working_directory})" if working_directory %>), "").sub("<%= marker %>", "duel"),
+      read(".github/workflows/perf-comment.yml"), "Duel's own"
   end
 
-  # Whether it comments is Duel's to say, from .duel.rb: the Comment job
-  # posts a new comment, or none, as Duel's own workflow does.
+  # Whether it comments is Duel's to say, from .duel.rb: the Comment on
+  # the commit job posts a new comment, or none, as Duel's own workflow
+  # does.
   def test_the_workflow_comments_as_duel_says
     generate
     workflow = read(".github/workflows/perf.yml")
-    duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
+    duel = YAML.safe_load(workflow).dig("jobs", "duel")
 
     assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
                   "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
-    assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
-    assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
-    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  comment:\n.*?^          marker=/m],
-      workflow[/^  comment:\n.*?^          marker=/m], "Duel's own"
+    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
+      workflow[/^      - name: Say whether to comment\n.*?^      - name: Keep/m], "Duel's own"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  commit-comment:\n.*?^          marker=/m],
       workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  passed:\n.*?^          BRANCH:/m],
@@ -131,7 +128,7 @@ class GeneratorTest < PluginTest
     assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n)
     assert_includes workflow, %(ln -sfn "$PREFIX" ~/.rubies/ruby-)
-    assert_equal 8, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
+    assert_equal 9, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
   end
 
   # An app in a subdirectory of its repository (a monorepo's): its
@@ -147,9 +144,10 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
     assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog"],
-      workflow.lines(chomp: true).grep(/marker="|BRANCH: /).uniq, "a comment, and a branch, of its own"
+      (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|BRANCH: /).uniq,
+      "comments, and a branch, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
-      YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment").map { |job| job["defaults"] }, "none where nothing's checked out"
+      YAML.safe_load(workflow).fetch("jobs").values_at("duel", "commit-comment").map { |job| job["defaults"] }, "none where nothing's checked out"
     assert_path_exists File.join(app, ".duel.rb")
     refute_path_exists File.join(app, ".github")
     assert_equal [File.realpath(@dir), "apps/blog"], [File.realpath(generator(app).send(:repository)), generator(app).send(:working_directory)]

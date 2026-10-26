@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A pull request gets its comment from a second workflow that `duel init`
+  writes, `.github/workflows/perf-comment.yml`, which runs once the Perf
+  workflow has (`workflow_run`), with a token that can write, so a pull
+  request from a fork gets a comment too. It runs none of the pull
+  request's code, and trusts only what Duel could have said in the
+  report's artifact. The Perf workflow no longer has a Comment job, and
+  for a project in a subdirectory, it's named for the directory, as
+  `Perf (gems/parser)`.
 - A push whose commit before it isn't in the history now reports that
   there's no commit to compare against, and passes, from `duel` itself.
   The workflow no longer checks this in its Compare step.

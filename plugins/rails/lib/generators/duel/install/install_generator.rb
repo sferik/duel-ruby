@@ -43,13 +43,16 @@ module Duel
 
       def create_boot_benchmark = template("boot_duel.rb.tt", "duel/boot_duel.rb")
 
-      # The workflow, at the repository's root: perf.yml, or, for an app in
-      # a subdirectory, perf-<its path>.yml (perf-apps-blog.yml), so that
-      # each of a monorepo's apps can have its own.
+      # The workflows, at the repository's root: perf.yml, and
+      # perf-comment.yml, which comments on a pull request with the
+      # report, or, for an app in a subdirectory, perf-<its path>.yml
+      # (perf-apps-blog.yml) and perf-<its path>-comment.yml, so that each
+      # of a monorepo's apps can have its own.
       def create_workflow
         dir = working_directory
-        name = dir ? "perf-#{dir.tr("/", "-")}.yml" : "perf.yml"
-        template("perf.yml.tt", File.join(repository, ".github", "workflows", name))
+        name = dir ? "perf-#{dir.tr("/", "-")}" : "perf"
+        template("perf.yml.tt", File.join(repository, ".github", "workflows", "#{name}.yml"))
+        template("perf-comment.yml.tt", File.join(repository, ".github", "workflows", "#{name}-comment.yml"))
       end
 
       # The plugin that gives each worker its database's server.

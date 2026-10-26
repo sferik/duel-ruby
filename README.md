@@ -225,7 +225,9 @@ Duel::RakeTask.new(:perf_since_release, "--base", "last-release")
 ```
 
 `duel init` writes a GitHub Actions workflow,
-`.github/workflows/perf.yml`. It compares each pull request with the
+`.github/workflows/perf.yml`, and a second one,
+`.github/workflows/perf-comment.yml`, that comments on a pull request,
+a fork's too. It compares each pull request with the
 branch that it targets, each push to `main` with the commit before it, and, on a
 schedule, your last release, to catch slow creep. It also comments on a
 pull request with Duel's report when a benchmark fails. For the
