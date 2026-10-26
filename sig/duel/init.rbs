@@ -21,6 +21,7 @@ module Duel
     @root: String
     @force: bool?
     @dry_run: bool?
+    @gitlab: bool?
     @stackprof: bool?
 
     def initialize: (Array[String] argv, ?out: _Output, ?err: _Output, ?root: String) -> void
@@ -102,5 +103,14 @@ module Duel
 
     # The branch that marks the last commit Duel passed in a push.
     def passed_branch: () -> String
+
+    # Where the GitLab CI jobs are, from the repository's root.
+    def gitlab_file: () -> String
+
+    # The GitLab CI job's name.
+    def gitlab_job: () -> String
+
+    # The Ruby image's tag for GitLab CI.
+    def gitlab_ruby: () -> String
   end
 end

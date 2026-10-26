@@ -201,6 +201,7 @@ the limit, use `--timeout`.
 | `0` | Nothing got slower, or there was nothing to compare. |
 | `1` | Something got slower, or a benchmark failed. |
 | `2` | Duel couldn't compare. |
+| `3` | Something got slower outside a merge request on GitLab CI, where only a merge request fails ([`c.fail_on`](docs/configuration.md#fail-only-a-pull-request)). The job that `duel init --gitlab` writes lets it fail, as a warning. |
 
 ## Run Duel in CI
 
@@ -214,6 +215,10 @@ duel:
   variables:
     GIT_DEPTH: 0 # the baseline comes from history
 ```
+
+`duel init --gitlab` writes GitLab CI jobs for you, which compare a
+merge request with the branch it targets and comment on it. See
+[Run Duel on GitLab CI](docs/ci.md#run-duel-on-gitlab-ci).
 
 To run Duel from Rake, define a task with `Duel::RakeTask`. Any
 arguments after the task's name are passed to `duel`:

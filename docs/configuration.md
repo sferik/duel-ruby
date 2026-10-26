@@ -114,7 +114,10 @@ end
 
 With `:pull_requests`, a regression on GitHub Actions outside a pull
 request (a push, the schedule, or a run by hand) passes, with a warning
-in the run's summary, and the job's summary still has the report. The
+in the run's summary, and the job's summary still has the report. On
+GitLab CI, a regression outside a merge request exits with status 3,
+which the [job](ci.md#run-duel-on-gitlab-ci) that `duel init --gitlab`
+writes shows as a warning. The
 [GitHub Actions workflow](ci.md#comment-on-a-pushed-commit) that
 `duel init` writes then comments on a pushed commit with the report,
 as `c.comment` says, which notifies the commit's author. A run that

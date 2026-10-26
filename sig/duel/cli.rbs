@@ -31,6 +31,12 @@ module Duel
     # The GitHub Actions events of a pull request.
     PULL_REQUESTS: Array[String]
 
+    # The exit status of a run that was slower, but warned, on GitLab CI.
+    WARNED: Integer
+
+    # Where else to write the step's outputs, as variables.
+    OUTPUT: String
+
     # The variables that set options, to their options.
     ENV_OPTIONS: Hash[String, String]
 
@@ -85,7 +91,7 @@ module Duel
     def slower: (Config config, Settings settings) -> Integer
 
     # Passes a run that was slower, with a warning and a note.
-    def passing: (String why, String note) -> Integer
+    def passing: (String why, String note, ?Integer exit) -> Integer
 
     # Whether the pull request's labels have the one that accepts a
     # regression.
@@ -97,6 +103,16 @@ module Duel
     # Whether the workflow marks a push that passed as the last commit
     # Duel passed.
     def marks_passed?: (Config config, Settings settings) -> bool
+
+    # What a run on CI is for, as GitHub Actions names it, or nil outside
+    # CI.
+    def event: () -> String?
+
+    # Whether this is a run on GitLab CI.
+    def gitlab?: () -> bool
+
+    # The first of the variables +names+ that's set, or nil.
+    def variable: (*String names) -> String?
 
     # Whether a regression fails only a pull request.
     def pull_requests_only?: (Config config, Settings settings) -> bool

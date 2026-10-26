@@ -408,6 +408,203 @@ that branch, which a branch of its own marks: `duel/passed/2-x-stable`.
 A pull request into the branch is compared with the branch, whatever
 the workflow guards.
 
+## Run Duel on GitLab CI
+
+`duel init --gitlab` writes GitLab CI jobs, in
+`.gitlab/duel.gitlab-ci.yml`, instead of the GitHub Actions workflows.
+Include them from your `.gitlab-ci.yml`:
+
+```yaml
+include:
+  - local: .gitlab/duel.gitlab-ci.yml
+```
+
+The Duel job compares a merge request with the branch that it targets,
+a push to your default branch with the commit before it (or with
+[`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
+the last commit that Duel passed), and on a schedule, your last
+release. It runs on the `ruby` image of the version that your
+`.ruby-version` names, or else of your Ruby. On GitLab, a branch that
+upgrades Ruby can't compare each version on its own Ruby, because the
+image has only one. Duel reads GitLab's variables: a merge request's
+target, and its labels, for
+[`c.accept_label`](configuration.md#accept-a-regression-with-a-label).
+A push's labels aren't available.
+
+With [`c.fail_on = :pull_requests`](configuration.md#fail-only-a-pull-request),
+a regression outside a merge request makes `duel` exit with status 3,
+and the job lets that fail (`allow_failure: exit_codes: [3]`), so the
+pipeline shows a warning, not a failure.
+
+The Duel job writes what it decided to a dotenv report (`DUEL_OUTPUT`):
+`DUEL_COMMENT`, `DUEL_STATUS`, and `DUEL_PASSED`. The jobs after it act
+on them. They check nothing out and run none of the code. GitLab's own
+job token can't comment, so they need project access tokens, in masked
+CI/CD variables. Without them, the jobs don't run, and the Duel job's
+log and its `duel.md` artifact have the report.
+
+- `DUEL_COMMENT_TOKEN`, with the Reporter role and the `api` scope, and
+  not protected, so a merge request's pipeline has it, to comment on a
+  merge request. Every job in that pipeline has it, the Duel job too,
+  which runs the merge request's code, so give it no more than the
+  Reporter role.
+- `DUEL_TOKEN`, with the Developer role and the `api` scope, and
+  protected, so only your protected branches' pipelines have it, to
+  comment on a pushed commit and to mark a push passed.
+
+The comment on a pushed commit looks only at the comments on the commit
+before it for its last status. A merge request from a fork runs its
+pipeline in the fork, without your variables, so it gets no comment.
+
+```yaml
+# .gitlab/duel.gitlab-ci.yml
+# Duel on GitLab CI: https://github.com/sferik/duel-ruby/blob/main/docs/ci.md#run-duel-on-gitlab-ci
+#
+# Include it from .gitlab-ci.yml:
+#
+#   include:
+#     - local: .gitlab/duel.gitlab-ci.yml
+#
+# It compares a merge request with the branch it targets, a push to the
+# default branch with the commit before it (or as c.push_base in .duel.rb
+# says, the last commit Duel passed), and on a schedule, the last release.
+# The Duel job's log, and its duel.md artifact, have the report. Comments
+# need project access tokens, in masked CI/CD variables:
+#
+# - DUEL_COMMENT_TOKEN (the Reporter role, with the api scope, and not
+#   protected), to comment on a merge request. Every job of a merge
+#   request's pipeline has it, the Duel job too, which runs the merge
+#   request's code, so the token can do no more than comment.
+# - DUEL_TOKEN (the Developer role, with the api scope, and protected, so
+#   only the default branch's pipelines have it), to comment on a pushed
+#   commit (see c.fail_on), and to mark a push passed (see c.push_base).
+
+duel:
+  image: ruby:3.4
+  stage: test
+  variables:
+    GIT_DEPTH: 0 # the baseline comes from history, tags included
+    DUEL_OUTPUT: duel.env # whether to comment, and mark a push passed
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        DUEL_BASE: $CI_COMMIT_BEFORE_SHA
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      variables:
+        DUEL_BASE: last-release
+    # (Run by hand, it compares anyway: with nothing changed, the code
+    # with itself, which checks the setup.)
+    - if: $CI_PIPELINE_SOURCE == "web"
+      variables:
+        DUEL_FORCE: "1"
+  # A regression outside a merge request, where only a merge request
+  # fails (c.fail_on in .duel.rb), exits 3: a warning.
+  allow_failure:
+    exit_codes: [3]
+  before_script:
+    # The branch a merge request targets, the last commits Duel passed,
+    # and the releases.
+    - git fetch --quiet --tags origin "+refs/heads/duel/*:refs/remotes/origin/duel/*"
+    - if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then git fetch --quiet origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"; fi
+    - bundle install
+  script:
+    - bundle exec duel --markdown duel.md
+  artifacts:
+    when: always
+    paths:
+      - duel.md
+    reports:
+      dotenv: duel.env
+    expire_in: 1 day
+
+# The report, as a new comment on the merge request, when Duel says to:
+# always (post), or only when its last comment's status differs from this
+# run's (change), so the latest comment is never stale. It never edits or
+# deletes a comment.
+duel:comment:
+  image: alpine:3
+  stage: .post
+  needs: [duel]
+  rules:
+    - if: $DUEL_COMMENT_TOKEN && $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+  variables:
+    GIT_STRATEGY: none # it runs none of the code
+  script:
+    - apk add --no-cache --quiet curl jq
+    - |
+      case "$DUEL_COMMENT" in post|change) ;; *) exit 0 ;; esac
+      report=duel.md
+      [ -f "$report" ] || exit 0
+      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+      token="PRIVATE-TOKEN: $DUEL_COMMENT_TOKEN"
+      marker="<!-- duel"
+      me=$(curl -sf -H "$token" "$CI_API_V4_URL/user" | jq .id)
+      # The first line of the last comment Duel posted here: its marker,
+      # with its status.
+      last=$(curl -sf -H "$token" "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes?sort=desc&order_by=created_at&per_page=100" |
+        jq -r --argjson me "$me" --arg marker "$marker status=" '.[] | select(.author.id == $me) | .body | split("\n")[0] | rtrimstr("\r") | select(startswith($marker))' | head -n 1)
+      if [ "$DUEL_COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$DUEL_STATUS -->" ]; }; then
+        { echo "$marker status=$DUEL_STATUS -->"; cat "$report"; } | jq -Rs '{body: .}' |
+          curl -sf -H "$token" -H "Content-Type: application/json" --data @- "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes" > /dev/null
+      fi
+
+# The report, as a new comment on a pushed commit, when Duel says to, as
+# for a merge request: only where a regression in a push passes (see
+# c.fail_on), so the comment says what the check doesn't. Its last comment
+# is the commit before's.
+duel:commit-comment:
+  image: alpine:3
+  stage: .post
+  needs: [duel]
+  rules:
+    - if: $DUEL_TOKEN && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+  variables:
+    GIT_STRATEGY: none # it runs none of the code
+  script:
+    - apk add --no-cache --quiet curl jq
+    - |
+      case "$DUEL_COMMENT" in post|change) ;; *) exit 0 ;; esac
+      report=duel.md
+      [ -f "$report" ] || exit 0
+      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+      token="PRIVATE-TOKEN: $DUEL_TOKEN"
+      marker="<!-- duel"
+      me=$(curl -sf -H "$token" "$CI_API_V4_URL/user" | jq .id)
+      last=$(curl -sf -H "$token" "$api/repository/commits/$CI_COMMIT_BEFORE_SHA/comments?per_page=100" |
+        jq -r --argjson me "$me" --arg marker "$marker status=" '.[] | select(.author.id == $me) | .note | split("\n")[0] | rtrimstr("\r") | select(startswith($marker))' | tail -n 1)
+      if [ "$DUEL_COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$DUEL_STATUS -->" ]; }; then
+        { echo "$marker status=$DUEL_STATUS -->"; cat "$report"; } | jq -Rs '{note: .}' |
+          curl -sf -H "$token" -H "Content-Type: application/json" --data @- "$api/repository/commits/$CI_COMMIT_SHA/comments" > /dev/null
+      fi
+
+# With c.push_base = :last_passed in .duel.rb, a push is compared with the
+# last commit Duel passed, which a branch marks (duel/passed/main for
+# main), so slowdowns too small for any one push to fail add up until they
+# fail one. This job moves the branch to a push that passed (or makes it).
+# To accept a regression, move the branch yourself (for main, git push
+# origin main:duel/passed/main).
+duel:passed:
+  image: alpine:3
+  stage: .post
+  needs: [duel]
+  rules:
+    - if: $DUEL_TOKEN && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    GIT_STRATEGY: none # it runs none of the code
+  script:
+    - apk add --no-cache --quiet curl
+    - |
+      [ "$DUEL_PASSED" = true ] || exit 0
+      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+      token="PRIVATE-TOKEN: $DUEL_TOKEN"
+      branch="duel/passed/$CI_COMMIT_BRANCH"
+      curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
+      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches"
+```
+
 ## Run each version on its own Ruby on CI
 
 With [`c.ruby = :version_file`](configuration.md#run-each-version-on-its-own-ruby),

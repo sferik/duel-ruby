@@ -147,6 +147,18 @@ class CLITest < DuelTest
     assert_nil cli(env: pr.slice("GITHUB_BASE_REF")).parse.target, "not on GitHub Actions"
   end
 
+  # On GitLab CI: a push's branch (CI_COMMIT_BRANCH), and a merge
+  # request's target (CI_MERGE_REQUEST_TARGET_BRANCH_NAME).
+  def test_on_gitlab
+    gitlab = {"GITLAB_CI" => "true", "DUEL_BASE" => "abc123", "CI_COMMIT_BRANCH" => "main", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME" => "trunk"}
+    push = cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "push")).parse
+    merge_request = cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "merge_request_event")).parse
+
+    assert_equal ["main", nil], [push.pushed, push.target]
+    assert_equal [nil, "origin/trunk"], [merge_request.pushed, merge_request.target]
+    assert_nil cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "push", "GITLAB_CI" => "")).parse.pushed, "not GitLab CI"
+  end
+
   # A baseline that's a directory, by --base (or DUEL_BASE): the last
   # given wins, a ref or a directory.
   def test_a_base_directory

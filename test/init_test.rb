@@ -56,7 +56,7 @@ class InitTest < DuelTest
         1. Run `bundle install`, for StackProf (added to the Gemfile).
         2. Replace the example in duel/my_gem_duel.rb with benchmarks of your own code.
         3. Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound.
-        4. Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the report when a benchmark fails (c.comment in .duel.rb says when).
+        4. Commit and push. On a pull request, the workflow compares the code with the branch it targets, and comments with the report when a benchmark fails (c.comment in .duel.rb says when).
     OUT
     assert_empty @err.string
     assert_includes read(".duel.rb"), <<~RUBY
@@ -507,11 +507,66 @@ class InitTest < DuelTest
     assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
   end
 
+  # And the GitLab CI jobs.
+  def test_the_guides_gitlab_jobs
+    jobs = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.gitlab\/duel\.gitlab-ci\.yml\n(.*?)^```$/m, 1]
+    init = init("--gitlab")
+    init.send(:parser).parse(["--gitlab"])
+
+    assert_equal jobs.sub("ruby:3.4", "ruby:#{ruby_version}"), init.files.fetch(".gitlab/duel.gitlab-ci.yml")
+  end
+
   # And the one that comments on a pull request.
   def test_the_guides_comment_workflow
     workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf-comment\.yml\n(.*?)^```$/m, 1]
 
     assert_equal workflow, init.files.fetch(".github/workflows/perf-comment.yml")
+  end
+
+  # With --gitlab, GitLab CI jobs to include, not GitHub Actions
+  # workflows: the Duel job, on its Ruby's image, which lets a regression
+  # outside a merge request fail as a warning, and writes its outputs as
+  # variables, and the jobs after it, which run none of the code.
+  def test_gitlab
+    gem
+    write(".ruby-version", "ruby-3.4.1\n")
+
+    assert_equal 0, init("--gitlab").run
+    assert_includes @out.string, "  create    .gitlab/duel.gitlab-ci.yml\n"
+    assert_includes @out.string, "Include .gitlab/duel.gitlab-ci.yml from .gitlab-ci.yml, and add the tokens it says to"
+    refute_path_exists File.join(root, ".github")
+    jobs = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml"))
+    duel = jobs.fetch("duel")
+
+    assert_equal %w[duel duel:comment duel:commit-comment duel:passed], jobs.keys
+    assert_equal ["ruby:3.4.1", {"exit_codes" => [3]}, ["bundle exec duel --markdown duel.md"]], duel.values_at("image", "allow_failure", "script")
+    assert_equal({"GIT_DEPTH" => 0, "DUEL_OUTPUT" => "duel.env"}, duel.fetch("variables"))
+    assert_equal({"when" => "always", "paths" => ["duel.md"], "reports" => {"dotenv" => "duel.env"}, "expire_in" => "1 day"}, duel.fetch("artifacts"))
+    assert_equal [{"DUEL_BASE" => "$CI_COMMIT_BEFORE_SHA"}, {"DUEL_BASE" => "last-release"}, {"DUEL_FORCE" => "1"}],
+      duel.fetch("rules").filter_map { |rule| rule["variables"] }
+    %w[duel:comment duel:commit-comment duel:passed].each do |name|
+      assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
+    end
+    assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
+    assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
+  end
+
+  # For a project in a subdirectory, its own jobs, file, and branch, and
+  # without a .ruby-version, this Ruby's minor version.
+  def test_gitlab_in_a_subdirectory
+    system("git", "init", "--quiet", tmpdir, exception: true)
+    project = File.join(tmpdir, "gems", "parser")
+    FileUtils.mkdir_p(File.join(project, "lib"))
+    File.write(File.join(project, "lib", "parser.rb"), "")
+    init("--gitlab", at: project).run
+    text = File.read(File.join(tmpdir, ".gitlab", "duel-gems-parser.gitlab-ci.yml"))
+    jobs = YAML.safe_load(text)
+
+    assert_equal ["duel:gems/parser", "duel:gems/parser:comment", "duel:gems/parser:commit-comment", "duel:gems/parser:passed"], jobs.keys
+    assert_equal ["ruby:#{ruby_version}", "cd gems/parser"], [jobs.dig("duel:gems/parser", "image"), jobs.dig("duel:gems/parser", "before_script", 0)]
+    assert_equal ["gems/parser/duel.md", "gems/parser/duel.env"], jobs.dig("duel:gems/parser", "artifacts").values_at("paths", "reports").map { |v| v.is_a?(Array) ? v.first : v.fetch("dotenv") }
+    assert_includes text, %(marker="<!-- duel gems/parser"\n)
+    assert_includes text, %(branch="duel/passed-gems-parser/$CI_COMMIT_BRANCH"\n)
   end
 
   def test_help
@@ -520,11 +575,12 @@ class InitTest < DuelTest
     assert_equal <<~HELP, @out.string
       Usage: duel init [options]
 
-      Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows,
-      a Rake task, and StackProf in the Gemfile.
+      Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows
+      (or GitLab CI jobs), a Rake task, and StackProf in the Gemfile.
 
               --force                      Overwrite files that exist
               --dry-run                    Say what it would do, and write nothing
+              --gitlab                     Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows
           -h, --help                       Print this help
     HELP
     assert_equal 0, init("-h").run

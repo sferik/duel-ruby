@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so. The workflow that `duel init` writes passes the pull request's
   labels to `duel` (`DUEL_LABELS`), or for a push, the labels of the
   pull request that merged it. By default, there's no such label.
+- `duel init --gitlab` writes GitLab CI jobs to include from
+  `.gitlab-ci.yml`, instead of GitHub Actions workflows. They compare a
+  merge request with the branch it targets, comment on it, and with
+  project access tokens, comment on a pushed commit and mark a push
+  passed. On GitLab CI, `duel` reads a merge request's target and labels,
+  writes its decisions to `DUEL_OUTPUT` as variables, and where only a
+  merge request fails (`c.fail_on`), exits with status 3 for a
+  regression outside one, which the job lets fail, as a warning.
 - The workflow that `duel init` writes runs for a merge queue
   (`merge_group`), and compares its group with the queue's base, so the
   Duel check can be required with a merge queue.

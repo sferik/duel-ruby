@@ -11,15 +11,16 @@ module Duel
   # `duel init`: sets Duel up in a gem or an app that isn't a Rails app
   # (duel-rails's generator sets a Rails app up). It writes .duel.rb, a
   # benchmark to start from, and GitHub Actions workflows (Duel's, and
-  # one that comments on a pull request with its report), adds a Rake
+  # one that comments on a pull request with its report), or with
+  # --gitlab, GitLab CI jobs to include, adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
   # of regressions, on CRuby). It overwrites nothing without --force, and
   # writes nothing with --dry-run.
   # @api private
   class Init
     USAGE = "Usage: duel init [options]\n\n" \
-      "Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows,\n" \
-      "a Rake task, and StackProf in the Gemfile.\n\n"
+      "Sets Duel up in this project: .duel.rb, a benchmark to start from in duel/, GitHub Actions workflows\n" \
+      "(or GitLab CI jobs), a Rake task, and StackProf in the Gemfile.\n\n"
 
     TEMPLATES = File.join(__dir__, "templates")
 
@@ -62,9 +63,13 @@ module Duel
 
     # The files it writes, from the project's root, to what's in them.
     def files
-      workflows = Pathname(File.realpath(repository)).relative_path_from(File.realpath(@root)).join(".github", "workflows")
-      {".duel.rb" => render("duel.rb"), benchmark_file => render("benchmark_duel.rb"), workflows.join(workflow_name).to_s => render("perf.yml"),
-       workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render("perf-comment.yml")}
+      top = Pathname(File.realpath(repository)).relative_path_from(File.realpath(@root))
+      written = {".duel.rb" => render("duel.rb"), benchmark_file => render("benchmark_duel.rb")}
+      return written.merge(top.join(gitlab_file).to_s => render("duel.gitlab-ci.yml")) if @gitlab
+
+      workflows = top.join(".github", "workflows")
+      written.merge(workflows.join(workflow_name).to_s => render("perf.yml"),
+        workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render("perf-comment.yml"))
     end
 
     private
@@ -74,6 +79,7 @@ module Duel
         o.banner = USAGE
         o.on("--force", "Overwrite files that exist") { @force = true }
         o.on("--dry-run", "Say what it would do, and write nothing") { @dry_run = true }
+        o.on("--gitlab", "Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows") { @gitlab = true }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
           throw :help
@@ -158,8 +164,13 @@ module Duel
       steps << "Set c.library in .duel.rb to what each version's workers require." unless required
       steps << "Replace the example in #{benchmark_file} with benchmarks of your own code."
       steps << "Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound."
-      steps << "Commit and push. On a pull request, the workflow compares the code with the main branch, and comments with the " \
-        "report when a benchmark fails (c.comment in .duel.rb says when)."
+      steps << if @gitlab
+        "Include #{gitlab_file} from .gitlab-ci.yml, and add the tokens it says to, for comments. On a merge request, the job " \
+          "compares the code with the branch it targets."
+      else
+        "Commit and push. On a pull request, the workflow compares the code with the branch it targets, and comments with the " \
+          "report when a benchmark fails (c.comment in .duel.rb says when)."
+      end
       "\nNext:\n#{steps.each_with_index.map { |step, i| "  #{i + 1}. #{step}\n" }.join}"
     end
 
@@ -217,6 +228,23 @@ module Duel
 
     # What marks the workflow's comment on a pull request.
     def marker = ["duel", working_directory].compact.join(" ")
+
+    # Where the GitLab CI jobs are, from the repository's root:
+    # .gitlab/duel.gitlab-ci.yml, or for a project in a subdirectory,
+    # .gitlab/duel-<its path>.gitlab-ci.yml.
+    def gitlab_file = File.join(".gitlab", "#{["duel", working_directory&.tr("/", "-")].compact.join("-")}.gitlab-ci.yml")
+
+    # The GitLab CI job's name: duel, or for a project in a subdirectory,
+    # duel:<its path>, so each of a monorepo's projects has its own.
+    def gitlab_job = ["duel", working_directory].compact.join(":")
+
+    # The Ruby image's tag for GitLab CI: the version .ruby-version names,
+    # exactly (so it's the Ruby that c.ruby = :version_file asks for), or
+    # this one's minor version.
+    def gitlab_ruby
+      named = File.read(File.join(@root, ".ruby-version")).split.first if version_file
+      named&.delete_prefix("ruby-") || RUBY_VERSION.rpartition(".").first
+    end
 
     # What names the branches that mark the last commit Duel passed in a
     # push, before the branch pushed's name (see Baseline#passed_branch).

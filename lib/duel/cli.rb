@@ -33,6 +33,10 @@ module Duel
     # Where GitHub Actions has a step set its outputs.
     STEP_OUTPUT = "GITHUB_OUTPUT"
 
+    # Where else to write them, as variables (DUEL_COMMENT, DUEL_STATUS,
+    # DUEL_PASSED): on GitLab CI, a dotenv report, for the jobs after.
+    OUTPUT = "DUEL_OUTPUT"
+
     # The statuses (as the JSON report has them) that the workflow
     # comments on, by when it does (Config#comment, but :never, which
     # comments on none).
@@ -43,8 +47,14 @@ module Duel
     MARKED = {"passed" => "passed", "failed" => "failed", "error" => "failed", "nothing_to_compare" => "neutral"}.freeze
 
     # The GitHub Actions events of a pull request, as GITHUB_EVENT_NAME
-    # has them: a merge queue's too (see Config#fail_on).
+    # has them: a merge queue's too (see Config#fail_on). (A GitLab merge
+    # request's is pull_request: see #event.)
     PULL_REQUESTS = %w[pull_request pull_request_target merge_group].freeze
+
+    # The exit status of a run that was slower outside a merge request on
+    # GitLab CI, where only a merge request fails (Config#fail_on): the
+    # job that `duel init --gitlab` writes lets it fail, as a warning.
+    WARNED = 3
 
     # The variables that set options, to their values, and the one that
     # sets a flag by being set at all.
@@ -59,7 +69,8 @@ module Duel
     end
 
     # Runs, and returns the exit status: 0 not slower (or nothing to compare),
-    # 1 slower (or a benchmark failed), 2 couldn't compare.
+    # 1 slower (or a benchmark failed), 2 couldn't compare, 3 slower but
+    # warned (see WARNED).
     def run
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
 
@@ -114,11 +125,11 @@ module Duel
       settings = Settings.defaults
       settings.jobs = [Etc.nprocessors / 2, 1].max
       parser(settings).parse!(env_options + @argv)
-      set = variables
-      if pushed? && set.key?("GITHUB_REF_NAME") && set.key?("DUEL_BASE") && settings.base == set.fetch("DUEL_BASE")
-        settings.pushed = set.fetch("GITHUB_REF_NAME")
-      end
-      settings.target = "origin/#{set.fetch("GITHUB_BASE_REF")}" if set.key?("GITHUB_BASE_REF") && pull_request?
+      branch = variable("GITHUB_REF_NAME", "CI_COMMIT_BRANCH")
+      base = variable("DUEL_BASE")
+      settings.pushed = branch if pushed? && !base.nil? && settings.base == base
+      target = variable("GITHUB_BASE_REF", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
+      settings.target = "origin/#{target}" if target && pull_request?
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
       settings
@@ -182,31 +193,35 @@ module Duel
       return 1 unless pull_requests_only?(config, settings)
       return 1 unless outside_pull_request?
 
-      event = variables.fetch("GITHUB_EVENT_NAME")
-      passing("only a pull request fails (c.fail_on), so this #{event} passes",
-        "Only a pull request fails (#{Summary.code("c.fail_on")}), so this #{event} passes.")
+      # (Outside a pull request on CI, so there's one: see #event.)
+      run = event #: String
+      passing("only a pull request fails (c.fail_on), so this #{run} passes",
+        "Only a pull request fails (#{Summary.code("c.fail_on")}), so this #{run} passes.", gitlab? ? WARNED : 0)
     end
 
-    # Passes a run that was slower, as +why+ says, in a warning (on GitHub
-    # Actions, an annotation), and as +note+ says in the report.
-    def passing(why, note)
-      @out.puts "::warning::Duel: slower, but #{why}"
+    # Passes a run that was slower (or on GitLab CI, warns: +exit+), as
+    # +why+ says, in a warning (on GitHub Actions, an annotation), and as
+    # +note+ says in the report.
+    def passing(why, note, exit = 0)
+      @out.puts "#{gitlab? ? "duel: " : "::warning::Duel: "}slower, but #{why}"
       @note = note
-      0
+      exit
     end
 
-    # Whether the pull request's labels (DUEL_LABELS, a JSON array of
-    # their names) have the one that accepts a regression
-    # (Config#accept_label).
+    # Whether the pull request's labels have the one that accepts a
+    # regression (Config#accept_label).
     def accepted?(config)
       label = config.accept_label
       !label.nil? && labels.include?(label)
     end
 
-    # The pull request's labels, from DUEL_LABELS: none where it's unset,
-    # or isn't a JSON array.
+    # The pull request's labels: DUEL_LABELS (a JSON array of their names)
+    # on GitHub Actions, or a GitLab merge request's
+    # (CI_MERGE_REQUEST_LABELS, by commas), or none, where neither is
+    # set, or DUEL_LABELS isn't a JSON array.
     def labels
       set = variables
+      return set.fetch("CI_MERGE_REQUEST_LABELS").split(",") if !set.key?("DUEL_LABELS") && set.key?("CI_MERGE_REQUEST_LABELS")
       return [] unless set.key?("DUEL_LABELS")
 
       names = JSON.parse(set.fetch("DUEL_LABELS"))
@@ -224,32 +239,45 @@ module Duel
     # Config#fail_on).
     def pull_requests_only?(config, settings) = (settings.fail_on || config.fail_on) == :pull_requests
 
-    # Whether this is a run on GitHub Actions for something other than a
-    # pull request (PULL_REQUESTS): a push, say.
-    def outside_pull_request?
-      set = variables
-      set.key?("GITHUB_EVENT_NAME") && !PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
+    # What a run on CI is for, as GitHub Actions names it
+    # (GITHUB_EVENT_NAME): push, pull_request, schedule, say. On GitLab
+    # CI, its pipeline's source (CI_PIPELINE_SOURCE), as GitHub would
+    # name it: a merge request's is pull_request. Outside CI, nil.
+    def event
+      github = variable("GITHUB_EVENT_NAME")
+      return github if github
+      return unless gitlab?
+
+      source = variable("CI_PIPELINE_SOURCE")
+      (source == "merge_request_event") ? "pull_request" : source
     end
 
-    # Whether this is a run on GitHub Actions for a pull request (or a
-    # merge queue: see PULL_REQUESTS).
-    def pull_request?
-      set = variables
-      set.key?("GITHUB_EVENT_NAME") && PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
+    # Whether this is a run on GitLab CI.
+    def gitlab? = variables.key?("GITLAB_CI")
+
+    # Whether this is a run on CI for something other than a pull request
+    # (PULL_REQUESTS): a push, say.
+    def outside_pull_request?
+      run = event
+      !run.nil? && !PULL_REQUESTS.include?(run)
     end
+
+    # Whether this is a run on CI for a pull request (or a merge queue:
+    # see PULL_REQUESTS).
+    def pull_request? = PULL_REQUESTS.include?(event)
 
     # Whether the baseline is a merge queue's base: on GitHub Actions for
     # a merge queue, as DUEL_BASE gives it.
-    def queued?(settings)
-      set = variables
-      set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "merge_group" && set.key?("DUEL_BASE") &&
-        settings.base == set.fetch("DUEL_BASE")
-    end
+    def queued?(settings) = event == "merge_group" && settings.base == variable("DUEL_BASE")
 
-    # Whether this is a run on GitHub Actions for a push.
-    def pushed?
+    # Whether this is a run on CI for a push.
+    def pushed? = event == "push"
+
+    # The first of the variables +names+ that's set, or nil.
+    def variable(*names)
       set = variables
-      set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "push"
+      name = names.find { |n| set.key?(n) }
+      set.fetch(name) if name
     end
 
     # Says there's nothing to compare (+title+, in Markdown), and +why+,
@@ -292,12 +320,14 @@ module Duel
     # Actions, it also sets the step's outputs (STEP_OUTPUT) for the jobs
     # that comment: +comment+, and +status+ as the comment's marker has
     # it (MARKED), and for the job that marks a push passed, "passed"
-    # (see #marks_passed?).
+    # (see #marks_passed?). Where DUEL_OUTPUT names a file (OUTPUT), it
+    # writes them there too, as variables.
     def publish(status, markdown, json)
       comment = commenting(status)
       set = variables
       outputs = "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n#{"passed=true\n" if @passed}"
       File.write(set.fetch(STEP_OUTPUT), outputs, mode: "a") if set.key?(STEP_OUTPUT)
+      File.write(set.fetch(OUTPUT), outputs.gsub(/^\w+=/) { |name| "DUEL_#{name.upcase}" }, mode: "a") if set.key?(OUTPUT)
       path = @json
       write(path, "#{JSON.pretty_generate(json.call(comment))}\n") if path
       path = @markdown

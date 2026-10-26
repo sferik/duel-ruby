@@ -262,6 +262,37 @@ class CLISummaryTest < DuelTest
     assert_nil @summarized.first.last.fetch(:note)
   end
 
+  # On GitLab CI, a merge request is a pull request, and where only a
+  # merge request fails, a regression elsewhere warns: it exits with
+  # WARNED, which the job lets fail. A merge request's labels accept a
+  # regression, and the outputs are written as variables to DUEL_OUTPUT.
+  def test_on_gitlab
+    output = File.join(tmpdir, "duel.env")
+    gitlab = lambda do |source, *argv, passed: false, env: {}|
+      File.write(output, "")
+      File.write(output, "BEFORE=1\n") if env.key?("BEFORE")
+      exit = run_faked("--fail-on", "pull_requests", *argv, passed: passed,
+        env: {"GITLAB_CI" => "true", "CI_PIPELINE_SOURCE" => source, "DUEL_OUTPUT" => output}.merge(env))
+      [exit, File.read(output), @out.string.lines.grep(/slower, but/).join]
+    end
+    warned = "duel: slower, but only a pull request fails (c.fail_on), so this push passes\n"
+
+    assert_equal [1, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", ""], gitlab.call("merge_request_event"), "a merge request"
+    assert_equal [3, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", warned], gitlab.call("push")
+    assert_equal [3, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", warned.sub("push", "schedule")], gitlab.call("schedule")
+    assert_equal [0, "DUEL_COMMENT=change\nDUEL_STATUS=passed\n", ""], gitlab.call("push", passed: true)
+    assert_equal [1, "DUEL_COMMENT=none\nDUEL_STATUS=failed\n", ""], gitlab.call("push", "--fail-on", "every_run")
+    assert_equal [1, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", ""], gitlab.call("push", env: {"GITLAB_CI" => ""}), "not GitLab CI"
+    assert_equal 1, gitlab.call("", env: {"CI_PIPELINE_SOURCE" => ""}).first, "no pipeline source: not CI"
+    assert_equal "BEFORE=1\nDUEL_COMMENT=change\nDUEL_STATUS=passed\n", gitlab.call("push", passed: true, env: {"BEFORE" => "1"})[1], "added to"
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
+    labeled = {"CI_MERGE_REQUEST_LABELS" => "bug,duel: accept"}
+
+    assert_equal 0, gitlab.call("merge_request_event", env: labeled).first, "accepted, by the merge request's labels"
+    assert_equal 1, gitlab.call("merge_request_event", env: labeled.merge("DUEL_LABELS" => "[]")).first, "DUEL_LABELS first"
+    assert_equal 1, gitlab.call("merge_request_event", env: {"CI_MERGE_REQUEST_LABELS" => "bug,duel: accepted"}).first, "by name"
+  end
+
   # A push that couldn't compare fails either way, and its commit gets a
   # comment only where a regression in a push passes.
   def test_a_push_that_couldnt_compare
