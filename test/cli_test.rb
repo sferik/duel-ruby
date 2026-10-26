@@ -169,7 +169,7 @@ class CLITest < DuelTest
   # long.
   def run_against(ref:, unchanged:, argv: [], build: nil, root: tmpdir)
     @built = built = []
-    baseline = Struct.new(:ref, :unchanged?, :root).new(ref, unchanged, root)
+    baseline = Struct.new(:ref, :unchanged?, :root, :watched).new(ref, unchanged, root, %w[lib duel])
     baseline.define_singleton_method(:build) { |dir, what| (built << [dir, what]) && build&.call }
     stub(Duel::Baseline, :new, ->(*) { baseline }) { run_with(true, *argv, dir: tmpdir) }
   end
@@ -203,7 +203,7 @@ class CLITest < DuelTest
     status, runner = run_against(ref: "abc", unchanged: true)
 
     assert_equal [0, nil], [status, runner]
-    assert_equal "duel: lib, ext unchanged since the baseline, so there's nothing to compare (--force to anyway)\n", @out.string
+    assert_equal "duel: lib, duel unchanged since the baseline, so there's nothing to compare (--force to anyway)\n", @out.string
     assert_equal tmpdir, run_against(ref: "abc", unchanged: true, argv: ["--force"])[3]
   end
 
@@ -283,7 +283,7 @@ class CLITest < DuelTest
     run.call("commit", "-q", "--allow-empty", "-m", "two")
 
     assert_equal 0, Dir.chdir(repo) { cli("--base", "HEAD^").run }
-    assert_includes @out.string, "lib, ext unchanged since the baseline, so there's nothing to compare (--force to anyway)"
+    assert_includes @out.string, "lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)"
   end
 
   def test_errors_are_reported

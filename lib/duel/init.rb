@@ -162,8 +162,15 @@ module Duel
 
     def render(name) = ERB.new(File.read(File.join(TEMPLATES, "#{name}.erb")), trim_mode: "-").result(binding)
 
+    # The project's configuration, as the conventions have it.
+    def config = Config.new(@root)
+
     # The library the gemspec names (see Config#library), or nil.
-    def library = Config.new(@root).library
+    def library = config.library
+
+    # The glob release tags match (Config#release_tags), for the workflow
+    # to find the last release as Duel does.
+    def release_tags = config.release_tags
 
     # The library, without a gemspec: lib/'s only Ruby file, or nil.
     def guess

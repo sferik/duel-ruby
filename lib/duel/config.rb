@@ -11,7 +11,8 @@ module Duel
   # - a project with ext/ is built with `bundle exec rake compile` when
   #   a baseline is checked out
   # - a change is compared with where it left the branch origin/HEAD
-  #   points to (origin/main, say), when lib/ or ext/ changed
+  #   points to (origin/main, say), when lib/ or ext/ changed, or what
+  #   decides how they're measured (see #watch)
   # - releases are tagged v*
   #
   # .duel.rb, at the root, changes what doesn't fit:
@@ -33,8 +34,11 @@ module Duel
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor :benchmarks
 
-    # Paths, from the root, whose changes a comparison is about: when none
-    # of them changed since the baseline, there's nothing to compare.
+    # Paths, from the root, of the code whose changes a comparison is
+    # about: when none of them changed since the baseline, nor what
+    # decides how it's measured (the benchmarks' directory, the
+    # configuration's file, and with each version on its own Ruby, the
+    # version files at the root), there's nothing to compare.
     attr_accessor :watch
 
     # The library to require from each version, as `require` takes it,

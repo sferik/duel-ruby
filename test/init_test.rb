@@ -61,9 +61,32 @@ class InitTest < DuelTest
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
     assert_includes workflow, %(marker="<!-- duel -->"\n)
-    assert_equal %w[checkout setup-ruby Compare Comment], YAML.safe_load(workflow).dig("jobs", "duel", "steps").map { |step|
-      step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1]
-    }
+    jobs = YAML.safe_load(workflow).fetch("jobs")
+    steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
+
+    assert_equal %w[checkout setup-ruby Compare Keep], steps.call("duel")
+    assert_equal %w[Get Comment], steps.call("comment")
+  end
+
+  # The job that runs the branch's code (its benchmarks too) only reads,
+  # and keeps the report. Another, which checks nothing out and runs none
+  # of it, comments with it, on a pull request from the repository.
+  def test_the_workflows_permissions
+    gem
+    init.run
+    workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
+    duel, comment = workflow.fetch("jobs").values_at("duel", "comment")
+
+    assert_equal({"contents" => "read"}, workflow.fetch("permissions"))
+    refute duel.key?("permissions")
+    assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
+    assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/duel.md", "if-no-files-found" => "ignore", "retention-days" => 1},
+      duel.fetch("steps").last.fetch("with"))
+    assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
+    assert_includes comment.fetch("if"), "github.event.pull_request.head.repo.full_name == github.repository"
+    assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
+    refute_includes comment.to_s, "checkout"
+    refute_includes comment.to_s, "bundle"
   end
 
   # A gem whose name has a dash: its library's in a directory.
@@ -107,8 +130,21 @@ class InitTest < DuelTest
     workflow = read(".github/workflows/perf.yml")
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
-    assert_includes workflow, %(git show "origin/$GITHUB_BASE_REF:./.ruby-version")
+    assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
+    assert_includes workflow, %(          RELEASE_TAGS: "v*"\n), "the last release as Duel finds it"
     assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
+    workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
+  end
+
+  # The guide's steps that set up the baseline's Ruby, in docs/ci.md, are
+  # the workflow's.
+  def test_the_guides_steps_for_the_baseline_ruby
+    write(".ruby-version", "3.4.1\n")
+    steps = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n      # \(Before the step that sets up the candidate's Ruby\.\)\n(.*?)^```$/m, 1]
+
+    assert_includes init.files.fetch(".github/workflows/perf.yml"), "    steps:\n      - uses: actions/checkout@v7\n" \
+      "        with:\n          fetch-depth: 0 # the baseline comes from history, tags included\n          persist-credentials: false\n" \
+      "      # (And whatever else your tests need set up: packages, services.)\n#{steps}      - uses: ruby/setup-ruby@v1\n"
   end
 
   # Without a gemspec: lib/'s only file is the library, or there's none
@@ -290,6 +326,7 @@ class InitTest < DuelTest
     assert_includes workflow, %(marker="<!-- duel gems/parser -->"\n)
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
+    refute YAML.safe_load(workflow).dig("jobs", "comment").key?("defaults"), "nothing checked out there"
     init(at: tmpdir).run
 
     assert_includes @out.string, "  create    .github/workflows/perf.yml\n", "at the root"

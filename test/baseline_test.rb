@@ -141,6 +141,68 @@ class BaselineTest < DuelTest
     refute_predicate baseline(candidate_dir: @repo), :unchanged?
   end
 
+  # Each version runs the candidate's benchmarks and configuration, so a
+  # change to only those is compared too (the code with itself), as is a
+  # change to the Ruby a version file names, for each version on its own.
+  def test_unchanged_unless_what_decides_the_measuring_changed
+    # (Staged: a file git doesn't track isn't compared.)
+    write = lambda do |path, content|
+      FileUtils.mkdir_p(File.dirname(File.join(@repo, path)))
+      File.write(File.join(@repo, path), content)
+      git("add", "-A")
+    end
+    write.call("duel/fixtures/input.txt", "x")
+
+    refute_predicate baseline, :unchanged?, "the benchmarks' fixtures"
+    commit("fixtures")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "feature")
+    git("checkout", "-q", "feature")
+
+    assert_predicate baseline, :unchanged?
+    write.call(".duel.rb", "")
+
+    refute_predicate baseline, :unchanged?, "the configuration"
+    assert_predicate baseline(config_path: File.join(@repo, "other.rb")), :unchanged?, "another configuration"
+    git("rm", "-qf", ".duel.rb")
+    write.call(".ruby-version", "3.4.1\n")
+    commit("Ruby 3.4.1")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "feature")
+    git("checkout", "-q", "feature")
+    write.call(".ruby-version", "3.5.0\n")
+
+    assert_predicate baseline, :unchanged?, "each version on the runner's Ruby"
+    refute_predicate baseline(ruby: :version_file), :unchanged?, "each version on its own"
+    @config.ruby = :version_file
+
+    refute_predicate baseline, :unchanged?
+    assert_predicate baseline(ruby: "/usr/bin/ruby"), :unchanged?, "--ruby over c.ruby"
+  end
+
+  # What a change must touch to be compared: the code, the benchmarks'
+  # directory, the configuration's file, and with each version on its
+  # own Ruby, the version files there are.
+  def test_watched
+    assert_equal %w[lib ext duel .duel.rb], baseline.watched
+    @config.watch = %w[app duel]
+
+    assert_equal %w[app duel .duel.rb], baseline.watched, "each once"
+    @config.benchmarks = "perf/bench/**/*_duel.rb"
+
+    assert_equal %w[app duel perf/bench my.rb], baseline(config_path: File.join(@repo, "my.rb")).watched
+    {"perf/x?/a.rb" => "perf", "perf/[ab]/a.rb" => "perf", "perf/{a,b}/a.rb" => "perf", "perf/a_duel.rb" => "perf/a_duel.rb",
+     "*_duel.rb" => ":(glob)*_duel.rb"}.each do |glob, watched|
+      @config.benchmarks = glob
+
+      assert_equal watched, baseline.watched[2], glob
+    end
+    File.write(File.join(@repo, "mise.toml"), "")
+    File.write(File.join(@repo, ".ruby-version"), "")
+
+    assert_equal %w[app duel :(glob)*_duel.rb .duel.rb .ruby-version mise.toml], baseline(ruby: :version_file).watched
+  end
+
   def test_root_checks_out_and_builds_the_commit_once
     builds = File.join(tmpdir, "builds.log")
     @config.build = "pwd >> #{builds}"

@@ -2,14 +2,15 @@
 
 Most gems don't need any configuration: Duel's conventions cover them.
 Benchmarks are in `duel/**/*_duel.rb`, each version's `lib/` is first on
-the load path, a change is compared when it touches `lib/` or `ext/`,
-and releases are tagged `v*`. If your project differs, create a `.duel.rb` file
-at its root. Both the runner and every worker load it:
+the load path, a change is compared when it touches `lib/` or `ext/`
+(or the benchmarks, or `.duel.rb`), and releases are tagged `v*`. If
+your project differs, create a `.duel.rb` file at its root. Both the
+runner and every worker load it:
 
 ```ruby
 Duel.configure do |c|
   c.benchmarks = "perf/**/*_bench.rb"    # default: duel/**/*_duel.rb
-  c.watch = %w[lib ext]                  # what a change must touch to be compared
+  c.watch = %w[lib ext]                  # the code a change must touch to be compared
   c.library = "my_gem"                   # required from each version (default: the gemspec's)
   c.build = "make"                       # for both versions (default: rake compile, with ext/)
   c.main_branch = "origin/trunk"
@@ -27,6 +28,32 @@ which `Duel.config` also returns. `c.root` is your project's root
 directory. The configuration also takes hooks, such as
 `c.before_sample`. See
 [Run code around a benchmark](benchmarks.md#run-code-around-a-benchmark).
+
+## Choose what a change must touch to be compared
+
+When nothing that Duel watches changed since the baseline, there's
+nothing to compare, and Duel passes without running the benchmarks.
+`c.watch` names your code: `lib/` and `ext/` by default. Duel also
+watches what decides how your code is measured:
+
+- The benchmarks' directory: the part of `c.benchmarks` before its first
+  wildcard, `duel/` by default, with its helpers and fixtures.
+- The configuration's file, `.duel.rb`.
+- With [`c.ruby = :version_file`](#run-each-version-on-its-own-ruby),
+  the version files at your project's root (`.ruby-version`,
+  `.tool-versions`, `mise.toml`, or `.mise.toml`).
+
+Each version runs your branch's benchmarks and configuration, so a
+change to only those compares your code with itself. That checks that
+the changed benchmarks run, and pass on identical code, instead of
+passing without running them. To compare a change to anything else, such
+as your CI workflow, add it to `c.watch`:
+
+```ruby
+Duel.configure do |c|
+  c.watch += %w[.github/workflows/perf.yml]
+end
+```
 
 ## Prepare each worker
 

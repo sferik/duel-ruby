@@ -32,7 +32,8 @@ module Duel
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor benchmarks: String
 
-    # Paths, from the root, whose changes a comparison is about.
+    # Paths, from the root, of the code whose changes a comparison is
+    # about (with what decides how it's measured).
     attr_accessor watch: Array[String]
 
     # The library to require from each version, or nil for none.

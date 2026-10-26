@@ -169,8 +169,10 @@ that small. If Duel can't write next to your project, or something else
 already has that name, it uses `tmp/duel/base` instead. Whenever the two
 versions' paths differ in length, Duel says so.
 
-If nothing under `lib/` or `ext/` changed since the baseline, there's
-nothing to compare, and Duel says so. To compare anyway, use `--force`.
+If nothing under `lib/` or `ext/`, your benchmarks, or `.duel.rb`
+changed since the baseline, there's nothing to compare, and Duel says
+so. To compare anyway, use `--force`. See
+[Choose what a change must touch to be compared](configuration.md#choose-what-a-change-must-touch-to-be-compared).
 
 Duel also builds the candidate before every run. Builds are incremental,
 so a build that's already done costs little. A stale or missing build,

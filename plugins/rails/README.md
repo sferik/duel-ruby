@@ -326,8 +326,9 @@ Each Ruby must be installed where Duel finds it: with rbenv, chruby,
 mise, or asdf, or as the Ruby that runs Duel. For more information, see
 Duel's [Run each version on its own Ruby](https://github.com/sferik/duel-ruby/blob/main/docs/configuration.md#run-each-version-on-its-own-ruby).
 On GitHub Actions, the generated workflow installs your app's Ruby, and,
-for a pull request, also the main branch's, so a pull request that
-upgrades Ruby works there too.
+when the baseline's `.ruby-version` names another Ruby, that one too, so
+a pull request, a push, or a nightly run against your last release
+works there when your app upgrades Ruby.
 
 To run both versions on the Ruby that runs Duel, remove
 `c.ruby = :version_file`.
@@ -428,7 +429,9 @@ end
 ```
 
 duel-rails also tells Duel to compare a change to `app/`, `config/`,
-`db/`, `lib/`, `Gemfile`, `Gemfile.lock`, or `.ruby-version`.
+`db/`, `lib/`, `Gemfile`, `Gemfile.lock`, or `.ruby-version`, as well
+as one to your benchmarks (`duel/`) or `.duel.rb`, which Duel always
+watches.
 
 ## An app in a monorepo
 

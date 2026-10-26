@@ -189,7 +189,7 @@ A run with nothing to compare has the same keys, with nothing compared:
   "duel_version": "0.1.0",
   "status": "nothing_to_compare",
   "exit": 0,
-  "message": "duel: lib, ext unchanged since the baseline, so there's nothing to compare (--force to anyway)",
+  "message": "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
   "settings": {"confidence": 0.99, "limit": 1.02, "filter": "", "jobs": 4, "processes": 3, "timeout": 60.0, "warm": null, "force": false},
   "seconds": null,
   "baseline": null,
@@ -247,7 +247,7 @@ was slower across the board and confirmed (`"confirmed": true`).
 |---|---|
 | `ref` | The baseline's git ref: the one `--base` named, the release tag for `--base last-release`, or the main branch, such as `"origin/main"`, by default, where the baseline is the commit where `HEAD` left that branch. `null` for a baseline directory. |
 | `commit` | The full hash of the commit compared. `null` for a baseline directory, or for a candidate outside a git repository. |
-| `uncommitted_changes` | The candidate only: whether what `c.watch` names has changes that aren't committed. `null` outside a git repository. |
+| `uncommitted_changes` | The candidate only: whether what Duel watches (`c.watch`, the benchmarks, and the rest that a change must touch to be compared: see [Configure Duel](configuration.md)) has changes that aren't committed. `null` outside a git repository. |
 | `root` | The tree that was compared, as an absolute path. |
 | `ruby` | The version's Ruby, as its `RUBY_DESCRIPTION`. |
 

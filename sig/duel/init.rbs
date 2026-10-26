@@ -63,8 +63,14 @@ module Duel
 
     def render: (String name) -> String
 
+    # The project's configuration, as the conventions have it.
+    def config: () -> Config
+
     # The library the gemspec names, or nil.
     def library: () -> String?
+
+    # The glob release tags match, for the workflow.
+    def release_tags: () -> String
 
     # The library, without a gemspec: lib/'s only Ruby file, or nil.
     def guess: () -> String?

@@ -4,6 +4,7 @@ require "digest"
 require "fileutils"
 require "open3"
 require_relative "../duel"
+require_relative "rubies"
 
 module Duel
   # The version to compare against: a directory (Settings#base_dir), or a
@@ -39,15 +40,28 @@ module Duel
       end
     end
 
-    # Whether nothing Config#watch names changed since the baseline (only
-    # for a git baseline compared with the working tree).
+    # Whether nothing #watched changed since the baseline (only for a git
+    # baseline compared with the working tree).
     def unchanged?
       return false if @settings.base_dir || @settings.candidate_dir
 
       # (There's a ref: CLI#run checks first.)
       commit = ref #: String
-      _, status = Open3.capture2e("git", "-C", @config.root, "diff", "--quiet", commit, "--", *@config.watch)
+      _, status = Open3.capture2e("git", "-C", @config.root, "diff", "--quiet", commit, "--", *watched)
       status.success?
+    end
+
+    # What a change must touch to be compared, from the root: the code
+    # (Config#watch), and what decides how it's measured. Each version
+    # runs the candidate's benchmarks and configuration, so a change to
+    # only those compares the code with itself, which checks them. They
+    # are the benchmarks' directory (the glob's, up to its first
+    # wildcard), the configuration's file, and with each version on its
+    # own Ruby, the version files at the root.
+    def watched
+      measured = [benchmarks, config_file]
+      measured.concat(version_files) if (@settings.ruby || @config.ruby) == :version_file
+      (@config.watch + measured).uniq
     end
 
     # The baseline's tree, checked out and built if it's a commit.
@@ -128,6 +142,20 @@ module Duel
     end
 
     private
+
+    # The benchmarks' directory (see #watched), or for benchmarks at the
+    # root, their glob, as git matches one.
+    def benchmarks
+      glob = @config.benchmarks
+      dir = glob.split("/").take_while { |part| !part.match?(/[*?\[{]/) }.join("/")
+      dir.empty? ? ":(glob)#{glob}" : dir
+    end
+
+    # The configuration's file, from the root (which is its directory).
+    def config_file = File.basename(@settings.config_path || ".duel.rb")
+
+    # The version files at the root (see Rubies).
+    def version_files = Rubies::VERSION_FILES.select { |name| File.exist?(File.join(@config.root, name)) }
 
     # Where HEAD left the main branch: their merge base, which there isn't
     # when their histories are unrelated, or in a shallow clone (CI's,

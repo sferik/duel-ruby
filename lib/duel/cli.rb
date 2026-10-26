@@ -85,7 +85,7 @@ module Duel
       end
       return nothing("no release tag (#{config.release_tags}) before HEAD to compare against") if settings.base_dir.nil? && baseline.ref.nil?
       if !settings.force && baseline.unchanged?
-        return nothing("#{config.watch.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
+        return nothing("#{baseline.watched.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
       end
 
       candidate = settings.candidate_dir || config.root
@@ -162,13 +162,13 @@ module Duel
     end
 
     # The candidate, in Markdown: its directory, or its commit, and
-    # whether what Config#watch names has changes not committed.
+    # whether what's watched (Baseline#watched) has changes not committed.
     def described_candidate(config, settings)
       dir = settings.candidate_dir || config.root
       head, found = git(dir, "rev-parse", "--short", "HEAD")
       return Summary.code(dir) unless found.success?
 
-      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *config.watch)
+      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
       "#{Summary.code(head.chomp)}#{", with changes not committed" unless clean.success?}"
     end
 
@@ -189,15 +189,15 @@ module Duel
       described.merge("ref" => named, "commit" => git(config.root, "rev-parse", "#{ref}^{commit}").first.chomp)
     end
 
-    # The candidate, for JSON: its commit, and whether what Config#watch
-    # names has changes not committed (each nil outside a repository), and
-    # its tree.
+    # The candidate, for JSON: its commit, and whether what's watched
+    # (Baseline#watched) has changes not committed (each nil outside a
+    # repository), and its tree.
     def candidate_json(config, settings)
       dir = File.expand_path(settings.candidate_dir || config.root)
       head, found = git(dir, "rev-parse", "HEAD")
       return {"commit" => nil, "uncommitted_changes" => nil, "root" => dir} unless found.success?
 
-      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *config.watch)
+      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
       {"commit" => head.chomp, "uncommitted_changes" => !clean.success?, "root" => dir}
     end
 

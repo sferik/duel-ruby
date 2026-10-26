@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A change to only the benchmarks or the configuration is compared. Duel
+  watches what decides how the code is measured, as well as the code
+  that `c.watch` names: the benchmarks' directory (`c.benchmarks` up to
+  its first wildcard, `duel/` by default), the configuration's file
+  (`.duel.rb`), and, with `c.ruby = :version_file`, the version files at
+  the project's root. Each version runs the candidate's benchmarks and
+  configuration, so such a change compares the code with itself, which
+  checks that they run and pass, where before Duel passed saying there
+  was nothing to compare. "Nothing to compare" messages, and the
+  candidate's `uncommitted_changes` in JSON, cover them too.
+
+### Security
+
+- The workflow that `duel init` writes no longer gives the job that runs
+  a pull request's code the `pull-requests: write` permission. The Duel
+  job only reads (`contents: read`, and its checkout keeps no
+  credentials), and keeps the report as an artifact for a day. A
+  Comment job of its own, which checks nothing out and runs none of the
+  pull request's code, downloads the report and comments with it, for a
+  pull request from the same repository.
+
+### Fixed
+
+- With `c.ruby = :version_file`, the workflow that `duel init` writes
+  installs the baseline's Ruby for every event that compares, not only
+  for a pull request. It finds the baseline that the Compare step uses
+  (where HEAD left the main branch for a pull request and a manual run,
+  the commit before a push, and the last release on a schedule, with
+  the release tags' glob in `RELEASE_TAGS`), and installs its Ruby only
+  when its `.ruby-version` names another Ruby than HEAD's. Its scripts
+  take the workflow's values from environment variables, not `${{ }}`.
+
 ## [0.1.0] - 2026-10-24
 
 The first release. Duel is open source under the MIT license, and

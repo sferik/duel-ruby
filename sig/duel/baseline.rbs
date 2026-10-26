@@ -16,8 +16,14 @@ module Duel
     # The commit, or nil for "last-release" with no release yet.
     def ref: () -> String?
 
-    # Whether nothing Config#watch names changed since the baseline.
+    # Whether nothing #watched changed since the baseline.
     def unchanged?: () -> bool
+
+    # What a change must touch to be compared: the code (Config#watch),
+    # and what decides how it's measured (the benchmarks, the
+    # configuration's file, and with each version on its own Ruby, its
+    # version files).
+    def watched: () -> Array[String]
 
     # The baseline's tree, checked out and built if it's a commit.
     def root: () -> String
@@ -42,6 +48,15 @@ module Duel
     def build: (String dir, String what) -> void
 
     private
+
+    # The benchmarks' directory, or for benchmarks at the root, their glob.
+    def benchmarks: () -> String
+
+    # The configuration's file, from the root.
+    def config_file: () -> String
+
+    # The version files at the root.
+    def version_files: () -> Array[String]
 
     # Where HEAD left the main branch: their merge base, or a failure that
     # says why there's none.

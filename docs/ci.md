@@ -28,9 +28,10 @@ on:
     - cron: "0 4 * * *"
   workflow_dispatch:
 
+# The Duel job runs the branch's code (its benchmarks too), so it only
+# reads. Commenting is the Comment job's, which runs none of it.
 permissions:
   contents: read
-  pull-requests: write # to comment on a pull request with the report
 
 jobs:
   duel:
@@ -40,6 +41,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
+          persist-credentials: false
       # (And whatever else your tests need set up: packages, services.)
       - uses: ruby/setup-ruby@v1
         with:
@@ -63,18 +65,44 @@ jobs:
             exit 0
           fi
           bundle exec duel --markdown "$RUNNER_TEMP/duel.md"
-      # The report, as a comment on the pull request: one comment, updated
-      # on every push. (A pull request from a fork gets no comment, as its
-      # token can't write one: the job's summary has the report.)
+      # The report, for the Comment job.
+      - name: Keep the report
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: duel-report
+          path: ${{ runner.temp }}/duel.md
+          if-no-files-found: ignore # none when Duel didn't get to compare
+          retention-days: 1
+
+  # The report, as a comment on the pull request: one comment, updated on
+  # every push. This job checks nothing out and runs none of the branch's
+  # code, so it alone can write. (A pull request from a fork gets no
+  # comment, as its token can't write one: the Duel job's summary has the
+  # report.)
+  comment:
+    name: Comment
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # to comment on the pull request with the report
+    steps:
+      - name: Get the report
+        id: report
+        continue-on-error: true # there's none when the Duel job failed before comparing
+        uses: actions/download-artifact@v8
+        with:
+          name: duel-report
+          path: ${{ runner.temp }}/report
       - name: Comment on the pull request
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        if: steps.report.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          [ -f "$RUNNER_TEMP/duel.md" ] || exit 0
           marker="<!-- duel -->"
-          { echo "$marker"; cat "$RUNNER_TEMP/duel.md"; } > "$RUNNER_TEMP/comment.md"
+          { echo "$marker"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
           ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id")
           if [ -n "$ids" ]; then
@@ -95,6 +123,14 @@ The workflow compares the following:
 - When you run the workflow manually, your code against itself. This
   checks that the benchmarks run on the CI machines.
 
+Duel compares a change that touches your code (`lib/` or `ext/`, or what
+`c.watch` names), your benchmarks, `.duel.rb`, or, with
+`c.ruby = :version_file`, your version file. Each version runs your
+branch's benchmarks and configuration, so a change to only those compares
+the same code with itself, which checks that they run and pass. A change
+to only the workflow has nothing to compare: to check it, run the
+workflow manually.
+
 ## Comment on a pull request
 
 The workflow writes Duel's report
@@ -102,10 +138,16 @@ The workflow writes Duel's report
 to a file, and then comments on the pull request with it. It updates
 the same comment on every push, rather than adding one each time. It
 finds its comment by the hidden marker on the comment's first line, so
-give each workflow that comments a marker of its own. Commenting takes
-the `pull-requests: write` permission. A pull request from a fork gets
-no comment, because its token can't write one, but the job's summary
-still has the report.
+give each workflow that comments a marker of its own.
+
+The Duel job runs the pull request's code, its benchmarks included, so
+it only reads (`contents: read`), and it keeps the report as an
+artifact for a day. A job of its own, Comment, posts the report. It
+checks nothing out and runs none of the pull request's code, so it
+alone gets the `pull-requests: write` permission that commenting takes.
+When the Duel job fails before it compares, there's no report, and no
+comment. A pull request from a fork gets no comment either, because its
+token can't write one, but the Duel job's summary still has the report.
 
 ## Run each version on its own Ruby on CI
 
@@ -113,29 +155,64 @@ With [`c.ruby = :version_file`](configuration.md#run-each-version-on-its-own-rub
 each version runs on the Ruby that its own version file names. On CI, a
 setup step such as `ruby/setup-ruby` installs the Ruby that
 runs `duel` where no version manager looks. That's enough while both
-versions ask for that Ruby. A pull request that upgrades Ruby needs the
+versions ask for that Ruby. A branch that upgrades Ruby needs the
 baseline's Ruby installed too, where Duel finds it. For example, for a
 project with a `.ruby-version`, in the
-[GitHub Actions workflow](#catch-slow-creep), install the main branch's
-Ruby with a second `ruby/setup-ruby` step, and link it into
-`~/.rubies`, where Duel looks for Rubies the way that chruby does.
-`duel init` adds these steps for a project that has a `.ruby-version`:
+[GitHub Actions workflow](#catch-slow-creep), find the baseline that the
+Compare step compares with, for each event: where `HEAD` left the main
+branch for a pull request and a manual run, the commit before a push,
+and the last release on a schedule. When its `.ruby-version` names
+another Ruby than yours, install that Ruby with a second
+`ruby/setup-ruby` step, and link it into `~/.rubies`, where Duel looks
+for Rubies the way that chruby does. Without a baseline, such as for a
+branch's first push, or before your first release, there's no Ruby to
+install. The step finds the main branch and the last release the way
+Duel does by default: if `.duel.rb` sets `c.main_branch` or
+`c.release_tags`, set the step's `MAIN_BRANCH` or `RELEASE_TAGS` to
+match. `duel init` adds these steps for a project that has a
+`.ruby-version`:
 
 ```yaml
       # (Before the step that sets up the candidate's Ruby.)
+      # Each version runs on the Ruby its own .ruby-version names (see
+      # .duel.rb). When the baseline's names another Ruby than this code's,
+      # that one is installed too, and linked where Duel finds it (as
+      # chruby would), before the project's own Ruby, which runs Duel. The
+      # baseline is the Compare step's: where HEAD left the main branch
+      # (for a pull request, and run by hand), the commit before a push, or
+      # on a schedule the last release, the newest tag before HEAD that
+      # RELEASE_TAGS matches. (If .duel.rb sets c.main_branch or
+      # c.release_tags, set MAIN_BRANCH or RELEASE_TAGS to match.)
       - name: Find the baseline's Ruby
         id: baseline
-        if: github.event_name == 'pull_request'
-        run: echo "ruby=$(git show "origin/$GITHUB_BASE_REF:.ruby-version")" >> "$GITHUB_OUTPUT"
+        env:
+          BEFORE: ${{ github.event.before }}
+          MAIN_BRANCH: origin/${{ github.event.repository.default_branch }}
+          RELEASE_TAGS: "v*"
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            push) base=$BEFORE ;;
+            schedule) base=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || base= ;;
+            *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
+          esac
+          ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }'; }
+          ruby=
+          # (None without a baseline: a branch's first push, or no release yet.)
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            ruby=$(ruby_of "$base")
+            [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
+          fi
+          echo "ruby=$ruby" >> "$GITHUB_OUTPUT"
       - uses: ruby/setup-ruby@v1
         id: baseline-ruby
-        if: github.event_name == 'pull_request'
+        if: steps.baseline.outputs.ruby != ''
         with:
           ruby-version: ${{ steps.baseline.outputs.ruby }}
       - name: Link the baseline's Ruby where Duel finds it
-        if: github.event_name == 'pull_request'
+        if: steps.baseline.outputs.ruby != ''
+        env:
+          PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
         run: |
-          prefix="${{ steps.baseline-ruby.outputs.ruby-prefix }}"
           mkdir -p ~/.rubies
-          ln -sfn "$prefix" ~/.rubies/ruby-"$("$prefix/bin/ruby" -e 'print RUBY_VERSION')"
+          ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
 ```

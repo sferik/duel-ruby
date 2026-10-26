@@ -106,6 +106,8 @@ class CLISummaryTest < DuelTest
     repo = FileUtils.mkdir_p(File.join(tmpdir, "repo")).first
     FileUtils.mkdir_p(File.join(repo, "lib"))
     File.write(File.join(repo, "lib", "a.rb"), "")
+    FileUtils.mkdir_p(File.join(repo, "duel"))
+    File.write(File.join(repo, "duel", "a_duel.rb"), "")
     @git = ->(*args) { system("git", "-C", repo, "-c", "user.email=t@example.com", "-c", "user.name=t", *args, out: File::NULL) }
     @git.call("init", "-q", "-b", "main")
     @git.call("add", "-A")
@@ -126,10 +128,10 @@ class CLISummaryTest < DuelTest
     @git.call("commit", "-q", "--allow-empty", "-m", "two")
     Dir.chdir(repo) { cli("--base", "HEAD^", "--markdown", markdown).run }
 
-    assert_includes File.read(markdown), "\nduel: lib, ext unchanged since the baseline, so there's nothing to compare (--force to anyway)\n"
+    assert_includes File.read(markdown), "\nduel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)\n"
     Dir.chdir(repo) { cli("--base", "HEAD^", "--json", json, "--limit", "1.05").run }
 
-    assert_equal ["nothing_to_compare", 0, "duel: lib, ext unchanged since the baseline, so there's nothing to compare (--force to anyway)",
+    assert_equal ["nothing_to_compare", 0, "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
       []], written.values_at("status", "exit", "message", "benchmarks")
     assert_in_delta 1.05, written.dig("settings", "limit")
   end
@@ -216,6 +218,10 @@ class CLISummaryTest < DuelTest
     File.write(File.join(repo, "notes.txt"), "y")
 
     assert_equal({"commit" => head, "uncommitted_changes" => false, "root" => repo}, described.call, "only what's watched")
+    File.write(File.join(repo, "duel", "a_duel.rb"), "x")
+
+    assert_equal({"commit" => head, "uncommitted_changes" => true, "root" => repo}, described.call, "the benchmarks too")
+    @git.call("checkout", "-q", "--", "duel")
     File.write(File.join(repo, "lib", "a.rb"), "x")
     @git.call("add", "-A")
 
@@ -240,6 +246,10 @@ class CLISummaryTest < DuelTest
     File.write(File.join(repo, "notes.txt"), "y")
 
     assert_equal "`#{short(repo)}`", described.call, "only what's watched"
+    File.write(File.join(repo, "duel", "a_duel.rb"), "x")
+
+    assert_equal "`#{short(repo)}`, with changes not committed", described.call, "the benchmarks too"
+    @git.call("checkout", "-q", "--", "duel")
     File.write(File.join(repo, "lib", "a.rb"), "x")
     @git.call("add", "-A")
 

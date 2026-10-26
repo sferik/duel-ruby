@@ -151,9 +151,9 @@ at the API.
    candidate's).
 
    Then do all three:
-   - Run `bundle exec duel --force`. With `lib/` unchanged, it compares
-     the code with itself and must pass. Run it three times: a noisy
-     benchmark can pass twice by luck. A benchmark that fails or
+   - Run `bundle exec duel --force`. With the code unchanged, it
+     compares the code with itself and must pass. Run it three times: a
+     noisy benchmark can pass twice by luck. A benchmark that fails or
      errors is broken. One reported unsettled in more than one run is
      noisy: fix it or drop it. (Across many benchmarks, one unsettled
      once is normal: it doesn't fail the run.) Benchmarks that run a
@@ -168,24 +168,27 @@ at the API.
      and rebuild the extension if you changed one.
    - Run `bundle exec duel --force --filter <pattern>` for a single
      benchmark, and for one area (`--filter "^parse:"`), to confirm
-     your names can be picked out. Without `--force`, an unchanged
-     `lib/` has nothing to compare.
+     your names can be picked out. Without `--force`, a tree with
+     nothing changed since the main branch has nothing to compare.
 
 6. **Check CI.** `duel init` wrote Duel's GitHub Actions
    workflow (`.github/workflows/perf.yml`). Keep `fetch-depth: 0`:
    Duel's baseline comes from git history. Keep its check for a push
    with no commit before it in the history (a branch's first push, or a
-   force push), which would otherwise fail the job. Keep its last step,
-   which comments on a pull request with Duel's report (Duel also adds
-   the report to the job's summary). Check that `ruby-version` is one
-   the project supports, unless it has a `.ruby-version`. With
-   `c.ruby = :version_file` and another version file than
-   `.ruby-version`, add the steps in Duel's `docs/ci.md` that install the
-   baseline's Ruby for a pull request. Add the project's other CI setup that its
-   tests need (system packages, services) to the workflow as well. Keep
-   the scheduled `last-release` run only if the project tags its
-   releases (`v*` by default, or else set `c.release_tags`), or leave
-   the schedule out. Until the first release is tagged, that run says
+   force push), which would otherwise fail the job. Keep its Comment
+   job, which comments on a pull request with Duel's report (Duel also
+   adds the report to the job's summary), and keep `pull-requests: write`
+   on that job alone: the Duel job runs the branch's code, so it only
+   reads. Check that `ruby-version` is one the project supports, unless
+   it has a `.ruby-version`. With `c.ruby = :version_file` and another
+   version file than `.ruby-version`, add the steps in Duel's
+   `docs/ci.md` that install the baseline's Ruby, reading that file
+   instead. If `.duel.rb` sets `c.main_branch` or `c.release_tags`, set
+   those steps' `MAIN_BRANCH` or `RELEASE_TAGS` to match. Add the
+   project's other CI setup that its tests need (system packages,
+   services) to the Duel job as well. Keep the scheduled `last-release`
+   run only if the project tags its releases (`v*` by default, or else
+   set `c.release_tags`), or leave the schedule out. Until the first release is tagged, that run says
    there's nothing to compare against, and passes. Once it's pushed,
    run the workflow by hand: it compares the code with itself there,
    which shows that the benchmarks run on CI's machines (with their

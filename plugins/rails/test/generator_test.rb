@@ -49,7 +49,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel comment], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -58,15 +58,22 @@ class GeneratorTest < PluginTest
   end
 
   # The workflow writes Duel's report in Markdown, and comments on a pull
-  # request with it.
+  # request with it. The job that runs the app's code only reads, and
+  # keeps the report: another, which checks nothing out and runs none of
+  # it, comments.
   def test_the_workflow_comments
     generate
     workflow = read(".github/workflows/perf.yml")
+    duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
 
     assert_includes workflow, %(          bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
     assert_includes workflow, %(          marker="<!-- duel -->"\n)
-    assert_equal({"contents" => "read", "pull-requests" => "write"}, YAML.safe_load(workflow).fetch("permissions"))
-    assert_equal "Comment on the pull request", YAML.safe_load(workflow).dig("jobs", "duel", "steps").last.fetch("name")
+    assert_equal({"contents" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
+    assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
+    assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
+    assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
+    assert_equal ["Get the report", "Comment on the pull request"], comment.fetch("steps").map { |step| step.fetch("name") }
+    refute_includes comment.to_s, "checkout"
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -90,8 +97,9 @@ class GeneratorTest < PluginTest
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
     assert_operator workflow.index("id: baseline-ruby"), :<, workflow.index("bundler-cache"), "the baseline's Ruby first"
-    assert_includes workflow, %(git show "origin/$GITHUB_BASE_REF:./.ruby-version")
-    assert_includes workflow, %(ln -sfn "$prefix" ~/.rubies/ruby-)
+    assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
+    assert_includes workflow, %(          RELEASE_TAGS: "v*"\n)
+    assert_includes workflow, %(ln -sfn "$PREFIX" ~/.rubies/ruby-)
     assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
   end
 
@@ -108,7 +116,8 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
     assert_includes workflow, %(          marker="<!-- duel apps/blog -->"\n), "a comment of its own"
-    assert_equal({"run" => {"working-directory" => "apps/blog"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
+    assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
+      YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment").map { |job| job["defaults"] }, "none where nothing's checked out"
     assert_path_exists File.join(app, ".duel.rb")
     refute_path_exists File.join(app, ".github")
     assert_equal [File.realpath(@dir), "apps/blog"], [File.realpath(generator(app).send(:repository)), generator(app).send(:working_directory)]

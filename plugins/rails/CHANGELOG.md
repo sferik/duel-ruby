@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The workflow that `rails generate duel:install` writes no longer gives
+  the job that runs a pull request's code the `pull-requests: write`
+  permission. The Duel job only reads (`contents: read`, and its
+  checkout keeps no credentials), and keeps the report as an artifact
+  for a day. A Comment job of its own, which checks nothing out and runs
+  none of the app's code, downloads the report and comments with it, for
+  a pull request from the same repository.
+
+### Fixed
+
+- With a `.ruby-version`, the generated workflow installs the baseline's
+  Ruby for every event that compares, not only for a pull request: the
+  commit before a push, the last release on a schedule, and where HEAD
+  left the main branch for a pull request and a manual run, when its
+  `.ruby-version` names another Ruby than HEAD's.
+
 ## [0.1.0] - 2026-10-24
 
 The first release. duel-rails is a Duel plugin for Rails apps, open

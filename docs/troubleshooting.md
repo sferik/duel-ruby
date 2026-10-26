@@ -5,11 +5,12 @@ comparison doesn't go as you expect, and what to do about it.
 
 ## Duel says there's nothing to compare
 
-If nothing under `lib/` or `ext/` changed since the baseline, there's
-nothing to compare, and Duel passes. To compare anyway, use `--force`.
-With nothing changed, Duel compares your code with itself, which checks
-that your benchmarks run. To change what a change must touch to be
-compared, set `c.watch`. See [Configure Duel](configuration.md).
+If nothing under `lib/` or `ext/`, your benchmarks, or `.duel.rb`
+changed since the baseline, there's nothing to compare, and Duel passes.
+To compare anyway, use `--force`. With nothing changed, Duel compares
+your code with itself, which checks that your benchmarks run. To change
+what a change must touch to be compared, set `c.watch`. See
+[Choose what a change must touch to be compared](configuration.md#choose-what-a-change-must-touch-to-be-compared).
 
 Against `--base last-release`, Duel also reports that there's nothing to
 compare against until you tag your first release. Releases are tagged
