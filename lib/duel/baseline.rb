@@ -17,6 +17,8 @@ module Duel
   # - "last-release": the newest release tag (Config#release_tags) before
   #   HEAD, to catch slowdowns too small for any one change to fail but
   #   that add up between releases
+  # - a push's (Settings#pushed): the commit before it, or where
+  #   Config#push_base says, the last commit Duel passed (#passed)
   # - anything else: a git ref
   # @api private
   class Baseline
@@ -29,16 +31,27 @@ module Duel
       @settings = settings
     end
 
-    # The commit, or nil for "last-release" with no release yet.
+    # The commit, or nil for "last-release" with no release yet, and for
+    # a push with no commit before it here (see #pushed).
     def ref
       return @ref if instance_variable_defined?(:@ref)
 
       @ref = case @settings.base
       when nil then merge_base
       when LAST_RELEASE then git("describe", "--tags", "--abbrev=0", "--match", @config.release_tags, "HEAD^", allow_failure: true)
-      else @settings.base
+      else @settings.pushed ? pushed : @settings.base
       end
     end
+
+    # The branch that marks the last commit Duel passed in a push, for
+    # Config#push_base: duel/passed, or for a project in a subdirectory
+    # of its repository, with its path (duel/passed-gems-parser), so each
+    # of a monorepo's projects has its own.
+    def passed_branch = prefix.empty? ? "duel/passed" : "duel/passed-#{prefix.tr("/", "-")}"
+
+    # The last commit Duel passed in a push, as checked out from GitHub
+    # (#passed_branch, on origin).
+    def passed = "origin/#{passed_branch}"
 
     # Whether nothing #watched changed since the baseline (only for a git
     # baseline compared with the working tree).
@@ -176,6 +189,17 @@ module Duel
         "their histories are unrelated. Set c.main_branch in .duel.rb"
       end
       raise Error, "HEAD and #{branch} have no commit in common: #{why}, or compare with --base REF"
+    end
+
+    # A push's baseline: the last commit Duel passed (#passed), where
+    # Config#push_base says and HEAD has it, or else the commit before the
+    # push, or nil where that isn't here (a branch's first push, or one
+    # that rewrote history).
+    def pushed
+      return passed if @config.push_base == :last_passed && git("merge-base", "--is-ancestor", passed, "HEAD", allow_failure: true)
+
+      before = @settings.base #: String
+      before if git("cat-file", "-e", "#{before}^{commit}", allow_failure: true)
     end
 
     # Whether +dir+ is a checkout of this repository (a worktree of it).

@@ -42,4 +42,9 @@ Duel.configure do |c|
   # project where people push to main directly (on GitHub Actions, another
   # run warns and passes, and a pushed commit gets the comment instead).
   # c.fail_on = :every_run
+
+  # What the workflow compares a push with: :before (the commit before it),
+  # or :last_passed (the last commit Duel passed, which the branch
+  # duel/passed marks), so small slowdowns add up until they fail a push.
+  # c.push_base = :before
 end

@@ -16,6 +16,9 @@ module Duel
     # Which runs a regression fails (see #fail_on).
     type fail_on = :every_run | :pull_requests
 
+    # What a push is compared with (see #push_base).
+    type push_base = :before | :last_passed
+
     @root: String
     @benchmarks: String
     @watch: Array[String]
@@ -27,6 +30,7 @@ module Duel
     @ruby: ruby
     @comment: comment
     @fail_on: fail_on
+    @push_base: push_base
     @metrics: Array[singleton(Metric)]
     @in_workers: Array[^(Stops stops) -> void]
     @hooks: Hash[Symbol, Array[hook]]
@@ -80,6 +84,16 @@ module Duel
 
     # Sets #fail_on, or fails for a value it doesn't take.
     def fail_on=: (untyped runs) -> untyped
+
+    # What a push is compared with: :before (the default), the commit
+    # before it, or :last_passed, the last commit Duel passed.
+    attr_reader push_base: push_base
+
+    # The values #push_base takes.
+    PUSH_BASES: Array[push_base]
+
+    # Sets #push_base, or fails for a value it doesn't take.
+    def push_base=: (untyped base) -> untyped
 
     # What #prepare was given, by scope.
     # @api private

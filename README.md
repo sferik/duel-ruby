@@ -307,7 +307,10 @@ in `.duel.rb`. For more information, see
 In a project where people push to `main` directly, set
 [`c.fail_on = :pull_requests`](docs/configuration.md#fail-only-a-pull-request)
 to pass a regression in a push, with a warning, and comment on the
-pushed commit with the report instead.
+pushed commit with the report instead. To compare each push with the
+last commit that passed, instead of the commit before it, so that small
+slowdowns add up until they fail a push, set
+[`c.push_base = :last_passed`](docs/configuration.md#compare-a-push-with-the-last-commit-that-passed).
 
 ### Show that a project is guarded
 

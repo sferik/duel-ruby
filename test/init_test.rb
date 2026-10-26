@@ -27,13 +27,16 @@ class InitTest < DuelTest
 
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
-  # How .duel.rb ends: when the workflow comments, and which runs a
-  # regression fails, the defaults shown.
+  # How .duel.rb ends: when the workflow comments, which runs a regression
+  # fails, and what a push is compared with, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
-    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\nend\n"
+    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
+    "  # or :last_passed (the last commit Duel passed, which the branch\n" \
+    "  # duel/passed marks), so small slowdowns add up until they fail a push.\n  # c.push_base = :before\nend\n"
 
   def test_a_gem
     gem
@@ -75,6 +78,7 @@ class InitTest < DuelTest
     assert_equal %w[checkout setup-ruby Compare Keep], steps.call("duel")
     assert_equal %w[Get Comment], steps.call("comment")
     assert_equal %w[Get Comment], steps.call("commit-comment")
+    assert_equal %w[Move], steps.call("passed")
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
@@ -94,7 +98,8 @@ class InitTest < DuelTest
     assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
     assert_includes comment.fetch("if"), "github.event.pull_request.head.repo.full_name == github.repository"
     assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
-    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}"}, duel.fetch("outputs"))
+    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
+                  "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
     assert_equal "compare", duel.fetch("steps").find { |step| step["name"] == "Compare" }.fetch("id")
     assert_equal({"COMMENT" => "${{ needs.duel.outputs.comment }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
       comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
@@ -102,6 +107,27 @@ class InitTest < DuelTest
     assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
+  end
+
+  # A push that Duel says passed (only where c.push_base compares a push
+  # with the last commit Duel passed) is marked passed, by a job of its
+  # own that moves the branch (or makes it), and runs none of the code.
+  def test_marking_a_push_passed
+    gem
+    init.run
+    jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
+    passed = jobs.fetch("passed")
+    step = passed.dig("steps", 0)
+
+    assert_equal "${{ steps.compare.outputs.passed }}", jobs.dig("duel", "outputs", "passed")
+    assert_equal ["duel", {"contents" => "write"}, "Mark the commit passed"], passed.values_at("needs", "permissions", "name")
+    assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}", passed.fetch("if")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/passed"}, step.fetch("env"))
+    assert_equal %(gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||\n) +
+      %(  gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null\n), step.fetch("run")
+    assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
+      "Duel says when there's no commit before a push"
+    assert_equal 1, passed.fetch("steps").size
   end
 
   # On a push, a job of its own comments on the commit, as Duel says
@@ -365,6 +391,7 @@ class InitTest < DuelTest
 
     assert_equal({"working-directory" => "gems/parser", "ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true},
       baseline.fetch("with"))
+    assert_equal "origin/duel/passed-gems-parser", YAML.safe_load(workflow).dig("jobs", "duel", "steps", 1, "env", "PASSED")
   end
 
   # A project in a subdirectory of its repository: the workflow is at the
@@ -382,6 +409,7 @@ class InitTest < DuelTest
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: gems/parser\n    steps:\n"
     assert_includes workflow, "        with:\n          working-directory: gems/parser\n          ruby-version:"
     assert_includes workflow, %(marker="<!-- duel gems/parser"\n)
+    assert_equal "duel/passed-gems-parser", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "a branch of its own"
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
     refute YAML.safe_load(workflow).dig("jobs", "comment").key?("defaults"), "nothing checked out there"

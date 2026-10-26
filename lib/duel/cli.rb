@@ -18,7 +18,8 @@ module Duel
   # On GitHub Actions (GITHUB_STEP_SUMMARY), it adds its report to the
   # job's summary, in Markdown (see Summary), and tells the step's
   # outputs (GITHUB_OUTPUT) what to do about the comment on a pull
-  # request (see .comment). --markdown writes the Markdown to a file, and
+  # request (see .comment), and for a push, whether to mark it passed
+  # (see Config#push_base). --markdown writes the Markdown to a file, and
   # --json the report as JSON (see JSONReport), whatever the run's
   # outcome, but not for a command line that isn't valid.
   # @api private
@@ -113,6 +114,8 @@ module Duel
       settings = Settings.defaults
       settings.jobs = [Etc.nprocessors / 2, 1].max
       parser(settings).parse!(env_options + @argv)
+      set = variables
+      settings.pushed = pushed? && set.key?("DUEL_BASE") && settings.base == set.fetch("DUEL_BASE")
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
       settings
@@ -129,9 +132,12 @@ module Duel
         return 0
       end
       if settings.base_dir.nil? && baseline.ref.nil?
+        return nothing("no commit to compare against", "no commit before this push to compare against") if settings.pushed
+
         return nothing("no release to compare against", "no release tag (#{config.release_tags}) before HEAD to compare against")
       end
       if !settings.force && baseline.unchanged?
+        @passed = marks_passed?(config, settings)
         return nothing("nothing to compare",
           "#{baseline.watched.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
       end
@@ -143,6 +149,7 @@ module Duel
       runner = Runner.new(config, settings, base_root, out: @out)
       results = runner.run
       passed = runner.passed?(results)
+      @passed = passed && marks_passed?(config, settings)
       status = passed ? 0 : slower(config, settings)
       publish(
         passed ? "passed" : "failed",
@@ -169,6 +176,11 @@ module Duel
       @out.puts "::warning::Duel: slower, but only a pull request fails (c.fail_on), so this #{variables.fetch("GITHUB_EVENT_NAME")} passes"
       0
     end
+
+    # Whether the workflow marks a push that passed (or had nothing to
+    # compare) as the last commit Duel passed: where Config#push_base
+    # says to compare a push with that commit.
+    def marks_passed?(config, settings) = settings.pushed && config.push_base == :last_passed
 
     # Whether a regression fails only a pull request (--fail-on, or else
     # Config#fail_on).
@@ -224,13 +236,15 @@ module Duel
     # --json names, and the Markdown +markdown+ makes to the file
     # --markdown names, and added to the job's summary on GitHub Actions
     # (STEP_SUMMARY). Each is only made if it's written. On GitHub
-    # Actions, it also sets the step's outputs (STEP_OUTPUT) for the job
-    # that comments on a pull request: +comment+, and +status+ as the
-    # comment's marker has it (MARKED).
+    # Actions, it also sets the step's outputs (STEP_OUTPUT) for the jobs
+    # that comment: +comment+, and +status+ as the comment's marker has
+    # it (MARKED), and for the job that marks a push passed, "passed"
+    # (see #marks_passed?).
     def publish(status, markdown, json)
       comment = commenting(status)
       set = variables
-      File.write(set.fetch(STEP_OUTPUT), "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n", mode: "a") if set.key?(STEP_OUTPUT)
+      outputs = "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n#{"passed=true\n" if @passed}"
+      File.write(set.fetch(STEP_OUTPUT), outputs, mode: "a") if set.key?(STEP_OUTPUT)
       path = @json
       write(path, "#{JSON.pretty_generate(json.call(comment))}\n") if path
       path = @markdown
@@ -251,7 +265,8 @@ module Duel
     # The baseline, in Markdown: its directory, or its commit, bare (so
     # GitHub links it) and followed by a space, never punctuation, and
     # what chose it: the main branch, the push (on GitHub Actions, the
-    # commit before it, from DUEL_BASE), the last release, or --base.
+    # commit before it, from DUEL_BASE, or the last commit Duel passed),
+    # the last release, or --base.
     def described_baseline(config, settings, baseline)
       dir = settings.base_dir
       return Summary.code(dir) if dir
@@ -259,14 +274,12 @@ module Duel
       # (There's one: #compare checked.)
       ref = baseline.ref #: String
       commit = git(config.root, "rev-parse", "--short", "#{ref}^{commit}").first.chomp
-      set = variables
       chosen = case settings.base
       when nil then "where HEAD left #{Summary.code(baseline.main_branch)}"
       when Baseline::LAST_RELEASE then "the last release, #{Summary.code(ref)}"
       else
-        pushed = pushed? && set.key?("DUEL_BASE") && set.fetch("DUEL_BASE") == ref
-        if !ref.match?(/\A\h+\z/) then Summary.code(ref)
-        elsif pushed then "the commit before the push"
+        if settings.pushed then (ref == baseline.passed) ? "the last commit Duel passed" : "the commit before the push"
+        elsif !ref.match?(/\A\h+\z/) then Summary.code(ref)
         else "from --base"
         end
       end
@@ -294,11 +307,7 @@ module Duel
 
       # (There's one: #compare checked.)
       ref = baseline.ref #: String
-      named = case settings.base
-      when nil then baseline.main_branch
-      when Baseline::LAST_RELEASE then ref
-      else settings.base
-      end
+      named = settings.base ? ref : baseline.main_branch
       described.merge("ref" => named, "commit" => git(config.root, "rev-parse", "#{ref}^{commit}").first.chomp)
     end
 

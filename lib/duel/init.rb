@@ -215,5 +215,9 @@ module Duel
 
     # What marks the workflow's comment on a pull request.
     def marker = ["duel", working_directory].compact.join(" ")
+
+    # The branch that marks the last commit Duel passed in a push (see
+    # Baseline#passed_branch).
+    def passed_branch = ["duel/passed", working_directory&.tr("/", "-")].compact.join("-")
   end
 end

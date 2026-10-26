@@ -13,8 +13,15 @@ module Duel
 
     def initialize: (Config config, Settings settings) -> void
 
-    # The commit, or nil for "last-release" with no release yet.
+    # The commit, or nil for "last-release" with no release yet, and for
+    # a push with no commit before it here.
     def ref: () -> String?
+
+    # The branch that marks the last commit Duel passed in a push.
+    def passed_branch: () -> String
+
+    # The last commit Duel passed in a push, as checked out (on origin).
+    def passed: () -> String
 
     # Whether nothing #watched changed since the baseline.
     def unchanged?: () -> bool
@@ -61,6 +68,11 @@ module Duel
     # Where HEAD left the main branch: their merge base, or a failure that
     # says why there's none.
     def merge_base: () -> String
+
+    # A push's baseline: the last commit Duel passed, where
+    # Config#push_base says and HEAD has it, or else the commit before the
+    # push, or nil where that isn't here.
+    def pushed: () -> String?
 
     # Whether +dir+ is a checkout of this repository.
     def ours?: (String dir) -> bool

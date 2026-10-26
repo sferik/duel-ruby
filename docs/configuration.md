@@ -18,6 +18,7 @@ Duel.configure do |c|
   c.ruby = :version_file                 # each version's own Ruby (default: the runner's)
   c.comment = :results                   # when CI comments on a pull request (default: :failures)
   c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
+  c.push_base = :last_passed             # what CI compares a push with (default: :before)
   c.use :redis                           # a plugin (see Use plugins)
 
   # How a worker loads one version of your code, instead of the library.
@@ -118,6 +119,29 @@ in the run's summary, and the job's summary still has the report. The
 as `c.comment` says, which notifies the commit's author. A run that
 couldn't compare fails either way, and on your machine, a regression
 always fails.
+
+## Compare a push with the last commit that passed
+
+The [GitHub Actions workflow](ci.md#compare-a-push-with-the-last-commit-that-passed)
+that `duel init` writes compares a push to `main` with the commit
+before it. A series of pushes that are each a little slower then each
+pass. `c.push_base` chooses what a push is compared with:
+
+| Value | What the workflow compares a push with |
+|---|---|
+| `:before` | The commit before the push. This is the default. |
+| `:last_passed` | The last commit that Duel passed, which the branch `duel/passed` marks. |
+
+```ruby
+Duel.configure do |c|
+  c.push_base = :last_passed
+end
+```
+
+With `:last_passed`, the slowdowns add up until they fail a push. After
+a regression, every push fails until one is no slower, or until you
+move the branch to accept the regression:
+`git push origin main:duel/passed`.
 
 ## Prepare each worker
 

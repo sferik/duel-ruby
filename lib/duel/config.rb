@@ -119,6 +119,32 @@ module Duel
       @fail_on = runs
     end
 
+    # What the workflow that `duel init` writes compares a push with:
+    #
+    # - :before (the default), the commit before the push
+    # - :last_passed, the last commit Duel passed, which the workflow
+    #   marks with a branch, duel/passed (see Baseline#passed_branch),
+    #   when a push passes, or has nothing to compare. Slowdowns too
+    #   small for any one push to fail then add up until they fail one,
+    #   and a push the workflow didn't compare (its run cancelled, say)
+    #   is compared with the next. After a regression, every push is
+    #   compared with the commit before it, until one is no slower, or
+    #   the branch is moved to accept the regression. Without the branch,
+    #   or where HEAD doesn't have its commit (after a force push, say),
+    #   a push is compared with the commit before it.
+    #
+    #   c.push_base = :last_passed
+    attr_reader :push_base
+
+    # The values #push_base takes.
+    PUSH_BASES = %i[before last_passed].freeze #: Array[push_base]
+
+    def push_base=(base)
+      raise Error, "c.push_base = #{base.inspect}: give #{PUSH_BASES.map(&:inspect).join(", ")}" unless PUSH_BASES.include?(base)
+
+      @push_base = base
+    end
+
     # The metrics #metric added, in order (classes: a Duel::Metric
     # subclass, or running totals' Snapshot), for a plugin's tests to
     # look at (their .measures and .settings).
@@ -140,6 +166,7 @@ module Duel
       @release_tags = "v*"
       @comment = :failures
       @fail_on = :every_run
+      @push_base = :before
       @prepares = SCOPES.to_h { |scope| [scope, []] }
       @metrics = []
       @in_workers = []

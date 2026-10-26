@@ -19,13 +19,16 @@ class GeneratorTest < PluginTest
 
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
-  # How .duel.rb ends: when the workflow comments, and which runs a
-  # regression fails, the defaults shown.
+  # How .duel.rb ends: when the workflow comments, which runs a regression
+  # fails, and what a push is compared with, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
-    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\nend\n"
+    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
+    "  # or :last_passed (the last commit Duel passed, which the branch\n" \
+    "  # duel/passed marks), so small slowdowns add up until they fail a push.\n  # c.push_base = :before\nend\n"
 
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
@@ -52,7 +55,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel comment commit-comment], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel comment commit-comment passed], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -69,7 +72,7 @@ class GeneratorTest < PluginTest
     workflow = read(".github/workflows/perf.yml")
     duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
 
-    assert_includes workflow, %(          bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
+    assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
     assert_includes workflow, %(          marker="<!-- duel"\n)
     assert_equal({"contents" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
@@ -86,13 +89,17 @@ class GeneratorTest < PluginTest
     workflow = read(".github/workflows/perf.yml")
     duel, comment = YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment")
 
-    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}"}, duel.fetch("outputs"))
+    assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
+                  "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
     assert_includes comment.fetch("if"), "(needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change')", "as Duel says"
     assert_equal ["POST"], comment.dig("steps", 1, "run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  comment:\n.*?^          marker=/m],
       workflow[/^  comment:\n.*?^          marker=/m], "Duel's own"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  commit-comment:\n.*?^          marker=/m],
       workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
+    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  passed:\n.*?^          BRANCH:/m],
+      workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
+    assert_equal "duel/passed", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -137,7 +144,8 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_includes workflow, %(          marker="<!-- duel apps/blog"\n), "a comment of its own"
+    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog"],
+      workflow.lines(chomp: true).grep(/marker="|BRANCH: /).uniq, "a comment, and a branch, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
       YAML.safe_load(workflow).fetch("jobs").values_at("duel", "comment").map { |job| job["defaults"] }, "none where nothing's checked out"
     assert_path_exists File.join(app, ".duel.rb")

@@ -119,6 +119,45 @@ class BaselineTest < DuelTest
     assert_nil baseline(base: "last-release").ref, "none"
   end
 
+  # A push's baseline: the commit before it, or where c.push_base says,
+  # the last commit Duel passed (origin/duel/passed), if HEAD has it.
+  def test_a_pushs_baseline
+    pushed = ->(base) { baseline(base: base, pushed: true).ref }
+
+    assert_equal @first, pushed.call(@first), "the commit before the push"
+    assert_nil pushed.call("0" * 40), "none here: a branch's first push"
+    assert_equal "v1.0", baseline(base: "v1.0").ref, "not a push's: as given"
+    git("update-ref", "refs/remotes/origin/duel/passed", @second)
+
+    assert_equal @first, pushed.call(@first), "by default, not the last passed"
+    @config.push_base = :last_passed
+
+    assert_equal "origin/duel/passed", pushed.call(@first)
+    assert_equal "origin/duel/passed", pushed.call("0" * 40), "whatever the commit before"
+    assert_equal "v1.0", baseline(base: "v1.0").ref, "not a push's"
+    git("update-ref", "refs/remotes/origin/duel/passed", @third)
+    git("checkout", "-q", "main")
+
+    assert_equal @first, pushed.call(@first), "HEAD doesn't have it: on another branch"
+    git("checkout", "-q", "--orphan", "rewritten")
+    commit("rewritten")
+
+    assert_equal @first, pushed.call(@first), "HEAD doesn't have it"
+    git("update-ref", "-d", "refs/remotes/origin/duel/passed")
+    git("checkout", "-q", "feature")
+
+    assert_equal @first, pushed.call(@first), "no branch"
+  end
+
+  # The branch that marks the last commit Duel passed: a project's own in
+  # a subdirectory.
+  def test_the_passed_branch
+    assert_equal ["duel/passed", "origin/duel/passed"], [baseline.passed_branch, baseline.passed]
+    app = project(File.join(@repo, "gems", "my_app"))
+
+    assert_equal "duel/passed-gems-my_app", Duel::Baseline.new(Duel::Config.new(app), settings).passed_branch
+  end
+
   # The ref is found once (none, too).
   def test_the_ref_is_found_once
     found = baseline(base: "last-release")

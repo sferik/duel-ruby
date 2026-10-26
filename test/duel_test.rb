@@ -143,6 +143,23 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::FAIL_ON, :frozen?
   end
 
+  # What a push is compared with: the commit before it unless set, and
+  # only when set to a baseline there is.
+  def test_push_base
+    config = Duel::Config.new
+
+    assert_equal :before, config.push_base
+    config.push_base = :last_passed
+
+    assert_equal :last_passed, config.push_base
+    error = assert_raises(Duel::Error) { config.push_base = "before" }
+
+    assert_equal 'c.push_base = "before": give :before, :last_passed', error.message
+    assert_equal :last_passed, config.push_base, "unchanged"
+    assert_equal %i[before last_passed], Duel::Config::PUSH_BASES
+    assert_predicate Duel::Config::PUSH_BASES, :frozen?
+  end
+
   # Each version's Ruby: the runner's unless set.
   def test_ruby
     config = Duel::Config.new

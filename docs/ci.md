@@ -37,11 +37,13 @@ jobs:
   duel:
     name: Duel
     runs-on: ubuntu-latest
-    # Whether the Comment job comments (post, change or none), and the
-    # run's status (passed, failed or neutral), from Duel.
+    # Whether the Comment jobs comment (post, change or none), the run's
+    # status (passed, failed or neutral), and whether to mark a push
+    # passed (true, or nothing), from Duel.
     outputs:
       comment: ${{ steps.compare.outputs.comment }}
       status: ${{ steps.compare.outputs.status }}
+      passed: ${{ steps.compare.outputs.passed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,8 +55,9 @@ jobs:
           ruby-version: "3.4" # (or none, with a .ruby-version)
           bundler-cache: true
       # Against the main branch for a pull request, what was there before
-      # for a push, and the last release on a schedule (slow creep). Duel
-      # adds its report to the job's summary, writes it to duel.md for the
+      # for a push (or as c.push_base in .duel.rb says, the last commit Duel
+      # passed), and the last release on a schedule (slow creep). Duel adds
+      # its report to the job's summary, writes it to duel.md for the
       # comment, and sets the step's outputs to say whether to comment, as
       # c.comment in .duel.rb says, whatever the outcome.
       - name: Compare
@@ -64,14 +67,7 @@ jobs:
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
-        run: |
-          # (A branch's first push, or one that rewrote history, has no
-          # commit before it here to compare against.)
-          if [ "$GITHUB_EVENT_NAME" = push ] && ! git cat-file -e "$DUEL_BASE^{commit}" 2>/dev/null; then
-            echo "::notice::No commit before this push to compare against"
-            exit 0
-          fi
-          bundle exec duel --markdown "$RUNNER_TEMP/duel.md"
+        run: bundle exec duel --markdown "$RUNNER_TEMP/duel.md"
       # The report, for the Comment jobs.
       - name: Keep the report
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
@@ -156,14 +152,38 @@ jobs:
             { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
+
+  # With c.push_base = :last_passed in .duel.rb, a push is compared with
+  # the last commit Duel passed, which a branch marks, so slowdowns too
+  # small for any one push to fail add up until they fail one. This job
+  # moves the branch to a push that passed (or makes it). It checks
+  # nothing out and runs none of the code. To accept a regression, move
+  # the branch yourself (git push origin main:duel/passed).
+  passed:
+    name: Mark the commit passed
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to move the branch
+    steps:
+      - name: Move the branch to the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: duel/passed
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
 ```
 
 The workflow compares the following:
 
 - A pull request, against the main branch.
-- A push to `main`, against the commit before the push. If that commit
-  isn't in the history, such as after a force push or for a branch's
-  first push, the workflow skips the comparison with a notice.
+- A push to `main`, against the commit before the push, or with
+  [`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
+  the last commit that Duel passed. If that commit isn't in the history,
+  such as after a force push or for a branch's first push, Duel reports
+  that there's nothing to compare against, and passes.
 - On a schedule, the last release. Until you tag your first release,
   Duel reports that there's nothing to compare against, and passes.
 - When you run the workflow manually, your code against itself. This
@@ -241,6 +261,39 @@ By default, a push gets no comment: Duel sets the `comment` output to
 the commit job checks nothing out either, and it alone gets the
 `contents: write` permission that a commit comment takes.
 
+## Compare a push with the last commit that passed
+
+By default, the workflow compares each push with the commit before it.
+A series of pushes that are each a little slower each pass, and a push
+that the workflow doesn't compare, such as one whose run was cancelled,
+is never compared. With
+[`c.push_base = :last_passed`](configuration.md#compare-a-push-with-the-last-commit-that-passed),
+the workflow compares each push with the last commit that Duel passed,
+so the slowdowns add up until they fail a push.
+
+A branch, `duel/passed`, marks that commit. When a push passes, or has
+nothing to compare, Duel sets the `passed` output to `true`, and the
+Mark the commit passed job moves the branch to the push, or creates the
+branch. That job checks nothing out either, and it gets the
+`contents: write` permission that moving a branch takes. Until the
+branch exists, and when the push's history doesn't have its commit,
+Duel compares the push with the commit before it. For a project in a
+subdirectory of its repository, the branch names the directory, such as
+`duel/passed-gems-parser`.
+
+After a regression, the branch stays where it is, so every push fails
+(or with [`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit),
+is reported) until one is no slower. To accept a regression, move the
+branch yourself:
+
+```sh
+git push origin main:duel/passed
+```
+
+If you set `c.push_base` back to `:before`, delete the branch too
+(`git push origin --delete duel/passed`), because the step that finds
+the baseline's Ruby uses it whenever it exists.
+
 ## Run each version on its own Ruby on CI
 
 With [`c.ruby = :version_file`](configuration.md#run-each-version-on-its-own-ruby),
@@ -274,19 +327,24 @@ match. `duel init` adds these steps for a project that has a
       # that one is installed too, and linked where Duel finds it (as
       # chruby would), before the project's own Ruby, which runs Duel. The
       # baseline is the Compare step's: where HEAD left the main branch
-      # (for a pull request, and run by hand), the commit before a push, or
-      # on a schedule the last release, the newest tag before HEAD that
-      # RELEASE_TAGS matches. (If .duel.rb sets c.main_branch or
-      # c.release_tags, set MAIN_BRANCH or RELEASE_TAGS to match.)
+      # (for a pull request, and run by hand), the commit before a push (or
+      # the last commit Duel passed, PASSED, if there is one: see the Mark
+      # the commit passed job), or on a schedule the last release, the
+      # newest tag before HEAD that RELEASE_TAGS matches. (If .duel.rb sets
+      # c.main_branch or c.release_tags, set MAIN_BRANCH or RELEASE_TAGS to
+      # match.)
       - name: Find the baseline's Ruby
         id: baseline
         env:
           BEFORE: ${{ github.event.before }}
+          PASSED: origin/duel/passed
           MAIN_BRANCH: origin/${{ github.event.repository.default_branch }}
           RELEASE_TAGS: "v*"
         run: |
           case "$GITHUB_EVENT_NAME" in
-            push) base=$BEFORE ;;
+            push)
+              base=$BEFORE
+              if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
             schedule) base=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || base= ;;
             *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
           esac

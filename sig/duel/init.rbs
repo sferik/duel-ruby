@@ -99,5 +99,8 @@ module Duel
 
     # What marks the workflow's comment on a pull request.
     def marker: () -> String
+
+    # The branch that marks the last commit Duel passed in a push.
+    def passed_branch: () -> String
   end
 end
