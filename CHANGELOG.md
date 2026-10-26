@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   candidate's `uncommitted_changes` in JSON, cover them too.
 - The Markdown report (`--markdown`, the job's summary and the pull
   request comment) is shorter. Its heading starts with 🟢 when every
-  benchmark passed (`🟢 Duel: 100% of benchmarks passed`), 🟥 when one
-  failed or Duel couldn't compare (`🟥 Duel: 3 benchmarks failed`), and
-  ⚪ when there's nothing to compare. One line names the two commits,
+  benchmark passed (`🟢 Duel: 100% of benchmarks passed`), 🔻 when one
+  failed or Duel couldn't compare (`🔻 Duel: 3 benchmarks failed`), and
+  ⬜ when there's nothing to compare. One line names the two commits,
   bare, so GitHub links them, and how the baseline was chosen. Only the
   benchmarks that failed are in view, in a table of what got worse and
   by how much, or the error, and where the most extra CPU time went.

@@ -29,8 +29,8 @@ module Duel
     # What the heading starts with: a run that passed, one that failed (or
     # couldn't compare), and one with nothing compared.
     PASSED_MARK = "🟢"
-    FAILED_MARK = "🟥"
-    NEUTRAL_MARK = "⚪"
+    FAILED_MARK = "🔻"
+    NEUTRAL_MARK = "⬜"
 
     # What an unsettled timing means.
     UNSETTLED = "An unsettled timing was too close to the limit to settle. It doesn't fail the run, but one that's unsettled " \

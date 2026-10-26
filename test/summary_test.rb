@@ -99,7 +99,7 @@ class SummaryTest < DuelTest
       workers.profile("candidate", {"samples" => 110, "frames" => [["f", 20, 20], ["g", 6, 6]]})
 
       assert_equal <<~MARKDOWN, summarize(workers)
-        ### 🟥 Duel: 2 benchmarks failed, 1 skipped
+        ### 🔻 Duel: 2 benchmarks failed, 1 skipped
 
         Compared def5678 with abc1234 (where HEAD left `main`). The baseline can't run the skipped benchmark.
 
@@ -201,7 +201,7 @@ class SummaryTest < DuelTest
   def test_one_failed
     markdown = summary([result("slow", timed: {"cpu" => "slower"}, median: 1.0456), result("a")])
 
-    assert_equal "### 🟥 Duel: 1 benchmark failed\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n" \
+    assert_equal "### 🔻 Duel: 1 benchmark failed\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n" \
       "| Benchmark | Failure |\n|---|---|\n| `slow` | cpu +4.6% |\n\n<details>\n<summary>Details: 2 benchmarks in 1s</summary>\n\n" \
       "**`slow`**: worse cpu in every measurement\n\n```text\ncpu: 1µs → 1µs an iteration (1.05x)\n```\n\n", markdown.split("| Benchmark | Verdict").first
   end
@@ -211,7 +211,7 @@ class SummaryTest < DuelTest
     markdown = summary([errored("e", "boom"), result("s1", timed: {"cpu" => "slower"}, median: 1.1), result("a"),
       result("s2", timed: {"cpu" => "slower"}, median: 1.2)])
 
-    assert_equal "### 🟥 Duel: 3 benchmarks failed\n", markdown.lines.first
+    assert_equal "### 🔻 Duel: 3 benchmarks failed\n", markdown.lines.first
     assert_includes markdown, "\n\n| Benchmark | Failure |\n|---|---|\n| `s1` | cpu +10.0% |\n| `s2` | cpu +20.0% |\n" \
       "| `e` | error: `boom` |\n\n<details>\n"
   end
@@ -221,7 +221,7 @@ class SummaryTest < DuelTest
   def test_errored
     one = summary([errored("a|b", "Duel::Failed: no | yes\n")])
 
-    assert_equal "### 🟥 Duel: 1 benchmark failed\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n| Benchmark | Failure |\n" \
+    assert_equal "### 🔻 Duel: 1 benchmark failed\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n| Benchmark | Failure |\n" \
       "|---|---|\n| `a\\|b` | error: `Duel::Failed: no \\| yes` |\n\n<details>\n<summary>Details: 1 benchmark in 1s</summary>\n\n" \
       "| Benchmark | Verdict | Timings (ratio [interval]) |\n|---|---|---|\n| `a\\|b` | **error** |  |\n\n#{DECIDES}\n\n</details>\n", one
     two = summary([errored("a", "first\nsecond"), errored("b", "only")])
@@ -237,13 +237,13 @@ class SummaryTest < DuelTest
     assert_equal "### 🟢 Duel: 100% of benchmarks passed, 2 skipped\n\nCompared def5678 with abc1234 (where HEAD left `main`). " \
       "The baseline can't run the skipped benchmarks.\n\n<details>\n", markdown.lines.first(5).join
     assert_includes markdown, "| `new` | skipped | not on the baseline (NameError: no) |\n"
-    assert_equal "### ⚪ Duel: no benchmarks compared, 1 skipped\n", summary([skipped("new")]).lines.first, "nothing but skipped"
+    assert_equal "### ⬜ Duel: no benchmarks compared, 1 skipped\n", summary([skipped("new")]).lines.first, "nothing but skipped"
     assert_includes summary([skipped("new")]), "The baseline can't run the skipped benchmark.\n"
   end
 
   # None at all (a filter that matched none, say).
   def test_no_benchmarks
-    assert_equal "### ⚪ Duel: no benchmarks compared\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n<details>\n" \
+    assert_equal "### ⬜ Duel: no benchmarks compared\n\nCompared def5678 with abc1234 (where HEAD left `main`).\n\n<details>\n" \
       "<summary>Details: 0 benchmarks in 1s</summary>\n\n#{DECIDES}\n\n</details>\n", summary([])
   end
 
@@ -253,7 +253,7 @@ class SummaryTest < DuelTest
       Array.new(8) { |i| workers.benchmark("b#{i}", &measures(cpu: [100_000, 101_000])) }
       markdown = summarize(workers)
 
-      assert_equal "### 🟥 Duel: slower across the board in cpu\n", markdown.lines.first
+      assert_equal "### 🔻 Duel: slower across the board in cpu\n", markdown.lines.first
       assert_includes markdown, "(where HEAD left `main`).\n\nAcross the board:\n\n- cpu 1.010 [1.010, 1.010] slower in both " \
         "measurements (limit 1.0050, 8 benchmarks)\n\n<details>\n<summary>Details: 8 benchmarks in 12s</summary>\n"
       assert_equal 1, markdown.scan("Across the board").size, "not in the details too"
@@ -271,14 +271,14 @@ class SummaryTest < DuelTest
                        "confirmed" => true}}
     markdown = summary([result("a")], runner: runner(across: across))
 
-    assert_equal "### 🟥 Duel: 1 benchmark failed, slower across the board in gc\n", summary([errored("e", "x")], runner: runner(across: across)).lines.first
+    assert_equal "### 🔻 Duel: 1 benchmark failed, slower across the board in gc\n", summary([errored("e", "x")], runner: runner(across: across)).lines.first
     assert_includes markdown, "abc1234 (where HEAD left `main`).\n\nAcross the board:\n\n- gc 1.010 [1.006, 1.020] slower in both measurements " \
       "(limit 1.0050, 9 benchmarks)\n\n<details>\n"
     assert_includes markdown, "\n\nAcross the board:\n\n- cpu 1.000 [0.998, 1.002] same (limit 1.0050, 8 benchmarks)\n" \
       "- wait 1.010 [1.006, 1.020] slower (limit 1.0050, 1 benchmark)\n\n#{DECIDES}\n"
     both = across.merge("cpu" => across.fetch("gc"))
 
-    assert_equal "### 🟥 Duel: slower across the board in cpu, gc\n", summary([result("a")], runner: runner(across: both)).lines.first
+    assert_equal "### 🔻 Duel: slower across the board in cpu, gc\n", summary([result("a")], runner: runner(across: both)).lines.first
     quiet = summary([result("a")], runner: runner(across: across.slice("few")))
 
     assert_equal "### 🟢 Duel: 100% of benchmarks passed\n", quiet.lines.first
@@ -431,10 +431,10 @@ class SummaryTest < DuelTest
   # A run that didn't compare: a heading of its own, and why, in a line
   # (with the whole of a longer reason collapsed).
   def test_note
-    assert_equal "### ⚪ Duel: nothing to compare\n\nlib, ext unchanged (v\\*)\n", Duel::Summary.note("⚪", "nothing to compare", "lib, ext unchanged (v*)")
-    assert_equal "### 🟥 Duel: couldn't compare\n\nbuilding failed:\n\n<details>\n<summary>The whole message</summary>\n\n" \
-      "```text\nbuilding failed:\nmake: *** no\n```\n\n</details>\n", Duel::Summary.note("🟥", "couldn't compare", "building failed:\nmake: *** no\n")
-    assert_equal "### ⚪ Duel: x\n\ny\n", Duel::Summary.note("⚪", "x", "y\n"), "a line, ended"
+    assert_equal "### ⬜ Duel: nothing to compare\n\nlib, ext unchanged (v\\*)\n", Duel::Summary.note("⬜", "nothing to compare", "lib, ext unchanged (v*)")
+    assert_equal "### 🔻 Duel: couldn't compare\n\nbuilding failed:\n\n<details>\n<summary>The whole message</summary>\n\n" \
+      "```text\nbuilding failed:\nmake: *** no\n```\n\n</details>\n", Duel::Summary.note("🔻", "couldn't compare", "building failed:\nmake: *** no\n")
+    assert_equal "### ⬜ Duel: x\n\ny\n", Duel::Summary.note("⬜", "x", "y\n"), "a line, ended"
   end
 end
 

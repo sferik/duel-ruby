@@ -125,12 +125,12 @@ class CLISummaryTest < DuelTest
     status = Dir.chdir(repo) { cli("--base", "last-release", "--markdown", markdown, "--json", json).run }
 
     assert_equal 0, status
-    assert_equal "### ⚪ Duel: no release to compare against\n\nno release tag (v\\*) before HEAD to compare against\n", File.read(markdown)
+    assert_equal "### ⬜ Duel: no release to compare against\n\nno release tag (v\\*) before HEAD to compare against\n", File.read(markdown)
     assert_equal ["nothing_to_compare", "duel: no release tag (v*) before HEAD to compare against"], written.values_at("status", "message")
     @git.call("commit", "-q", "--allow-empty", "-m", "two")
     Dir.chdir(repo) { cli("--base", "HEAD^", "--markdown", markdown).run }
 
-    assert_equal "### ⚪ Duel: nothing to compare\n\nlib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare " \
+    assert_equal "### ⬜ Duel: nothing to compare\n\nlib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare " \
       "(--force to anyway)\n", File.read(markdown)
     Dir.chdir(repo) { cli("--base", "HEAD^", "--json", json, "--limit", "1.05").run }
 
@@ -145,7 +145,7 @@ class CLISummaryTest < DuelTest
     repo = git_repo
 
     assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", "--markdown", markdown).run }
-    assert_match(/\A### 🟥 Duel: couldn't compare\n\ngit rev-parse nope\^\{commit\} failed: fatal: .*\n\n<details>\n<summary>The whole message<\/summary>\n\n```text\ngit rev-parse nope/,
+    assert_match(/\A### 🔻 Duel: couldn't compare\n\ngit rev-parse nope\^\{commit\} failed: fatal: .*\n\n<details>\n<summary>The whole message<\/summary>\n\n```text\ngit rev-parse nope/,
       File.read(markdown))
     summary = File.join(tmpdir, "summary.md")
 

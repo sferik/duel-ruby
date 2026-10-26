@@ -253,7 +253,7 @@ how Duel decides. So the report stays short with hundreds of
 benchmarks:
 
 ````markdown
-### 🟥 Duel: 1 benchmark failed
+### 🔻 Duel: 1 benchmark failed
 
 Compared 8e4d0b7 with 3f9c2a1 (where HEAD left `origin/main`).
 
@@ -290,8 +290,8 @@ benchmarks passed`, and only the commits are in view. A timing too
 close to the limit to call doesn't fail the run, and is in the details.
 A benchmark that the baseline can't run (a new one, say) is skipped, and
 the heading counts it. A run that has nothing to compare, or no release
-to compare against, says so under ⚪, and one that couldn't compare
-says why under 🟥.
+to compare against, says so under ⬜, and one that couldn't compare
+says why under 🔻.
 
 The workflow that `duel init` writes posts this report as a comment on
 the pull request, and updates the same comment on every push. For more
