@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `c.comment` says, which notifies the commit's author. The default,
   `:every_run`, fails every run, as before, and comments on no commit.
 - `c.push_base = :last_passed` compares a push with the last commit
-  that Duel passed, which the branch `duel/passed` marks, instead of
+  that Duel passed, which a branch marks (`duel/passed/main` for
+  `main`, and each branch the workflow guards has its own), instead of
   the commit before the push, so slowdowns too small for any one push to
   fail add up until they fail one. The workflow that `duel init` writes
   moves the branch when a push passes. The default, `:before`, compares

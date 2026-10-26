@@ -154,7 +154,7 @@ pass. `c.push_base` chooses what a push is compared with:
 | Value | What the workflow compares a push with |
 |---|---|
 | `:before` | The commit before the push. This is the default. |
-| `:last_passed` | The last commit that Duel passed, which the branch `duel/passed` marks. |
+| `:last_passed` | The last commit that Duel passed, which a branch marks: `duel/passed/main` for `main`. |
 
 ```ruby
 Duel.configure do |c|
@@ -165,7 +165,7 @@ end
 With `:last_passed`, the slowdowns add up until they fail a push. After
 a regression, every push fails until one is no slower, or until you
 move the branch to accept the regression:
-`git push origin main:duel/passed`.
+`git push origin main:duel/passed/main`.
 
 ## Prepare each worker
 

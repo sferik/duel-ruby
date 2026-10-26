@@ -4,7 +4,7 @@ on:
   pull_request:
   merge_group: # (a merge queue's)
   push:
-    branches: [main]
+    branches: [main] # (and any other branch to guard, a stable one, say)
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          PASSED: origin/<%= passed_branch %>
+          PASSED: origin/<%= passed_branch %>/${{ github.ref_name }}
           MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
           RELEASE_TAGS: "<%= release_tags %>"
         run: |
@@ -204,11 +204,12 @@ jobs:
           fi
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
-  # the last commit Duel passed, which a branch marks, so slowdowns too
-  # small for any one push to fail add up until they fail one. This job
-  # moves the branch to a push that passed (or makes it). It checks
-  # nothing out and runs none of the code. To accept a regression, move
-  # the branch yourself (git push origin main:<%= passed_branch %>).
+  # the last commit Duel passed, which a branch marks (each branch pushed
+  # has its own), so slowdowns too small for any one push to fail add up
+  # until they fail one. This job moves the branch to a push that passed
+  # (or makes it). It checks nothing out and runs none of the code. To
+  # accept a regression, move the branch yourself (for main, git push
+  # origin main:<%= passed_branch %>/main).
   passed:
     name: Mark the commit passed
     needs: duel
@@ -220,7 +221,7 @@ jobs:
       - name: Move the branch to the commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: <%= passed_branch %>
+          BRANCH: <%= passed_branch %>/${{ github.ref_name }}
         run: |
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null

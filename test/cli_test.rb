@@ -120,17 +120,18 @@ class CLITest < DuelTest
     assert_equal "duel: invalid argument: --fail-on pushes (give every_run, pull_requests)\n", @err.string
   end
 
-  # Whether the baseline is a push's: on GitHub Actions for a push, as
-  # DUEL_BASE gives it.
+  # The branch pushed, where the baseline is the push's: on GitHub
+  # Actions for a push, as DUEL_BASE gives it.
   def test_pushed
-    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "abc123"}
+    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "abc123", "GITHUB_REF_NAME" => "2-x-stable"}
 
-    assert cli(env: push).parse.pushed
-    refute cli(env: push.merge("GITHUB_EVENT_NAME" => "pull_request")).parse.pushed, "not a push"
-    refute cli(env: push.slice("GITHUB_EVENT_NAME")).parse.pushed, "no DUEL_BASE"
-    refute cli("--base", "abc123", env: push.slice("GITHUB_EVENT_NAME")).parse.pushed, "--base"
-    refute cli("--base", "def456", env: push).parse.pushed, "--base over DUEL_BASE"
-    refute cli(env: push.slice("DUEL_BASE")).parse.pushed, "no event"
+    assert_equal "2-x-stable", cli(env: push).parse.pushed
+    assert_nil cli(env: push.merge("GITHUB_EVENT_NAME" => "pull_request")).parse.pushed, "not a push"
+    assert_nil cli(env: push.except("DUEL_BASE")).parse.pushed, "no DUEL_BASE"
+    assert_nil cli("--base", "abc123", env: push.except("DUEL_BASE")).parse.pushed, "--base"
+    assert_nil cli("--base", "def456", env: push).parse.pushed, "--base over DUEL_BASE"
+    assert_nil cli(env: push.except("GITHUB_EVENT_NAME")).parse.pushed, "no event"
+    assert_nil cli(env: push.except("GITHUB_REF_NAME")).parse.pushed, "no branch"
   end
 
   # The branch a pull request targets, on GitHub Actions: on origin, for

@@ -17,7 +17,8 @@ module Duel
     # a push with no commit before it here.
     def ref: () -> String?
 
-    # The branch that marks the last commit Duel passed in a push.
+    # The branch that marks the last commit Duel passed in a push to the
+    # branch pushed.
     def passed_branch: () -> String
 
     # The last commit Duel passed in a push, as checked out (on origin).

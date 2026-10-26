@@ -96,7 +96,7 @@ module Duel
 
     # Whether the workflow marks a push that passed as the last commit
     # Duel passed.
-    def marks_passed?: (Config config, Settings settings) -> bool?
+    def marks_passed?: (Config config, Settings settings) -> bool
 
     # Whether a regression fails only a pull request.
     def pull_requests_only?: (Config config, Settings settings) -> bool

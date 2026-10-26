@@ -29,8 +29,8 @@ class GeneratorTest < PluginTest
     "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
     "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
-    "  # or :last_passed (the last commit Duel passed, which the branch\n" \
-    "  # duel/passed marks), so small slowdowns add up until they fail a push.\n  # c.push_base = :before\nend\n"
+    "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
+    "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n  # c.push_base = :before\nend\n"
 
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
@@ -98,7 +98,7 @@ class GeneratorTest < PluginTest
       workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  passed:\n.*?^          BRANCH:/m],
       workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
-    assert_equal "duel/passed", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
+    assert_equal "duel/passed/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -143,7 +143,7 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog"],
+    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog/${{ github.ref_name }}"],
       (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|BRANCH: /).uniq,
       "comments, and a branch, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],

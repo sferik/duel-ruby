@@ -115,7 +115,9 @@ module Duel
       settings.jobs = [Etc.nprocessors / 2, 1].max
       parser(settings).parse!(env_options + @argv)
       set = variables
-      settings.pushed = pushed? && set.key?("DUEL_BASE") && settings.base == set.fetch("DUEL_BASE")
+      if pushed? && set.key?("GITHUB_REF_NAME") && set.key?("DUEL_BASE") && settings.base == set.fetch("DUEL_BASE")
+        settings.pushed = set.fetch("GITHUB_REF_NAME")
+      end
       settings.target = "origin/#{set.fetch("GITHUB_BASE_REF")}" if set.key?("GITHUB_BASE_REF") && pull_request?
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
@@ -216,7 +218,7 @@ module Duel
     # Whether the workflow marks a push that passed (or had nothing to
     # compare) as the last commit Duel passed: where Config#push_base
     # says to compare a push with that commit.
-    def marks_passed?(config, settings) = settings.pushed && config.push_base == :last_passed
+    def marks_passed?(config, settings) = !settings.pushed.nil? && config.push_base == :last_passed
 
     # Whether a regression fails only a pull request (--fail-on, or else
     # Config#fail_on).

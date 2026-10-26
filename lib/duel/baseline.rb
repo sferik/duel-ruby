@@ -18,7 +18,7 @@ module Duel
   # - "last-release": the newest release tag (Config#release_tags) before
   #   HEAD, to catch slowdowns too small for any one change to fail but
   #   that add up between releases
-  # - a push's (Settings#pushed): the commit before it, or where
+  # - a push's (Settings#pushed, the branch pushed): the commit before it, or where
   #   Config#push_base says, the last commit Duel passed (#passed)
   # - anything else: a git ref
   # @api private
@@ -44,11 +44,12 @@ module Duel
       end
     end
 
-    # The branch that marks the last commit Duel passed in a push, for
-    # Config#push_base: duel/passed, or for a project in a subdirectory
-    # of its repository, with its path (duel/passed-gems-parser), so each
-    # of a monorepo's projects has its own.
-    def passed_branch = prefix.empty? ? "duel/passed" : "duel/passed-#{prefix.tr("/", "-")}"
+    # The branch that marks the last commit Duel passed in a push to the
+    # branch pushed (Settings#pushed), for Config#push_base:
+    # duel/passed/main, or for a project in a subdirectory of its
+    # repository, with its path (duel/passed-gems-parser/main), so each
+    # branch, and each of a monorepo's projects, has its own.
+    def passed_branch = "#{prefix.empty? ? "duel/passed" : "duel/passed-#{prefix.tr("/", "-")}"}/#{@settings.pushed}"
 
     # The last commit Duel passed in a push, as checked out from GitHub
     # (#passed_branch, on origin).

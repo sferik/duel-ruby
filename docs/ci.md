@@ -25,7 +25,7 @@ on:
   pull_request:
   merge_group: # (a merge queue's)
   push:
-    branches: [main]
+    branches: [main] # (and any other branch to guard, a stable one, say)
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
@@ -157,11 +157,12 @@ jobs:
           fi
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
-  # the last commit Duel passed, which a branch marks, so slowdowns too
-  # small for any one push to fail add up until they fail one. This job
-  # moves the branch to a push that passed (or makes it). It checks
-  # nothing out and runs none of the code. To accept a regression, move
-  # the branch yourself (git push origin main:duel/passed).
+  # the last commit Duel passed, which a branch marks (each branch pushed
+  # has its own), so slowdowns too small for any one push to fail add up
+  # until they fail one. This job moves the branch to a push that passed
+  # (or makes it). It checks nothing out and runs none of the code. To
+  # accept a regression, move the branch yourself (for main, git push
+  # origin main:duel/passed/main).
   passed:
     name: Mark the commit passed
     needs: duel
@@ -173,7 +174,7 @@ jobs:
       - name: Move the branch to the commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: duel/passed
+          BRANCH: duel/passed/${{ github.ref_name }}
         run: |
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
@@ -365,7 +366,9 @@ is never compared. With
 the workflow compares each push with the last commit that Duel passed,
 so the slowdowns add up until they fail a push.
 
-A branch, `duel/passed`, marks that commit. When a push passes, or has
+A branch, `duel/passed/main` for `main`, marks that commit. Each
+branch that the workflow guards has its own (see
+[Guard other branches](#guard-other-branches)). When a push passes, or has
 nothing to compare, Duel sets the `passed` output to `true`, and the
 Mark the commit passed job moves the branch to the push, or creates the
 branch. That job checks nothing out either, and it gets the
@@ -373,7 +376,7 @@ branch. That job checks nothing out either, and it gets the
 branch exists, and when the push's history doesn't have its commit,
 Duel compares the push with the commit before it. For a project in a
 subdirectory of its repository, the branch names the directory, such as
-`duel/passed-gems-parser`.
+`duel/passed-gems-parser/main`.
 
 After a regression, the branch stays where it is, so every push fails
 (or with [`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit),
@@ -381,12 +384,29 @@ is reported) until one is no slower. To accept a regression, move the
 branch yourself:
 
 ```sh
-git push origin main:duel/passed
+git push origin main:duel/passed/main
 ```
 
-If you set `c.push_base` back to `:before`, delete the branch too
-(`git push origin --delete duel/passed`), because the step that finds
-the baseline's Ruby uses it whenever it exists.
+If you set `c.push_base` back to `:before`, delete the branches too
+(`git push origin --delete duel/passed/main`), because the step that
+finds the baseline's Ruby uses one whenever it exists.
+
+## Guard other branches
+
+The workflow compares the pushes to `main`. To guard another branch,
+such as a stable branch that gets backports, add it to the workflow's
+`push` branches:
+
+```yaml
+  push:
+    branches: [main, 2-x-stable]
+```
+
+Duel compares a push to each branch with the commit before it, or with
+`c.push_base = :last_passed`, with the last commit that Duel passed on
+that branch, which a branch of its own marks: `duel/passed/2-x-stable`.
+A pull request into the branch is compared with the branch, whatever
+the workflow guards.
 
 ## Run each version on its own Ruby on CI
 
@@ -432,7 +452,7 @@ match. `duel init` adds these steps for a project that has a
         env:
           BEFORE: ${{ github.event.before }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          PASSED: origin/duel/passed
+          PASSED: origin/duel/passed/${{ github.ref_name }}
           MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
           RELEASE_TAGS: "v*"
         run: |

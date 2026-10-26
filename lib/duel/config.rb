@@ -141,7 +141,8 @@ module Duel
     #
     # - :before (the default), the commit before the push
     # - :last_passed, the last commit Duel passed, which the workflow
-    #   marks with a branch, duel/passed (see Baseline#passed_branch),
+    #   marks with a branch, duel/passed/main for main (see
+    #   Baseline#passed_branch),
     #   when a push passes, or has nothing to compare. Slowdowns too
     #   small for any one push to fail then add up until they fail one,
     #   and a push the workflow didn't compare (its run cancelled, say)

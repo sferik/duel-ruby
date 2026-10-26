@@ -338,7 +338,7 @@ class CLISummaryTest < DuelTest
       s = Dir.chdir(repo) { cli(*argv, env: env).parse }
       cli(env: env).send(:described_baseline, config, s, Duel::Baseline.new(config, s))
     end
-    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha}
+    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha, "GITHUB_REF_NAME" => "main"}
 
     assert_equal "#{first} (the commit before the push)", described.call(push)
     assert_equal "#{first} (from --base)", described.call(push.merge("GITHUB_EVENT_NAME" => "pull_request")), "not a push"
@@ -346,7 +346,7 @@ class CLISummaryTest < DuelTest
     assert_equal "#{first} (from --base)", described.call(push.slice("DUEL_BASE")), "no event"
     assert_equal "#{first} (from --base)", described.call(push.merge("DUEL_BASE" => "HEAD"), "--base", sha), "--base, not DUEL_BASE"
     assert_equal "#{first} (`HEAD^`)", described.call(push.slice("GITHUB_EVENT_NAME"), "--base", "HEAD^"), "a ref, named"
-    @git.call("update-ref", "refs/remotes/origin/duel/passed", sha)
+    @git.call("update-ref", "refs/remotes/origin/duel/passed/main", sha)
 
     assert_equal "#{first} (the commit before the push)", described.call(push), "by default, not the last passed"
     config.push_base = :last_passed
@@ -380,7 +380,7 @@ class CLISummaryTest < DuelTest
     repo = git_repo
     output = File.join(tmpdir, "output")
     File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.push_base = :last_passed }\n")
-    env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "0" * 40}
+    env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "0" * 40, "GITHUB_REF_NAME" => "main"}
 
     assert_equal 0, Dir.chdir(repo) { cli("--markdown", markdown, env: env).run }
     assert_equal "duel: no commit before this push to compare against\n", @out.string
@@ -401,7 +401,7 @@ class CLISummaryTest < DuelTest
       runner.define_singleton_method(:run) { [] }
       runner.define_singleton_method(:passed?) { |_| passed }
       stub(Duel::Runner, :new, ->(*) { runner }) do
-        Dir.chdir(repo) { cli(*argv, env: {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha}.merge(env)).run }
+        Dir.chdir(repo) { cli(*argv, env: {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha, "GITHUB_REF_NAME" => "main"}.merge(env)).run }
       end
       File.read(output)
     end
@@ -443,11 +443,11 @@ class CLISummaryTest < DuelTest
     assert_equal({"ref" => "main", "commit" => head, "root" => root}, described.call(nil))
     assert_equal({"ref" => "v1", "commit" => first, "root" => root}, described.call("last-release"))
     assert_equal({"ref" => "HEAD^", "commit" => first, "root" => root}, described.call("HEAD^"))
-    @git.call("update-ref", "refs/remotes/origin/duel/passed", first)
+    @git.call("update-ref", "refs/remotes/origin/duel/passed/main", first)
     config.push_base = :last_passed
-    s = settings(base: head, pushed: true)
+    s = settings(base: head, pushed: "main")
 
-    assert_equal({"ref" => "origin/duel/passed", "commit" => first, "root" => root},
+    assert_equal({"ref" => "origin/duel/passed/main", "commit" => first, "root" => root},
       cli.send(:baseline_json, config, s, Duel::Baseline.new(config, s), "base/../root"), "the last commit Duel passed")
   end
 
