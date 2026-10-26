@@ -311,6 +311,9 @@ pushed commit with the report instead. To compare each push with the
 last commit that passed, instead of the commit before it, so that small
 slowdowns add up until they fail a push, set
 [`c.push_base = :last_passed`](docs/configuration.md#compare-a-push-with-the-last-commit-that-passed).
+To accept a regression that's on purpose, label the pull request, as
+[`c.accept_label`](docs/configuration.md#accept-a-regression-with-a-label)
+says.
 
 ### Show that a project is guarded
 

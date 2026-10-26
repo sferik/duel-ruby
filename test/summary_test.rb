@@ -170,6 +170,18 @@ class SummaryTest < DuelTest
     end
   end
 
+  # A note (an accepted regression's, say) goes under the heading.
+  def test_a_note
+    with_fake_workers do |workers|
+      workers.benchmark("a", &measures)
+      runner = Duel::Runner.new(Duel::Config.new(candidate), settings, File.join(tmpdir, "base"), out: StringIO.new)
+      results = elsewhere { runner.run }
+      markdown = Duel::Summary.new(runner, results, settings: settings, baseline: BASELINE, candidate: "def5678", note: "Accepted.").markdown
+
+      assert markdown.start_with?("### 🟢 Duel: 100% of benchmarks passed\n\nAccepted.\n\nCompared def5678 with ")
+    end
+  end
+
   # A timing too close to call doesn't fail the run: it's only in the
   # details, which say what it means.
   def test_a_run_that_passed_unsettled

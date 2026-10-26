@@ -28,12 +28,14 @@ class InitTest < DuelTest
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
-  # fails, and what a push is compared with, the defaults shown.
+  # fails, the label that accepts one, and what a push is compared with,
+  # the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which the branch\n" \
     "  # duel/passed marks), so small slowdowns add up until they fail a push.\n  # c.push_base = :before\nend\n"
@@ -75,7 +77,7 @@ class InitTest < DuelTest
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[checkout setup-ruby Compare Keep], steps.call("duel")
+    assert_equal %w[checkout setup-ruby Find Compare Keep], steps.call("duel")
     assert_equal %w[Get Comment], steps.call("comment")
     assert_equal %w[Get Comment], steps.call("commit-comment")
     assert_equal %w[Move], steps.call("passed")
@@ -90,7 +92,7 @@ class InitTest < DuelTest
     workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
     duel, comment = workflow.fetch("jobs").values_at("duel", "comment")
 
-    assert_equal({"contents" => "read"}, workflow.fetch("permissions"))
+    assert_equal({"contents" => "read", "pull-requests" => "read"}, workflow.fetch("permissions"))
     refute duel.key?("permissions")
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/duel.md", "if-no-files-found" => "ignore", "retention-days" => 1},
@@ -107,6 +109,21 @@ class InitTest < DuelTest
     assert_equal [true, "duel-report"], [comment.dig("steps", 0, "continue-on-error"), comment.dig("steps", 0, "with", "name")]
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
+  end
+
+  # Duel gets the labels of a pull request, or of the one that merged a
+  # push, for c.accept_label, and nothing's accepted without them.
+  def test_the_pull_requests_labels
+    gem
+    init.run
+    steps = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps")
+    labels = steps.find { |step| step["id"] == "labels" }
+
+    assert_equal "${{ steps.labels.outputs.labels }}", steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_LABELS")
+    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'push'", true], labels.values_at("if", "continue-on-error")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "PR" => "${{ github.event.pull_request.number }}"}, labels.fetch("env"))
+    assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
+    assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
   end
 
   # A push that Duel says passed (only where c.push_base compares a push
@@ -201,7 +218,7 @@ class InitTest < DuelTest
 
     assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n), "the last release as Duel finds it"
-    assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
+    assert_equal 8, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
     workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
   end
 

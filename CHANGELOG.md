@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail add up until they fail one. The workflow that `duel init` writes
   moves the branch when a push passes. The default, `:before`, compares
   a push with the commit before it, as before.
+- `c.accept_label` names a pull request label that accepts a regression:
+  with it, the regression passes, with a warning, and the report says
+  so. The workflow that `duel init` writes passes the pull request's
+  labels to `duel` (`DUEL_LABELS`), or for a push, the labels of the
+  pull request that merged it. By default, there's no such label.
 
 ### Changed
 

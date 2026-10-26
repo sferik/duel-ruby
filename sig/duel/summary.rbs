@@ -25,6 +25,7 @@ module Duel
     # How Duel decides that a timing is slower, in its docs.
     DECIDES: String
 
+    @note: String?
     @runner: Runner
     @results: Array[Result]
     @settings: Settings
@@ -51,7 +52,8 @@ module Duel
     # The counted measures that differ, an iteration.
     def self.changed_counts: (Result result) -> Hash[String, [Float, Float]]
 
-    def initialize: (Runner runner, Array[Result] results, settings: Settings, baseline: String, candidate: String) -> void
+    def initialize: (Runner runner, Array[Result] results, settings: Settings, baseline: String, candidate: String,
+                    ?note: String?) -> void
 
     # The Markdown.
     def markdown: () -> String

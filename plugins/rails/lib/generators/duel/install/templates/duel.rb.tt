@@ -31,6 +31,9 @@ Duel.configure do |c|
   # run warns and passes, and a pushed commit gets the comment instead).
   # c.fail_on = :every_run
 
+  # A label that accepts a regression in a pull request (nil for none).
+  # c.accept_label = "duel: accept"
+
   # What the workflow compares a push with: :before (the commit before it),
   # or :last_passed (the last commit Duel passed, which the branch
   # duel/passed marks), so small slowdowns add up until they fail a push.

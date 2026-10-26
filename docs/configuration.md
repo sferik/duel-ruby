@@ -19,6 +19,7 @@ Duel.configure do |c|
   c.comment = :results                   # when CI comments on a pull request (default: :failures)
   c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
   c.push_base = :last_passed             # what CI compares a push with (default: :before)
+  c.accept_label = "duel: accept"        # a pull request label that accepts a regression
   c.use :redis                           # a plugin (see Use plugins)
 
   # How a worker loads one version of your code, instead of the library.
@@ -119,6 +120,29 @@ in the run's summary, and the job's summary still has the report. The
 as `c.comment` says, which notifies the commit's author. A run that
 couldn't compare fails either way, and on your machine, a regression
 always fails.
+
+## Accept a regression with a label
+
+Sometimes a change is slower on purpose: it's correct where the old
+code wasn't, say. To let a pull request through anyway, name a label
+that accepts its regression:
+
+```ruby
+Duel.configure do |c|
+  c.accept_label = "duel: accept"
+end
+```
+
+On GitHub Actions, the [workflow](ci.md#accept-a-regression-with-a-label)
+that `duel init` writes passes Duel the pull request's labels. With
+that label, a regression passes, with a warning, and the report says
+that the label accepted it. The labels are read when the workflow runs,
+so after you add the label, run the workflow again (Re-run jobs, on the
+pull request's Checks tab). For a push, Duel reads the labels of the
+pull request that merged it, so with
+[`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
+the merged regression becomes the commit that later pushes are compared
+with. By default, there's no such label.
 
 ## Compare a push with the last commit that passed
 

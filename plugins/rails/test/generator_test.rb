@@ -20,12 +20,14 @@ class GeneratorTest < PluginTest
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
-  # fails, and what a push is compared with, the defaults shown.
+  # fails, the label that accepts one, and what a push is compared with,
+  # the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which the branch\n" \
     "  # duel/passed marks), so small slowdowns add up until they fail a push.\n  # c.push_base = :before\nend\n"
@@ -74,7 +76,7 @@ class GeneratorTest < PluginTest
 
     assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel.md"\n)
     assert_includes workflow, %(          marker="<!-- duel"\n)
-    assert_equal({"contents" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
+    assert_equal({"contents" => "read", "pull-requests" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
     assert_equal ["duel", {"pull-requests" => "write"}], comment.values_at("needs", "permissions")
@@ -129,7 +131,7 @@ class GeneratorTest < PluginTest
     assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
     assert_includes workflow, %(          RELEASE_TAGS: "v*"\n)
     assert_includes workflow, %(ln -sfn "$PREFIX" ~/.rubies/ruby-)
-    assert_equal 7, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
+    assert_equal 8, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
   end
 
   # An app in a subdirectory of its repository (a monorepo's): its

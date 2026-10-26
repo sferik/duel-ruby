@@ -90,8 +90,10 @@ module Duel
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
     # +candidate+ (each a description, in Markdown, whose commit stands
-    # bare, so GitHub links it) as +settings+ say.
-    def initialize(runner, results, settings:, baseline:, candidate:)
+    # bare, so GitHub links it) as +settings+ say, with a +note+ (in
+    # Markdown) under the heading, if there's one.
+    def initialize(runner, results, settings:, baseline:, candidate:, note: nil)
+      @note = note
       @runner = runner
       @results = results
       @settings = settings
@@ -114,7 +116,7 @@ module Duel
 
     # The Markdown, with the first +explained+ regressions explained.
     def render(explained)
-      [heading, compared, failures, across(confirmed: true), details(explained)].compact.join("\n\n") + "\n"
+      [heading, @note, compared, failures, across(confirmed: true), details(explained)].compact.join("\n\n") + "\n"
     end
 
     # The verdict: what failed (benchmarks, or a metric across the board),

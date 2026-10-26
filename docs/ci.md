@@ -32,6 +32,7 @@ on:
 # reads. Commenting is the Comment jobs', which run none of it.
 permissions:
   contents: read
+  pull-requests: read # for the pull request's labels (see c.accept_label)
 
 jobs:
   duel:
@@ -54,6 +55,23 @@ jobs:
         with:
           ruby-version: "3.4" # (or none, with a .ruby-version)
           bundler-cache: true
+      # The labels of the pull request (or for a push, of the one that
+      # merged it), for c.accept_label in .duel.rb, as a JSON array. They're
+      # read as the job runs, so after adding the label, run it again.
+      - name: Find the pull request's labels
+        id: labels
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        continue-on-error: true # (without them, nothing's accepted)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$PR" ]; then
+            labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
+          else
+            labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
+          fi
+          echo "labels=$labels" >> "$GITHUB_OUTPUT"
       # Against the branch it targets for a pull request, what was there
       # before for a push (or as c.push_base in .duel.rb says, the last
       # commit Duel passed), and the last release on a schedule (slow
@@ -67,6 +85,7 @@ jobs:
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          DUEL_LABELS: ${{ steps.labels.outputs.labels }}
         run: bundle exec duel --markdown "$RUNNER_TEMP/duel.md"
       # The report, for the Comment jobs.
       - name: Keep the report
@@ -262,6 +281,16 @@ By default, a push gets no comment: Duel sets the `comment` output to
 `none`, and a regression fails the push's check instead. The Comment on
 the commit job checks nothing out either, and it alone gets the
 `contents: write` permission that a commit comment takes.
+
+## Accept a regression with a label
+
+With [`c.accept_label`](configuration.md#accept-a-regression-with-a-label),
+a pull request with that label passes a regression. The Duel job's Find
+the pull request's labels step reads the labels of the pull request,
+or for a push, of the pull request that merged it, and passes them to
+`duel` as a JSON array, in `DUEL_LABELS`. That takes the
+`pull-requests: read` permission. Without the labels, such as when
+GitHub's API fails, nothing is accepted.
 
 ## Compare a push with the last commit that passed
 

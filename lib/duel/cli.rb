@@ -150,13 +150,13 @@ module Duel
       runner = Runner.new(config, settings, base_root, out: @out)
       results = runner.run
       passed = runner.passed?(results)
-      @passed = passed && marks_passed?(config, settings)
       status = passed ? 0 : slower(config, settings)
+      @passed = (passed || accepted?(config)) && marks_passed?(config, settings)
       publish(
         passed ? "passed" : "failed",
         -> {
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
-            candidate: described_candidate(config, settings)).markdown
+            candidate: described_candidate(config, settings), note: @note).markdown
         },
         ->(comment) {
           JSONReport.new(runner, results, settings: settings, exit: status, comment: comment,
@@ -167,15 +167,50 @@ module Duel
     end
 
     # The exit status of a run that was slower (or whose benchmark
-    # failed): 1, or 0 on GitHub Actions outside a pull request, where
-    # c.fail_on (or --fail-on) says only a pull request fails, with a
-    # warning that says so.
+    # failed): 1, or 0 where the pull request's label accepts it
+    # (Config#accept_label), or on GitHub Actions outside a pull request,
+    # where c.fail_on (or --fail-on) says only a pull request fails, with
+    # a warning that says so, and a note in the report.
     def slower(config, settings)
+      if accepted?(config)
+        # (Set: see #accepted?.)
+        label = config.accept_label #: String
+        return passing("accepted with the #{label} label", "Accepted with the #{Summary.code(label)} label.")
+      end
       return 1 unless pull_requests_only?(config, settings)
       return 1 unless outside_pull_request?
 
-      @out.puts "::warning::Duel: slower, but only a pull request fails (c.fail_on), so this #{variables.fetch("GITHUB_EVENT_NAME")} passes"
+      event = variables.fetch("GITHUB_EVENT_NAME")
+      passing("only a pull request fails (c.fail_on), so this #{event} passes",
+        "Only a pull request fails (#{Summary.code("c.fail_on")}), so this #{event} passes.")
+    end
+
+    # Passes a run that was slower, as +why+ says, in a warning (on GitHub
+    # Actions, an annotation), and as +note+ says in the report.
+    def passing(why, note)
+      @out.puts "::warning::Duel: slower, but #{why}"
+      @note = note
       0
+    end
+
+    # Whether the pull request's labels (DUEL_LABELS, a JSON array of
+    # their names) have the one that accepts a regression
+    # (Config#accept_label).
+    def accepted?(config)
+      label = config.accept_label
+      !label.nil? && labels.include?(label)
+    end
+
+    # The pull request's labels, from DUEL_LABELS: none where it's unset,
+    # or isn't a JSON array.
+    def labels
+      set = variables
+      return [] unless set.key?("DUEL_LABELS")
+
+      names = JSON.parse(set.fetch("DUEL_LABELS"))
+      names.instance_of?(Array) ? names : []
+    rescue JSON::ParserError
+      []
     end
 
     # Whether the workflow marks a push that passed (or had nothing to

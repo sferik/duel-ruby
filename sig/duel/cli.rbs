@@ -47,6 +47,7 @@ module Duel
     @settings: Settings?
     @config: Config?
     @passed: bool?
+    @note: String?
 
     def initialize: (Array[String] argv, ?env: _Env, ?out: _Output, ?err: _Output) -> void
 
@@ -82,6 +83,16 @@ module Duel
     # The exit status of a run that was slower: 1, or 0 where only a pull
     # request fails, outside one.
     def slower: (Config config, Settings settings) -> Integer
+
+    # Passes a run that was slower, with a warning and a note.
+    def passing: (String why, String note) -> Integer
+
+    # Whether the pull request's labels have the one that accepts a
+    # regression.
+    def accepted?: (Config config) -> bool
+
+    # The pull request's labels, from DUEL_LABELS.
+    def labels: () -> Array[untyped]
 
     # Whether the workflow marks a push that passed as the last commit
     # Duel passed.

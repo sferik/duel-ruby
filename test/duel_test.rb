@@ -143,6 +143,24 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::FAIL_ON, :frozen?
   end
 
+  # The label that accepts a regression: none unless set, and only a
+  # name.
+  def test_accept_label
+    config = Duel::Config.new
+
+    assert_nil config.accept_label
+    config.accept_label = "duel: accept"
+
+    assert_equal "duel: accept", config.accept_label
+    error = assert_raises(Duel::Error) { config.accept_label = :accept }
+
+    assert_equal "c.accept_label = :accept: give a label's name, or nil", error.message
+    assert_equal "duel: accept", config.accept_label, "unchanged"
+    config.accept_label = nil
+
+    assert_nil config.accept_label
+  end
+
   # What a push is compared with: the commit before it unless set, and
   # only when set to a baseline there is.
   def test_push_base

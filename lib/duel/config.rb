@@ -119,6 +119,24 @@ module Duel
       @fail_on = runs
     end
 
+    # The name of a label that accepts a regression in a pull request
+    # (or nil, the default, for none): on GitHub Actions, the workflow
+    # that `duel init` writes passes Duel the pull request's labels
+    # (DUEL_LABELS), and with this one, a regression passes, with a
+    # warning, and the report says it was accepted. For a push, it's the
+    # labels of the pull request that merged it, so where #push_base is
+    # :last_passed, the push is marked passed too. The labels are read
+    # when the workflow runs, so after adding the label, run it again.
+    #
+    #   c.accept_label = "duel: accept"
+    attr_reader :accept_label
+
+    def accept_label=(label)
+      raise Error, "c.accept_label = #{label.inspect}: give a label's name, or nil" unless label.nil? || label.instance_of?(String)
+
+      @accept_label = label
+    end
+
     # What the workflow that `duel init` writes compares a push with:
     #
     # - :before (the default), the commit before the push

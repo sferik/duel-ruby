@@ -224,12 +224,42 @@ class CLISummaryTest < DuelTest
       outcome.call("--fail-on", "pull_requests", event: "schedule")
     assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: ""),
       "not on GitHub Actions"
+    outcome.call("--fail-on", "pull_requests", "--markdown", markdown)
+
+    assert_equal "Only a pull request fails (`c.fail_on`), so this push passes.", @summarized.first.last.fetch(:note)
     File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.fail_on = :pull_requests }\n")
 
     assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call, "c.fail_on"
     assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "every_run"), "--fail-on over c.fail_on"
     assert_equal({"PULL_REQUESTS" => %w[pull_request pull_request_target merge_group], "frozen" => true},
       {"PULL_REQUESTS" => Duel::CLI::PULL_REQUESTS, "frozen" => Duel::CLI::PULL_REQUESTS.frozen?})
+  end
+
+  # A pull request labeled as c.accept_label says (DUEL_LABELS) passes a
+  # regression, with a warning, and a note in the report. Without the
+  # setting, or the label, it fails.
+  def test_accepting_a_regression_with_a_label
+    outcome = lambda do |labels, env: {}|
+      run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => labels, "GITHUB_EVENT_NAME" => "pull_request"}.merge(env))
+      [@summarized.first.last.fetch(:note), @out.string.lines.grep(/warning/).join]
+    end
+    accepted = ["Accepted with the `duel: accept` label.", "::warning::Duel: slower, but accepted with the duel: accept label\n"]
+
+    assert_equal 1, run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => %(["duel: accept"])}), "without c.accept_label"
+    assert_nil @summarized.first.last.fetch(:note)
+    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[null]"}), "no label isn't one"
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
+
+    assert_equal 0, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug", "duel: accept"])})
+    assert_equal accepted, outcome.call(%(["bug", "duel: accept"]))
+    assert_equal accepted, outcome.call(%(["duel: accept"]), env: {"GITHUB_EVENT_NAME" => "push"}), "a push, by its pull request's"
+    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug"])}), "not the label"
+    assert_equal [nil, ""], outcome.call(%(["bug"]))
+    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => %("duel: accept")}), "not an array"
+    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[duel: accept"}), "not JSON"
+    assert_equal 1, run_faked(passed: false), "no labels"
+    assert_equal 0, run_faked("--markdown", markdown, env: {"DUEL_LABELS" => %(["duel: accept"])}), "passed anyway"
+    assert_nil @summarized.first.last.fetch(:note)
   end
 
   # A push that couldn't compare fails either way, and its commit gets a
@@ -364,6 +394,11 @@ class CLISummaryTest < DuelTest
 
     assert_equal "comment=none\nstatus=passed\npassed=true\n", outputs.call
     assert_equal "comment=none\nstatus=failed\n", outputs.call(passed: false)
+    File.write(File.join(repo, ".duel.rb"), %(Duel.configure { |c| c.push_base = :last_passed\n c.accept_label = "ok" }\n))
+    @git.call("commit", "-qam", "three")
+
+    assert_equal "comment=none\nstatus=failed\npassed=true\n", outputs.call(passed: false, env: {"DUEL_LABELS" => %(["ok"])}),
+      "accepted: marked passed"
     assert_equal "comment=none\nstatus=neutral\npassed=true\n", outputs.call(env: {"DUEL_BASE" => short(repo, "HEAD")}),
       "nothing to compare"
     assert_equal "comment=change\nstatus=passed\n", outputs.call(env: {"GITHUB_EVENT_NAME" => "pull_request"}), "not a push"
