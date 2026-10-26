@@ -108,6 +108,9 @@ module Duel
     # Whether this is a run on GitHub Actions for a pull request.
     def pull_request?: () -> bool
 
+    # Whether the baseline is a merge queue's base.
+    def queued?: (Settings settings) -> bool
+
     # Whether this is a run on GitHub Actions for a push.
     def pushed?: () -> bool
 

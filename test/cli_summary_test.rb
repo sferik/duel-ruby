@@ -354,6 +354,25 @@ class CLISummaryTest < DuelTest
     assert_equal "#{first} (the last commit Duel passed)", described.call(push.merge("DUEL_BASE" => short(repo, "HEAD")))
   end
 
+  # On GitHub Actions, a merge queue's baseline (DUEL_BASE) is its base.
+  def test_the_baseline_of_a_merge_queue
+    repo = git_repo
+    first = short(repo)
+    sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    @git.call("commit", "-q", "--allow-empty", "-m", "two")
+    config = Duel::Config.new(repo)
+    described = lambda do |env, *argv|
+      s = Dir.chdir(repo) { cli(*argv, env: env).parse }
+      cli(env: env).send(:described_baseline, config, s, Duel::Baseline.new(config, s))
+    end
+    queue = {"GITHUB_EVENT_NAME" => "merge_group", "DUEL_BASE" => sha}
+
+    assert_equal "#{first} (the merge queue's base)", described.call(queue)
+    assert_equal "#{first} (from --base)", described.call(queue.merge("GITHUB_EVENT_NAME" => "pull_request")), "not a merge queue"
+    assert_equal "#{first} (from --base)", described.call(queue.slice("GITHUB_EVENT_NAME"), "--base", sha), "no DUEL_BASE"
+    assert_equal "#{first} (from --base)", described.call(queue, "--base", sha[0, 9]), "--base, not DUEL_BASE"
+  end
+
   # A push whose commit before it isn't here (a branch's first push, or
   # one that rewrote history) has nothing to compare, and isn't marked
   # passed.

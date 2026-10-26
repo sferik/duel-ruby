@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so. The workflow that `duel init` writes passes the pull request's
   labels to `duel` (`DUEL_LABELS`), or for a push, the labels of the
   pull request that merged it. By default, there's no such label.
+- The workflow that `duel init` writes runs for a merge queue
+  (`merge_group`), and compares its group with the queue's base, so the
+  Duel check can be required with a merge queue.
 
 ### Changed
 

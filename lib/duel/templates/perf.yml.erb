@@ -2,6 +2,7 @@ name: Perf
 
 on:
   pull_request:
+  merge_group: # (a merge queue's)
   push:
     branches: [main]
   schedule:
@@ -44,8 +45,8 @@ jobs:
       # that one is installed too, and linked where Duel finds it (as
       # chruby would), before the project's own Ruby, which runs Duel. The
       # baseline is the Compare step's: where HEAD left the branch a pull
-      # request targets (or run by hand, the main branch), the commit
-      # before a push (or the last commit Duel passed, PASSED, if there is
+      # request targets (or run by hand, the main branch), a merge queue's
+      # base, the commit before a push (or the last commit Duel passed, PASSED, if there is
       # one: see the Mark the commit passed job), or on a schedule the last
       # release, the newest tag before HEAD that RELEASE_TAGS matches. (If
       # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
@@ -54,6 +55,7 @@ jobs:
         id: baseline
         env:
           BEFORE: ${{ github.event.before }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
           PASSED: origin/<%= passed_branch %>
           MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
           RELEASE_TAGS: "<%= release_tags %>"
@@ -62,6 +64,7 @@ jobs:
             push)
               base=$BEFORE
               if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
+            merge_group) base=$QUEUE_BASE ;;
             schedule) base=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || base= ;;
             *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
           esac
@@ -106,28 +109,36 @@ jobs:
       # read as the job runs, so after adding the label, run it again.
       - name: Find the pull request's labels
         id: labels
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
         continue-on-error: true # (without them, nothing's accepted)
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          QUEUED: ${{ github.event.merge_group.head_ref }}
         run: |
+          # (In a merge queue, the last pull request queued, which the queue's
+          # branch names: gh-readonly-queue/main/pr-123-<sha>.)
+          if [ -n "$QUEUED" ]; then
+            PR=${QUEUED##*/pr-}
+            PR=${PR%%-*}
+          fi
           if [ -n "$PR" ]; then
             labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
           else
             labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
           fi
           echo "labels=$labels" >> "$GITHUB_OUTPUT"
-      # Against the branch it targets for a pull request, what was there
-      # before for a push (or as c.push_base in .duel.rb says, the last
-      # commit Duel passed), and the last release on a schedule (slow
-      # creep). Duel adds its report to the job's summary, writes it to
-      # duel.md for the comment, and sets the step's outputs to say whether
-      # to comment, as c.comment in .duel.rb says, whatever the outcome.
+      # Against the branch it targets for a pull request, the queue's base
+      # for a merge queue, what was there before for a push (or as
+      # c.push_base in .duel.rb says, the last commit Duel passed), and the
+      # last release on a schedule (slow creep). Duel adds its report to
+      # the job's summary, writes it to duel.md for the comment, and sets
+      # the step's outputs to say whether to comment, as c.comment in
+      # .duel.rb says, whatever the outcome.
       - name: Compare
         id: compare
         env:
-          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || '' }}
+          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}

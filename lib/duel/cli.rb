@@ -236,6 +236,14 @@ module Duel
       set.key?("GITHUB_EVENT_NAME") && PULL_REQUESTS.include?(set.fetch("GITHUB_EVENT_NAME"))
     end
 
+    # Whether the baseline is a merge queue's base: on GitHub Actions for
+    # a merge queue, as DUEL_BASE gives it.
+    def queued?(settings)
+      set = variables
+      set.key?("GITHUB_EVENT_NAME") && set.fetch("GITHUB_EVENT_NAME") == "merge_group" && set.key?("DUEL_BASE") &&
+        settings.base == set.fetch("DUEL_BASE")
+    end
+
     # Whether this is a run on GitHub Actions for a push.
     def pushed?
       set = variables
@@ -309,7 +317,8 @@ module Duel
     # GitHub links it) and followed by a space, never punctuation, and
     # what chose it: the main branch, the push (on GitHub Actions, the
     # commit before it, from DUEL_BASE, or the last commit Duel passed),
-    # the last release, or --base.
+    # the merge queue (its base, from DUEL_BASE), the last release, or
+    # --base.
     def described_baseline(config, settings, baseline)
       dir = settings.base_dir
       return Summary.code(dir) if dir
@@ -322,6 +331,7 @@ module Duel
       when Baseline::LAST_RELEASE then "the last release, #{Summary.code(ref)}"
       else
         if settings.pushed then (ref == baseline.passed) ? "the last commit Duel passed" : "the commit before the push"
+        elsif queued?(settings) then "the merge queue's base"
         elsif !ref.match?(/\A\h+\z/) then Summary.code(ref)
         else "from --base"
         end

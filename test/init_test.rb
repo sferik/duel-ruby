@@ -120,10 +120,32 @@ class InitTest < DuelTest
     labels = steps.find { |step| step["id"] == "labels" }
 
     assert_equal "${{ steps.labels.outputs.labels }}", steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_LABELS")
-    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'push'", true], labels.values_at("if", "continue-on-error")
-    assert_equal({"GH_TOKEN" => "${{ github.token }}", "PR" => "${{ github.event.pull_request.number }}"}, labels.fetch("env"))
+    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'", true],
+      labels.values_at("if", "continue-on-error")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "PR" => "${{ github.event.pull_request.number }}",
+                  "QUEUED" => "${{ github.event.merge_group.head_ref }}"}, labels.fetch("env"))
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
+  end
+
+  # A merge queue's run is compared with its base, as a pull request
+  # (whose labels are the last one's queued).
+  def test_a_merge_queue
+    gem
+    write(".ruby-version", "3.4.1\n")
+    init.run
+    workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
+    steps = workflow.dig("jobs", "duel", "steps")
+    labels = steps.find { |step| step["id"] == "labels" }.fetch("run")
+
+    assert workflow.fetch(true).key?("merge_group"), "on: a merge queue's too"
+    assert_includes steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_BASE"),
+      "github.event_name == 'merge_group' && github.event.merge_group.base_sha"
+    assert_includes steps.find { |step| step["id"] == "baseline" }.fetch("run"), "merge_group) base=$QUEUE_BASE ;;\n"
+    assert_equal "${{ github.event.merge_group.base_sha }}", steps.find { |step| step["id"] == "baseline" }.dig("env", "QUEUE_BASE")
+    script = "QUEUED=refs/heads/gh-readonly-queue/main/pr-123-0123abcd\n#{labels[/if \[ -n "\$QUEUED" \].*?\nfi\n/m]}echo $PR"
+
+    assert_equal "123\n", IO.popen(["bash", "-c", script], &:read), "the pull request, from the queue's branch"
   end
 
   # A push that Duel says passed (only where c.push_base compares a push
