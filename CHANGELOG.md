@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report's artifact. The Perf workflow no longer has a Comment job, and
   for a project in a subdirectory, it's named for the directory, as
   `Perf (gems/parser)`.
+- The workflow that `duel init` writes cancels a pull request's run
+  when a newer push to the pull request starts one. Every other run,
+  such as a push's to `main`, still runs to the end.
 - A push whose commit before it isn't in the history now reports that
   there's no commit to compare against, and passes, from `duel` itself.
   The workflow no longer checks this in its Compare step.

@@ -92,6 +92,8 @@ class GeneratorTest < PluginTest
 
     assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
                   "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
+    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^concurrency:\n.*?^\n/m],
+      workflow[/^concurrency:\n.*?^\n/m], "Duel's own"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
       workflow[/^      - name: Say whether to comment\n.*?^      - name: Keep/m], "Duel's own"
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  commit-comment:\n.*?^          marker=/m],

@@ -30,6 +30,13 @@ on:
     - cron: "0 4 * * *"
   workflow_dispatch:
 
+# A pull request's newer push cancels its run, if that's still going, as
+# only its newest commit's result counts. Every other run (a push's, say)
+# runs to the end, so that each push is compared.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The Duel job runs the branch's code (its benchmarks too), so it only
 # reads. Commenting on a commit is the Comment on the commit job's, which
 # runs none of it, and commenting on a pull request is the Perf comment
@@ -179,6 +186,11 @@ jobs:
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
 ```
+
+A newer push to a pull request cancels the pull request's run, if it's
+still going, because only the newest commit's result counts. Every other
+run, such as a push's to `main`, runs to the end, so each push is
+compared.
 
 The workflow compares the following:
 

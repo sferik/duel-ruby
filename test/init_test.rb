@@ -111,6 +111,17 @@ class InitTest < DuelTest
     assert_equal "pr=12\ncomment=post\nstatus=failed\n", File.read(File.join(tmpdir, "duel", "comment.env"))
   end
 
+  # A pull request's newer push cancels its run, and every other run runs
+  # to the end, in a group of its own.
+  def test_concurrency
+    gem
+    init.run
+
+    assert_equal({"group" => "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}",
+                  "cancel-in-progress" => "${{ github.event_name == 'pull_request' }}"},
+      YAML.safe_load(read(".github/workflows/perf.yml")).fetch("concurrency"))
+  end
+
   # The Perf comment workflow comments on a pull request (a fork's too)
   # once Perf has run, with a token that can write, so it runs none of
   # the pull request's code, and trusts only what the Duel job could have

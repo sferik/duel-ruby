@@ -9,6 +9,13 @@ on:
     - cron: "0 4 * * *"
   workflow_dispatch:
 
+# A pull request's newer push cancels its run, if that's still going, as
+# only its newest commit's result counts. Every other run (a push's, say)
+# runs to the end, so that each push is compared.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The Duel job runs the branch's code (its benchmarks too), so it only
 # reads. Commenting on a commit is the Comment on the commit job's, which
 # runs none of it, and commenting on a pull request is the Perf comment
