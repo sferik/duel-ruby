@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-02
+
+### Added
+
+- The `.duel.rb` that `rails generate duel:install` writes shows Duel's
+  new settings: `c.fail_on`, to fail a regression only in a pull
+  request, `c.accept_label`, a pull request label that accepts a
+  regression, and `c.push_base`, to compare a push with the last commit
+  that Duel passed.
+- The workflow that `rails generate duel:install` writes passes a pull
+  request's labels to Duel, for `c.accept_label`, comments on a pushed
+  commit when only a pull request fails (`c.fail_on`), and with
+  `c.push_base = :last_passed`, marks a push passed with a branch of its
+  own (`duel/passed/main` for `main`).
+- The workflow runs for a merge queue (`merge_group`), and compares its
+  group with the queue's base, so the Duel check can be required with a
+  merge queue.
+
+### Changed
+
+- To upgrade an app that ran `rails generate duel:install` before 0.1.2,
+  run it again, and let it overwrite `.github/workflows/perf.yml` (or
+  `perf-<its path>.yml`, for an app in a subdirectory), then carry over
+  any edits of your own. Keep your `.duel.rb`. Kept, the old workflow
+  comments on a pull request itself, and with the new one, every
+  comment comes twice.
+- A pull request gets its comment from a second workflow that the
+  generator writes, `.github/workflows/perf-comment.yml` (or
+  `perf-<its path>-comment.yml`), which runs once the Perf workflow has
+  (`workflow_run`), with a token that can write, so a pull request from
+  a fork gets a comment too. It runs none of the pull request's code.
+  The Perf workflow no longer has a Comment job, and for an app in a
+  subdirectory, it's named for the directory, as `Perf (apps/blog)`.
+- The workflow cancels a pull request's run when a newer push to the
+  pull request starts one. Every other run, such as a push's to `main`,
+  still runs to the end.
+
+### Fixed
+
+- The workflow compares a pull request with the branch that it targets,
+  not the main branch. A pull request into a stable branch, or into
+  another pull request's branch, was compared with `main`.
+
 ## [0.1.1] - 2026-10-26
 
 ### Changed
@@ -135,6 +178,7 @@ Rails 7.2 or later, and Ruby 3.4 or later.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.1...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.2...HEAD
+[0.1.2]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.1...duel-rails-v0.1.2
 [0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.0...duel-rails-v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/duel-rails-v0.1.0

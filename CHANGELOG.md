@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-02
+
 ### Added
 
 - `c.fail_on = :pull_requests` (or `duel --fail-on pull_requests`) fails
@@ -42,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- To upgrade a project that ran `duel init` before 0.1.2, delete
+  `.github/workflows/perf.yml` (or `perf-<its path>.yml`, for a project
+  in a subdirectory) and run `duel init` again, then carry over any
+  edits of your own. It writes both workflows, and skips the files that
+  exist, such as `.duel.rb`. Kept, the old workflow comments on a pull
+  request itself, and with the new one, every comment comes twice.
 - A pull request gets its comment from a second workflow that `duel init`
   writes, `.github/workflows/perf-comment.yml`, which runs once the Perf
   workflow has (`workflow_run`), with a token that can write, so a pull
@@ -414,6 +422,7 @@ needs Ruby 3.4 or later (or JRuby 10, or TruffleRuby 40).
   Anything marked `@api private`, in lib/ and sig/, may change in any
   release.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/sferik/duel-ruby/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sferik/duel-ruby/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/v0.1.0
