@@ -63,6 +63,7 @@ class CLITest < DuelTest
               --jobs N                     Benchmarks measured at once (default: half the CPUs)
               --processes N                Worker processes per version (default: 3)
               --timeout SECONDS            Most a worker may take to load or answer (default: 60)
+              --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)
               --limit RATIO                Ratio above which a timing is slower (default: 1.02)
               --warm SECONDS               Warm-up per benchmark (default: 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)
               --ruby version-file|PATH     Each version's Ruby: the one its version file names (.ruby-version, say), or a
@@ -92,10 +93,11 @@ class CLITest < DuelTest
 
   def test_options
     s = cli("--base", "v1", "--candidate-dir", "c", "--filter", "push", "--jobs", "3", "--limit", "1.05",
-      "--warm", "2", "--force", "--config", "x.rb", "--processes", "4", "--timeout", "9").parse
+      "--warm", "2", "--force", "--config", "x.rb", "--processes", "4", "--timeout", "9", "--time-limit", "600").parse
 
-    assert_equal ["v1", nil, "c", /push/, 3, 1.05, 2.0, true, File.expand_path("x.rb"), 4, 9.0],
-      [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.warm, s.force, s.config_path, s.processes, s.timeout]
+    assert_equal ["v1", nil, "c", /push/, 3, 1.05, 2.0, true, File.expand_path("x.rb"), 4, 9.0, 600.0],
+      [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.warm, s.force, s.config_path, s.processes, s.timeout,
+        s.time_limit]
   end
 
   # Each version's Ruby: its version file's, or a path.
@@ -183,9 +185,9 @@ class CLITest < DuelTest
   def test_defaults
     s = Dir.chdir(tmpdir) { cli.parse }
 
-    assert_equal [nil, nil, nil, //, [Etc.nprocessors / 2, 1].max, 1.02, 0.99, false, nil, 3, 60.0],
+    assert_equal [nil, nil, nil, //, [Etc.nprocessors / 2, 1].max, 1.02, 0.99, false, nil, 3, 60.0, 1800.0],
       [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.confidence, s.force, s.config_path, s.processes,
-        s.timeout]
+        s.timeout, s.time_limit]
   end
 
   def test_finds_dot_duel_rb

@@ -15,8 +15,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `duel/badge`, green ("perf guarded") when Duel passed the push, and
   red ("perf regressed") when the Duel job failed or found a
   regression, even one that passed.
+- A run measures for 30 minutes at most (`--time-limit SECONDS`), not
+  counting the builds. Past that, it starts no more measurements: a
+  benchmark it hasn't measured fails as an error, and one that looked
+  worse is judged on the measurements it has, so a run cut short never
+  passes a regression. The report (and the JSON report's `cut_short`)
+  says what it left undone. A benchmark that starts processes of its own
+  and sat near its limit could be measured again for hours before.
+
+### Changed
+
+- The workers, their directories and sockets, and the resources that
+  prepare blocks get are named `base` and `head` (`base-1`, `head-1`),
+  not `baseline` and `candidate`: `Resource#name` (`w.name`, `v.name`)
+  says so, and `Duel::Testing.prepare` names its worker `head-1` by
+  default. The report still says baseline and candidate.
+- A run removes its lock (`tmp/duel/lock`) when it ends, and
+  `tmp/duel` (and `tmp`, if Duel made it) when that leaves them empty, so
+  a project whose plugins build nothing to keep has nothing left there.
+- When a run ends, the builds that prepare blocks made once
+  (`Resource#cached`) and the run used replace the others of their name:
+  a key's name is what's before its version and the hash it ends with
+  (`mysql`, of `mysql-0.1.2-3f9c2a1b7e5d4c6a`). A database server or a
+  plugin upgraded left its old build in `tmp/duel/cache` before, tens
+  of megabytes (82 MB for MySQL's) each time.
 
 ### Fixed
+
+- The candidate's workers could measure slower in every pair, with the
+  same instruction counts, on code that hadn't changed. Their names
+  (`candidate-1`, against `baseline-1`) were a byte longer, and so were
+  the paths that a plugin's servers put in their environment
+  (duel-postgresql's `DATABASE_URL`, `PGHOST` and
+  `DUEL_POSTGRESQL_URL`, say). Where a process's stack starts depends on
+  how long its arguments and environment are, and at some lengths, a
+  tight loop runs the same instructions in more cycles: on macOS,
+  server-free benchmarks of pg came out 1.2 to 1.55 times slower on the
+  candidate with the plugin, and the same as the baseline without it.
+  The two versions' names are now as long as each other.
 
 - The workflow that `duel init` writes (and its GitLab CI jobs) no
   longer moves the branch that marks the last commit Duel passed

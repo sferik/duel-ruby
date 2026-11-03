@@ -70,6 +70,9 @@ module Duel
     def compared: () -> String
 
     # The benchmarks that failed.
+    # What the run left undone at its time limit, if it reached it.
+    def cut_short: () -> String?
+
     def failures: () -> String?
 
     # What got worse, or the error's first line.

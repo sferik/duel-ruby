@@ -50,7 +50,7 @@ class ResourceTest < DuelTest
 
   # (Long enough for a JVM to start on a busy machine.)
   def resource(timeout: 30.0)
-    Duel::Resource.new(File.join(short_tmpdir, "candidate-1-1"), "candidate-1", "/candidate", timeout: timeout,
+    Duel::Resource.new(File.join(short_tmpdir, "head-1-1"), "head-1", "/candidate", timeout: timeout,
       cache: File.join(tmpdir, "cache"))
   end
 
@@ -75,9 +75,9 @@ class ResourceTest < DuelTest
   def test_a_directory_of_its_own
     r = resource
 
-    assert_equal "candidate-1", r.name
+    assert_equal "head-1", r.name
     assert_equal "/candidate", r.root
-    assert_equal "candidate-1-1", File.basename(r.dir)
+    assert_equal "head-1-1", File.basename(r.dir)
     assert Dir.exist?(r.dir)
     assert_equal File.join(r.dir, "redis.sock"), r.path("redis.sock")
   end
@@ -170,7 +170,7 @@ class ResourceTest < DuelTest
     r.spawn(*ruby("puts 'port in use'; exit 1"))
     error = assert_raises(Duel::Failed) { r.wait_until { false } }
 
-    assert_equal "candidate-1's resource: #{RUBY} exited before it was ready\nport in use\n", error.message
+    assert_equal "head-1's resource: #{RUBY} exited before it was ready\nport in use\n", error.message
   end
 
   # Every process is looked at, not just the first: here the second ends.
@@ -180,7 +180,7 @@ class ResourceTest < DuelTest
     r.spawn(*ruby("puts 'port in use'; exit 1"), log: "second")
     error = assert_raises(Duel::Failed) { r.wait_until { false } }
 
-    assert_equal "candidate-1's resource: second exited before it was ready\nport in use\n", error.message
+    assert_equal "head-1's resource: second exited before it was ready\nport in use\n", error.message
   ensure
     r&.stop
   end
@@ -208,7 +208,7 @@ class ResourceTest < DuelTest
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     error = assert_raises(Duel::Failed) { r.wait_until { false } }
 
-    assert_equal "candidate-1's resource: not ready within 0.2s\nstarting\n", error.message
+    assert_equal "head-1's resource: not ready within 0.2s\nstarting\n", error.message
     waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
     assert_operator waited, :>=, 0.2
@@ -219,7 +219,7 @@ class ResourceTest < DuelTest
     r = resource(timeout: 0.1)
     error = assert_raises(Duel::Failed) { r.wait_until { false } }
 
-    assert_equal "candidate-1's resource: not ready within 0.1s", error.message
+    assert_equal "head-1's resource: not ready within 0.1s", error.message
     r.wait_until { true }
   end
 
@@ -239,7 +239,7 @@ class ResourceTest < DuelTest
     r.spawn(*ruby("12.times { |i| puts i }; exit 1"))
     error = assert_raises(Duel::Failed) { r.wait_until { false } }
 
-    assert_equal "candidate-1's resource: #{RUBY} exited before it was ready\n#{(2..11).map { |i| "#{i}\n" }.join}", error.message
+    assert_equal "head-1's resource: #{RUBY} exited before it was ready\n#{(2..11).map { |i| "#{i}\n" }.join}", error.message
   end
 
   # A process that ends when it's asked to (TERM) isn't killed, and only
@@ -290,10 +290,10 @@ class ResourceTest < DuelTest
     assert_equal "#{elsewhere}\n", File.read(r.path("where.log")), "run as told"
     error = assert_raises(Duel::Failed) { r.run(*ruby("puts 'no space'; exit 4")) }
 
-    assert_equal "candidate-1's resource: #{RUBY} exited with 4\nno space\n", error.message
+    assert_equal "head-1's resource: #{RUBY} exited with 4\nno space\n", error.message
     error = assert_raises(Duel::Failed) { r.run("sh", "-c", "kill -TERM $$", log: "killed") }
 
-    assert_equal "candidate-1's resource: killed was killed by SIGTERM", error.message
+    assert_equal "head-1's resource: killed was killed by SIGTERM", error.message
   end
 
   # Built once, for every worker (and later runs): the first to ask
@@ -359,23 +359,46 @@ class ResourceTest < DuelTest
     assert_equal ["t"], Dir.children(cache), "nothing left behind"
   end
 
-  def test_the_environment_of_several
-    assert_equal({"A" => "1", "B" => "2"}, Duel::Resource.environment("candidate-1", {"A" => "1"}, {"A" => "1", "B" => "2"}),
-      "the same value twice is no clash")
-    error = assert_raises(Duel::Failed) { Duel::Resource.environment("candidate-1", {"A" => "1", "B" => "2"}, {"B" => "3"}) }
+  # Once a run's done with them, the builds it used replace the others of
+  # their name: of another version, or another hash. The rest stay.
+  def test_builds_replaced_by_those_used
+    cache = File.join(tmpdir, "cache")
+    kept = %w[mysql-0.1.1 mysql-ab12 other-0.1.2-0123456789abcdef postgresql-0.1.2-0123456789abcdef t]
+    gone = %w[mysql-0.1.1-0123456789abcdef mysql-0123456789abcdef mysql-0.1.2-fedcba9876543210 bundle-fedcba9876543210]
+    (kept + gone).each { |build| FileUtils.mkdir_p(File.join(cache, build, "data")) }
+    FileUtils.mkdir_p(File.join(tmpdir, "elsewhere", "postgresql-0.1.1-0123456789abcdef"))
+    FileUtils.mkdir_p(File.join(cache, "redis-0.1-0123456789abcdef"))
+    kept << "redis-0.1-0123456789abcdef"
+    Duel::Resource.new(short_tmpdir, "head-1", "/candidate", timeout: 1.0, cache: File.join(tmpdir, "elsewhere"))
+      .cached("redis-0.2-1123456789abcdef") { |_| nil }
+    used = %w[mysql-0.1.2-3f9c2a1b7e5d4c6a bundle-0123456789abcdef bundle-1123456789abcdef t]
+    used.each { |key| resource.cached(key) { |_| nil } }
+    Duel::Resource.evict(cache)
 
-    assert_equal "candidate-1: two prepare blocks set B (2, 3)", error.message
+    assert_equal (kept | used).sort, Dir.children(cache).sort
+    assert_path_exists File.join(tmpdir, "elsewhere", "postgresql-0.1.1-0123456789abcdef"), "another cache's"
+    Duel::Resource.evict(File.join(tmpdir, "none"))
+
+    pass "no cache, nothing to remove"
+  end
+
+  def test_the_environment_of_several
+    assert_equal({"A" => "1", "B" => "2"}, Duel::Resource.environment("head-1", {"A" => "1"}, {"A" => "1", "B" => "2"}),
+      "the same value twice is no clash")
+    error = assert_raises(Duel::Failed) { Duel::Resource.environment("head-1", {"A" => "1", "B" => "2"}, {"B" => "3"}) }
+
+    assert_equal "head-1: two prepare blocks set B (2, 3)", error.message
   end
 
   def test_failing_with_a_reason
     r = resource
     error = assert_raises(Duel::Failed) { r.failed("no PostgreSQL") }
 
-    assert_equal "candidate-1's resource: no PostgreSQL", error.message
+    assert_equal "head-1's resource: no PostgreSQL", error.message
     File.write(r.path("why.log"), "a\nb\n")
     error = assert_raises(Duel::Failed) { r.failed("no PostgreSQL", log: r.path("why.log")) }
 
-    assert_equal "candidate-1's resource: no PostgreSQL\na\nb\n", error.message
+    assert_equal "head-1's resource: no PostgreSQL\na\nb\n", error.message
   end
 
   def test_a_process_that_ignores_term_is_killed

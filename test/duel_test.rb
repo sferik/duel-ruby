@@ -69,6 +69,11 @@ class ConfigTest < DuelTest
     assert_empty config.metrics
   end
 
+  # What Duel keeps for a project is in its tmp/duel.
+  def test_state
+    assert_equal "/project/tmp/duel", Duel::Config.new("/project").state
+  end
+
   def test_load_into_puts_lib_first_by_default
     config = Duel::Config.new(tmpdir)
     # (No gemspec: nothing to require.)

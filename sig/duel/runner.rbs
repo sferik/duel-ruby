@@ -16,6 +16,10 @@ module Duel
   # @api private
   YJIT_WARM: Float
 
+  # The seconds a run measures for, at most, by default.
+  # @api private
+  TIME_LIMIT: Float
+
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
   class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | Config::fail_on | nil]
@@ -31,6 +35,8 @@ module Duel
     attr_accessor force: bool
     attr_accessor config_path: String?
     attr_accessor timeout: Float
+    # The seconds a run measures for, at most (--time-limit).
+    attr_accessor time_limit: Float
     # Each version's Ruby (--ruby), over Config#ruby.
     attr_accessor ruby: Config::ruby
     # When the workflow comments on a pull request (--comment), over
@@ -49,12 +55,12 @@ module Duel
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
                    ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment,
                    ?Config::fail_on? fail_on, ?String? pushed,
-                   ?String? target) -> instance
+                   ?String? target, ?Float time_limit) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
                    ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?,
                    ?fail_on: Config::fail_on?, ?pushed: String?,
-                   ?target: String?) -> instance
+                   ?target: String?, ?time_limit: Float) -> instance
 
     def self.defaults: () -> Settings
   end
@@ -68,10 +74,17 @@ module Duel
     attr_accessor ruby: String
     attr_accessor env: Hash[String, String?]
 
+    # What each version's workers are named for: "base" and "head", as
+    # long as each other.
+    LABELS: Hash[String, String]
+
     def self.new: (String name, String root, String ruby, Hash[String, String?] env) -> instance
 
     # Each version with nothing prepared: its tree, on the runner's Ruby.
     def self.unprepared: (Config config, Settings settings, String base_root) -> Hash[String, Side]
+
+    # What its workers, and its version's resources, are named for.
+    def label: () -> String
   end
 
   # A worker process (Duel::Worker) running one version of the code.
@@ -476,6 +489,14 @@ module Duel
 
     @rubies: Hash[String, String]
     @seconds: Float
+    @lock: Thread::Mutex
+    @started: Float
+    @unmeasured: Array[String]
+    @unconfirmed: Array[String]
+    @across_cut: bool
+
+    # What a run cut short at its time limit left undone.
+    type cut_short = Hash[String, Array[String] | bool]
 
     # Across the board: {metric => verdict}. Set by #run.
     attr_reader across: Hash[String, Across::verdict]
@@ -486,6 +507,9 @@ module Duel
     # The seconds the run took. Set by #run.
     attr_reader seconds: Float
 
+    # What the run left undone when it reached its time limit, or nil.
+    def cut_short: () -> cut_short?
+
     def initialize: (Config config, Settings settings, String base_root, ?out: _Output) -> void
 
     # Returns the Results.
@@ -495,6 +519,12 @@ module Duel
     def passed?: (Array[Result] results) -> bool
 
     def regressed_across: () -> Array[String]
+
+    # What a run cut short at its time limit left undone, or nil.
+    def cut_short_note: () -> String?
+
+    # Whether the run has measured for longer than its time limit.
+    def out_of_time?: () -> bool
 
     # The plugins the configuration used, by name.
     def plugins: () -> Array[Symbol]
@@ -519,6 +549,11 @@ module Duel
     def measure_all: (Array[Lane] lanes, Array[String] names) -> Array[Result]
 
     def attempt: (Lane lane, String name) -> Result
+
+    # A benchmark the run reached its time limit before it measured.
+    def unmeasured: (String name) -> Result
+
+    def limit_text: () -> String
 
     def confirm: (Array[Result] suspects) -> void
 

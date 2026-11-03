@@ -48,6 +48,8 @@ class LockTest < DuelTest
     held = Duel::Lock.hold(@dir) { [File.read(File.join(@dir, "lock")), :done] }
 
     assert_equal [Process.pid.to_s, :done], held
+    # (Left by a run of an earlier Duel, which didn't remove it.)
+    FileUtils.mkdir_p(@dir)
     File.write(File.join(@dir, "lock"), "a much longer pid")
     written = Duel::Lock.hold(@dir) { File.read(File.join(@dir, "lock")) }
 
@@ -70,6 +72,97 @@ class LockTest < DuelTest
     error = assert_raises(Duel::Error) { Duel::Lock.hold(@dir) { flunk } }
 
     assert_equal "another duel run is using #{@dir}: wait for it to end, or stop it", error.message
+  end
+
+  # A run that ends removes its lock, and the directories that leaves
+  # empty: tmp/duel, and tmp, where Duel made it.
+  def test_removes_it_and_what_it_leaves_empty
+    project = FileUtils.mkdir_p(File.join(tmpdir, "project")).first
+    dir = File.join(project, "tmp", "duel")
+    Duel::Lock.hold(dir) { FileUtils.mkdir_p(File.join(dir, "cache")) }
+
+    assert_empty Dir.children(project), "nothing left"
+    FileUtils.mkdir_p(File.join(project, "tmp"))
+    Duel::Lock.hold(dir) { nil }
+
+    assert_equal ["tmp"], Dir.children(project), "a tmp it didn't make stays, empty or not"
+    FileUtils.mkdir_p(File.join(dir, "cache"))
+    Duel::Lock.hold(dir) { nil }
+
+    assert_empty Dir.children(File.join(project, "tmp")), "a tmp/duel that was there, emptied, is removed too"
+  end
+
+  # What it keeps stays: a cache's builds, and a baseline's checkout,
+  # empty directories and all.
+  def test_keeps_what_isnt_empty
+    FileUtils.mkdir_p(File.join(@dir, "base", "log"))
+    Duel::Lock.hold(@dir) { FileUtils.mkdir_p(File.join(@dir, "cache", "mysql-0.1.2-0123456789abcdef")) }
+
+    assert_equal %w[base cache], Dir.children(@dir).sort, "no lock"
+    assert_path_exists File.join(@dir, "base", "log"), "not in a checkout"
+    assert_path_exists File.join(@dir, "cache", "mysql-0.1.2-0123456789abcdef")
+  end
+
+  # `duel --clean` removes tmp/duel, lock and all, while it's held.
+  def test_removed_while_held
+    project = FileUtils.mkdir_p(File.join(tmpdir, "project")).first
+    dir = File.join(project, "tmp", "duel")
+
+    assert_equal :cleaned, Duel::Lock.hold(dir) { FileUtils.rm_rf(dir) && :cleaned }
+    assert_empty Dir.children(project), "tmp/duel gone, and the tmp it made"
+  end
+
+  # A lock its run removed after this opened it isn't the lock: this
+  # opens the one there now.
+  def test_a_lock_removed_after_it_was_opened
+    FileUtils.mkdir_p(@dir)
+    path = File.join(@dir, "lock")
+    real = File.method(:identical?)
+    looks = 0
+
+    stub(File, :identical?, ->(*args) { ((looks += 1) == 1) ? false : real.call(*args) }) do
+      assert_equal :ran, Duel::Lock.hold(@dir) { :ran }
+    end
+
+    assert_equal 2, looks
+    refute_path_exists path
+    looks = 0
+    stub(File, :identical?, ->(*args) { (looks += 1) && real.call(*args) }) do
+      Duel::Lock.hold(@dir) do
+        FileUtils.rm_f(path)
+        :ran
+      end
+    end
+
+    assert_equal 1, looks
+    exists = File.method(:exist?)
+    gone = 0
+
+    stub(File, :exist?, ->(file) { (file == path && (gone += 1) == 1) ? false : exists.call(file) }) do
+      assert_equal :ran, Duel::Lock.hold(@dir) { :ran }
+    end
+
+    assert_equal 2, gone, "not there: opened again"
+  end
+
+  # Every lock file it opens, it closes: its own when it's done, another
+  # run's, and one that run removed.
+  def test_closes_what_it_opens
+    opened = []
+    real = File.method(:new)
+    open = ->(*args, **options) { real.call(*args, **options).tap { |file| opened << file if args.first.to_s.end_with?("lock") } }
+    stub(File, :new, open) { Duel::Lock.hold(@dir) { :ran } }
+    identical = File.method(:identical?)
+    looks = 0
+    stub(File, :new, open) do
+      stub(File, :identical?, ->(*args) { ((looks += 1) == 1) ? false : identical.call(*args) }) { Duel::Lock.hold(@dir) { :ran } }
+    end
+    holder
+
+    stub(File, :new, open) { assert_raises(Duel::Error) { Duel::Lock.hold(@dir) { flunk } } }
+
+    assert_equal 4, opened.size
+    assert opened.all?(&:closed?), "every one closed"
   end
 
   # A run that crashed holds nothing: its lock ended with it.

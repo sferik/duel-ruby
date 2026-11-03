@@ -22,7 +22,7 @@ module Duel
       none = [] #: Array[value]
       nothing = {} #: report
       head(status, exit, message, settings, comment).merge("seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => none,
-        "benchmarks" => none, "across" => nothing, "errors" => none)
+        "benchmarks" => none, "across" => nothing, "errors" => none, "cut_short" => nil)
     end
 
     # What every report starts with.
@@ -30,7 +30,7 @@ module Duel
       {"schema" => SCHEMA, "duel_version" => VERSION, "status" => status, "exit" => exit, "message" => message, "comment" => comment,
        "settings" => {"confidence" => settings.confidence, "limit" => settings.limit, "filter" => settings.filter.source,
                       "jobs" => settings.jobs, "processes" => settings.processes, "timeout" => settings.timeout,
-                      "warm" => settings.warm, "force" => settings.force}}
+                      "time_limit" => settings.time_limit, "warm" => settings.warm, "force" => settings.force}}
     end
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
@@ -54,7 +54,8 @@ module Duel
         "plugins" => @runner.plugins.map(&:to_s),
         "benchmarks" => @results.map { |result| benchmark(result) },
         "across" => across,
-        "errors" => @results.select(&:error).map { |result| {"benchmark" => result.name, "message" => result.error} }
+        "errors" => @results.select(&:error).map { |result| {"benchmark" => result.name, "message" => result.error} },
+        "cut_short" => @runner.cut_short
       )
     end
 

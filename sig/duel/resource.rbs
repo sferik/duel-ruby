@@ -40,7 +40,16 @@ module Duel
     # @api private
     def self.environment: (String name, Hash[String, String?] env, Hash[String, String?] vars) -> Hash[String, String?]
 
-    # The worker it's for ("baseline-1", say).
+    # The worker it's for ("base-1", say).
+    # What a cache key names, without its version and hash.
+    NAME: Regexp
+
+    # The builds this process's runs used, by path.
+    USED: Set[String]
+
+    # Removes the builds that ones this process used replace.
+    def self.evict: (String cache) -> void
+
     attr_reader name: String
 
     # The directory it has of its own.

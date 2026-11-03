@@ -48,6 +48,20 @@ worker and reports the benchmark as an error. To change the limit, use
 `--timeout`. If a benchmark's iterations are slow, split it into
 smaller benchmarks.
 
+## The run reached its time limit
+
+A run measures for 30 minutes at most (`--time-limit`). Past that, Duel
+starts no more measurements: it fails the benchmarks it hasn't measured,
+and judges each benchmark that looked worse on the measurements it has.
+The report starts the list of what it left undone with `TIME LIMIT`.
+
+A run usually takes that long because a benchmark is slow to settle. A
+benchmark that starts processes of its own, such as one that forks
+workers, spends most of its time waiting for them, and Duel measures
+each one again when it looks worse. Give it less work per call, or
+fewer calls, so that each sample takes less time. If your benchmarks
+need more time, raise the limit with `--time-limit SECONDS`.
+
 ## Duel tells you to set c.build
 
 Duel checks that each version's workers load only native extensions that

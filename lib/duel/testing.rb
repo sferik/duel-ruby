@@ -49,11 +49,11 @@ module Duel
 
     # Runs +config+'s prepare blocks as they'd prepare a worker (+name+,
     # running the version at +root+): its version's (Config#prepare
-    # (:version), named for the version: "candidate"), then the worker's,
+    # (:version), named for the version: "head"), then the worker's,
     # with their builds (Resource#cached) in +cache+ (by default, one for
     # every test of this process). Sets the environment they give while
     # the block runs, yields it, and stops what they started after.
-    def prepare(config, name: "candidate-1", root: config.root, cache: CACHE)
+    def prepare(config, name: "head-1", root: config.root, cache: CACHE)
       dir = Lane.tmpdir
       started = [] #: Array[Resource]
       begin

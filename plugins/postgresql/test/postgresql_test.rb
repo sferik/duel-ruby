@@ -76,7 +76,7 @@ class PostgreSQLTest < PluginTest
       prepare(config(settings: {"no_such_setting" => "1"})) { flunk "started" }
     end
 
-    assert_match(/\Acandidate-1's resource: postgres exited before it was ready\n.*no_such_setting/m, error.message)
+    assert_match(/\Ahead-1's resource: postgres exited before it was ready\n.*no_such_setting/m, error.message)
   end
 
   def test_no_postgres
@@ -84,7 +84,7 @@ class PostgreSQLTest < PluginTest
       assert_raises(Duel::Failed) { prepare(config(bin: nil)) { flunk "started" } }
     end
 
-    assert_equal "candidate-1's resource: no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)",
+    assert_equal "head-1's resource: no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)",
       error.message
   end
 
@@ -117,7 +117,7 @@ class PostgreSQLTest < PluginTest
     config = config(bin: "~/linked")
     cache = own_cache
     made = with_env("HOME" => @dir, "PATH" => "/usr/bin:/bin", "LC_ALL" => "en_US.UTF-8") do
-      prepare(config, cache:, name: "baseline-1") do |env|
+      prepare(config, cache:, name: "base-1") do |env|
         assert_path_exists File.join(env.fetch("PGHOST"), "single.sql"), "in the worker's directory"
         assert_equal [%w[C C]], query("SELECT datcollate, datctype FROM pg_database WHERE datname = current_database()"),
           "the C locale, whatever the environment's"
@@ -146,7 +146,7 @@ class PostgreSQLTest < PluginTest
   # empty, so it's made here whatever other tests have built. A statement
   # that fails in single-user mode fails it (exit_on_error).
   def test_making_a_cluster
-    resource = Duel::Resource.new(File.join(@dir, "resource"), "candidate-1", @dir, timeout: 60, cache: own_cache)
+    resource = Duel::Resource.new(File.join(@dir, "resource"), "head-1", @dir, timeout: 60, cache: own_cache)
     cluster = Duel::PostgreSQL::Cluster.new(resource, POSTGRES)
     data = File.join(@dir, "data")
     cluster.create(data)
@@ -155,7 +155,7 @@ class PostgreSQLTest < PluginTest
     assert_includes shown, 'extname = "pg_stat_statements"', "the database, with pg_stat_statements"
     error = assert_raises(Duel::Failed) { cluster.send(:single, data, "duel", "SELECT no_such_column") }
 
-    assert_match(/\Acandidate-1's resource: postgres exited with 1\n.*no_such_column/m, error.message)
+    assert_match(/\Ahead-1's resource: postgres exited with 1\n.*no_such_column/m, error.message)
     assert_equal "SELECT no_such_column\n", File.read(File.join(@dir, "resource", "single.sql"))
   end
 
@@ -170,7 +170,7 @@ class PostgreSQLTest < PluginTest
     [config(bin:), with_env("DUEL_POSTGRESQL_BIN" => bin) { config }].each do |config|
       error = assert_raises(Duel::Failed) { prepare(config, cache:) { flunk "started" } }
 
-      assert_equal "candidate-1's resource: initdb exited with 1\ninitdb: can't\n", error.message
+      assert_equal "head-1's resource: initdb exited with 1\ninitdb: can't\n", error.message
       assert_empty Dir.children(cache), "nothing left behind"
     end
   end

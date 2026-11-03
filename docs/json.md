@@ -227,6 +227,7 @@ jq -r '.benchmarks[] | select(.verdict == "regressed") | .name' tmp/duel.json
 | `benchmarks` | Every benchmark compared, in the order Duel found them (see below). |
 | `across` | The verdicts across the board, by metric (see below). |
 | `errors` | The benchmarks that failed, each as `{"benchmark": name, "message": error}`. |
+| `cut_short` | What the run left undone when it reached its time limit (`--time-limit`): `{"unmeasured": [names], "unconfirmed": [names], "across": true or false}`. `unmeasured` are the benchmarks that it didn't measure, which are errors. `unconfirmed` are those that it judged without measuring them again as often as it usually does, and `across` is whether it judged across the board without measuring every benchmark again. `null` for a run that finished within its limit. |
 
 A run fails when a benchmark regressed, a benchmark failed, or a metric
 was slower across the board and confirmed (`"confirmed": true`).
@@ -241,6 +242,7 @@ was slower across the board and confirmed (`"confirmed": true`).
 | `jobs` | Benchmarks measured at once (`--jobs`). |
 | `processes` | Worker processes for each version (`--processes`). |
 | `timeout` | The seconds that a worker may take to load or to answer (`--timeout`). |
+| `time_limit` | The seconds that a run measures for, at most (`--time-limit`). |
 | `warm` | The seconds of warm-up for each benchmark (`--warm`), or `null` for the default, which depends on the Ruby. |
 | `force` | Whether `--force` was given. |
 

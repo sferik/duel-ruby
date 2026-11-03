@@ -135,7 +135,7 @@ class EndToEndTest < DuelTest
     results, out = compare(base, candidate, filter: /new/)
 
     assert_equal ["new"], results.map(&:name)
-    assert_match(/not on the baseline \(baseline-1: NoMethodError/, results.first.skipped)
+    assert_match(/not on the baseline \(base-1: NoMethodError/, results.first.skipped)
     assert_predicate results.first, :passed?
     assert_includes out, "skipped: not on the baseline"
   end
@@ -181,7 +181,7 @@ class EndToEndTest < DuelTest
     assert_predicate results.first, :passed?
     assert_equal calls.fetch("n"), calls.fetch("baseline")
     assert_equal calls.fetch("n"), calls.fetch("candidate")
-    assert_equal %w[baseline-1 baseline-2 baseline-3 candidate-1 candidate-2 candidate-3], Dir.children(stops).sort,
+    assert_equal %w[base-1 base-2 base-3 head-1 head-2 head-3], Dir.children(stops).sort,
       "each worker's resource stopped"
   end
 
@@ -272,9 +272,9 @@ class EndToEndTest < DuelTest
       error = assert_raises(Duel::Failed) { Duel::Lane.new(config, run, Duel::Side.unprepared(config, run, base)) }
     end
 
-    assert_equal "baseline-1 worker exited while loading", error.message
+    assert_equal "base-1 worker exited while loading", error.message
     assert_includes err, "broken file", "the worker's error is shown"
-    assert_empty Dir.glob("/tmp/duel*/baseline.sock"), "its directory is cleaned up"
+    assert_empty Dir.glob("/tmp/duel*/base-1.sock"), "its directory is cleaned up"
   end
 
   # A benchmark that hangs is an error after the timeout, not the end of
@@ -291,7 +291,7 @@ class EndToEndTest < DuelTest
     results, out = compare(base, candidate, timeout: timeout, filter: /hangs|work/)
     hung = results.find { |r| r.name == "hangs" }
 
-    assert_equal "Duel::Failed: candidate-1 worker didn't answer within #{timeout}s (killed: a benchmark that hangs?)", hung.error
+    assert_equal "Duel::Failed: head-1 worker didn't answer within #{timeout}s (killed: a benchmark that hangs?)", hung.error
     assert_predicate results.find { |r| r.name == "work" }, :passed?
     assert_includes out, "ERROR hangs"
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, most
@@ -317,7 +317,7 @@ class EndToEndTest < DuelTest
     run = settings(candidate_dir: candidate, timeout: 0.5)
     error = assert_raises(Duel::Failed) { Duel::Lane.new(config, run, Duel::Side.unprepared(config, run, base)) }
 
-    assert_equal "baseline-1 worker didn't load within 0.5s (killed: a benchmark that hangs?)", error.message
+    assert_equal "base-1 worker didn't load within 0.5s (killed: a benchmark that hangs?)", error.message
   end
 
   def test_a_broken_benchmark_is_an_error
@@ -327,7 +327,7 @@ class EndToEndTest < DuelTest
     results, out = compare(base, candidate)
     broken_result = results.find { |r| r.name == "broken" }
 
-    assert_match(/candidate-1: RuntimeError: oops/, broken_result.error)
+    assert_match(/head-1: RuntimeError: oops/, broken_result.error)
     refute_predicate broken_result, :passed?
     assert_predicate results.find { |r| r.name == "work" }, :passed?, "a new lane for the next one"
     assert_includes out, "ERROR broken"

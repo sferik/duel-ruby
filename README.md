@@ -194,6 +194,16 @@ hang the run. If a worker takes more than a minute to load or to answer,
 Duel stops the worker and reports the benchmark as an error. To change
 the limit, use `--timeout`.
 
+A run measures for 30 minutes at most, not counting the builds. Past
+that, Duel starts no more measurements. A benchmark that it hasn't
+measured yet fails as an error, and a benchmark that looked worse, but
+that Duel hasn't measured again as often as it usually does, fails if it
+was worse in every measurement so far. So a run that's cut short never
+passes a regression. The report says what was left undone. To change
+the limit, use `--time-limit SECONDS`. A run usually takes this long only
+when some benchmark is slow to settle, such as one that starts processes
+of its own, so making it quicker is the better fix.
+
 `duel` exits with one of the following statuses:
 
 | Status | Meaning |

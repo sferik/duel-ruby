@@ -54,15 +54,15 @@ class LaneTest < DuelTest
       l = lane(workers, processes: 2, config_path: "/c/.duel.rb", timeout: 7.0)
       dir = File.dirname(given.first.first)
 
-      labels = %w[baseline-1 baseline-2 candidate-1 candidate-2]
+      labels = %w[base-1 base-2 head-1 head-2]
 
       assert_equal labels, workers.made.map(&:first).sort, "started at once"
       assert_equal labels.flat_map { |label| ["#{label}-1", "#{label}-2"] }, given.map { |resource_dir, _| File.basename(resource_dir) }.sort,
         "a directory of each resource's own"
       assert(given.all? { |resource_dir, _| File.dirname(resource_dir) == dir })
-      assert_equal ["baseline-1", File.join(tmpdir, "base"), File.join(tmpdir, "candidate"), dir,
-        {config_path: "/c/.duel.rb", env: {"A" => "baseline-1", "B" => "1", "C" => "2"}, timeout: 7.0, ruby: RbConfig.ruby}], workers.made.assoc("baseline-1")
-      assert_equal File.join(tmpdir, "candidate"), workers.made.assoc("candidate-2")[1]
+      assert_equal ["base-1", File.join(tmpdir, "base"), File.join(tmpdir, "candidate"), dir,
+        {config_path: "/c/.duel.rb", env: {"A" => "base-1", "B" => "1", "C" => "2"}, timeout: 7.0, ruby: RbConfig.ruby}], workers.made.assoc("base-1")
+      assert_equal File.join(tmpdir, "candidate"), workers.made.assoc("head-2")[1]
       assert_equal labels, given.map(&:last).uniq.sort
       assert Dir.exist?(dir)
       assert_equal :yes, l.profiler
@@ -82,8 +82,8 @@ class LaneTest < DuelTest
       Duel::Lane.new(config, run, sides(run, File.join(tmpdir, "x", "..", "base"))).stop
 
       # (By label: the workers start at once, in any order.)
-      assert_equal [File.join(tmpdir, "base"), File.join(tmpdir, "other")], workers.made.assoc("baseline-1")[1, 2]
-      assert_equal File.join(tmpdir, "other"), workers.made.assoc("candidate-1")[1]
+      assert_equal [File.join(tmpdir, "base"), File.join(tmpdir, "other")], workers.made.assoc("base-1")[1, 2]
+      assert_equal File.join(tmpdir, "other"), workers.made.assoc("head-1")[1]
     end
   end
 
@@ -91,7 +91,7 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       Duel::Lane.new(config, settings(processes: 1), sides(settings, tmpdir)).stop
 
-      assert_equal %w[baseline-1 candidate-1], workers.made.map(&:first).sort, "(in any order: at once)"
+      assert_equal %w[base-1 head-1], workers.made.map(&:first).sort, "(in any order: at once)"
     end
   end
 
@@ -102,7 +102,7 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       error = assert_raises(Duel::Failed) { lane(workers) }
 
-      assert_equal "baseline-1: two prepare blocks set DATABASE_URL (postgres:///a, mysql2:///b)", error.message
+      assert_equal "base-1: two prepare blocks set DATABASE_URL (postgres:///a, mysql2:///b)", error.message
     end
   end
 
@@ -119,8 +119,8 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       lane(workers, processes: 1).stop
 
-      assert_equal [["baseline-1", File.join(tmpdir, "base")], ["candidate-1", File.join(tmpdir, "candidate")]], roots.sort
-      assert_equal [File.join(tmpdir, "candidate", "tmp", "duel", "cache", "t")] * 2, cached
+      assert_equal [["base-1", File.join(tmpdir, "base")], ["head-1", File.join(tmpdir, "candidate")]], roots.sort
+      assert_equal [File.join(config.state, "cache", "t")] * 2, cached
     end
   end
 
@@ -161,7 +161,7 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       error = assert_raises(Duel::Failed) { lane(workers, timeout: 0.05) }
 
-      assert_equal "baseline-1's resource: not ready within 0.05s", error.message
+      assert_equal "base-1's resource: not ready within 0.05s", error.message
     end
   end
 
@@ -174,15 +174,15 @@ class LaneTest < DuelTest
       {}
     end
     with_fake_workers do |workers|
-      workers.fail("candidate-1", "new", error: Duel::Failed.new("candidate-1 worker exited while loading"))
+      workers.fail("head-1", "new", error: Duel::Failed.new("head-1 worker exited while loading"))
       error = assert_raises(Duel::Failed) { lane(workers) }
 
-      assert_equal "candidate-1 worker exited while loading", error.message
+      assert_equal "head-1 worker exited while loading", error.message
       # (Started at once, the others started too, but one after another, not.)
-      started = Duel::Lane::PARALLEL ? %w[baseline-1 baseline-2 baseline-3 candidate-2 candidate-3] : %w[baseline-1 baseline-2 baseline-3]
+      started = Duel::Lane::PARALLEL ? %w[base-1 base-2 base-3 head-2 head-3] : %w[base-1 base-2 base-3]
 
       assert_equal started.map { |label| [label, "stop"] }, workers.log.sort
-      assert_equal (started + %w[candidate-1]).sort, stopped.sort
+      assert_equal (started + %w[head-1]).sort, stopped.sort
       refute Dir.exist?(dirs.first)
     end
   end
@@ -191,9 +191,9 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       assert_raises(RuntimeError) { Duel::Lane.open(config, settings, sides(settings), processes: 1) { raise "boom" } }
 
-      assert_equal [%w[baseline-1 stop], %w[candidate-1 stop]], workers.log.sort, "(in any order: at once)"
+      assert_equal [%w[base-1 stop], %w[head-1 stop]], workers.log.sort, "(in any order: at once)"
       assert_kind_of Duel::Lane, Duel::Lane.open(config, settings, sides(settings), processes: 1) { |l| l }
-      workers.fail("baseline-1", "new")
+      workers.fail("base-1", "new")
 
       assert_raises(Duel::Failed) { Duel::Lane.open(config, settings, sides(settings)) { flunk } }
     end
@@ -233,23 +233,23 @@ class LaneTest < DuelTest
       assert_includes 1..30, result.seconds
       setups = workers.requests("setup").map(&:first)
 
-      assert_equal %w[candidate-1 baseline-1], setups.first(2)
-      assert_equal %w[baseline-2 baseline-3 candidate-2 candidate-3], setups.drop(2).sort
-      assert_equal %w[baseline-1 baseline-2 baseline-3 candidate-1 candidate-2 candidate-3],
+      assert_equal %w[head-1 base-1], setups.first(2)
+      assert_equal %w[base-2 base-3 head-2 head-3], setups.drop(2).sort
+      assert_equal %w[base-1 base-2 base-3 head-1 head-2 head-3],
         workers.requests("teardown").map(&:first).sort
       sampled = samples(workers)
 
-      assert_equal [["baseline-1", 1, 3, false], ["candidate-1", 1, 3, false], ["baseline-1", 12, 3, false],
-        ["candidate-1", 12, 3, false], ["baseline-1", 12, 3, false], ["candidate-1", 12, 3, false]], sampled.first(6),
+      assert_equal [["base-1", 1, 3, false], ["head-1", 1, 3, false], ["base-1", 12, 3, false],
+        ["head-1", 12, 3, false], ["base-1", 12, 3, false], ["head-1", 12, 3, false]], sampled.first(6),
         "sized on the first pair, twice in a row enough"
-      assert_equal %w[baseline-1 baseline-2 baseline-3 candidate-1 candidate-2 candidate-3].map { |l| [l, 2] },
+      assert_equal %w[base-1 base-2 base-3 head-1 head-2 head-3].map { |l| [l, 2] },
         sampled.select { |_, _, runs, count| runs == 1 && !count }.map(&:first).tally.sort, "warmed: twice each"
-      assert_equal [%w[baseline-1 candidate-1], %w[candidate-2 baseline-2], %w[baseline-3 candidate-3],
-        %w[candidate-2 baseline-1], %w[baseline-2 candidate-3]],
+      assert_equal [%w[base-1 head-1], %w[head-2 base-2], %w[base-3 head-3],
+        %w[head-2 base-1], %w[base-2 head-3]],
         sampled.select { |_, _, runs| runs == 5 }.first(10).map(&:first).each_slice(2).to_a, "each pair of workers in turn"
       assert_equal 2 * (5 + 10), sampled.count { |_, _, runs| runs == 5 }, "5 pairs to warm up, then 10"
-      assert_equal [["baseline-1", 12, 1, true], ["candidate-1", 12, 1, true], ["candidate-2", 12, 1, true],
-        ["baseline-2", 12, 1, true], ["baseline-3", 12, 1, true], ["candidate-3", 12, 1, true]],
+      assert_equal [["base-1", 12, 1, true], ["head-1", 12, 1, true], ["head-2", 12, 1, true],
+        ["base-2", 12, 1, true], ["base-3", 12, 1, true], ["head-3", 12, 1, true]],
         sampled.select { |*, count| count }
     end
   end
@@ -257,12 +257,12 @@ class LaneTest < DuelTest
   def test_a_benchmark_the_baseline_cant_set_up_is_skipped
     with_fake_workers do |workers|
       workers.benchmark("b")
-      workers.fail("baseline-1", "setup", "b", error: Duel::Failed.new("baseline-1: NoMethodError: undefined method 'newer'\n  x.rb:1\n"))
+      workers.fail("base-1", "setup", "b", error: Duel::Failed.new("base-1: NoMethodError: undefined method 'newer'\n  x.rb:1\n"))
       result, = compare(workers)
 
-      assert_equal "not on the baseline (baseline-1: NoMethodError: undefined method 'newer')", result.skipped
+      assert_equal "not on the baseline (base-1: NoMethodError: undefined method 'newer')", result.skipped
       assert_nil result.seconds
-      assert_equal [%w[candidate-1 setup], %w[baseline-1 setup], %w[candidate-1 teardown]],
+      assert_equal [%w[head-1 setup], %w[base-1 setup], %w[head-1 teardown]],
         workers.log.map { |l, op| [l, op] }.reject { |_, op| op == "stop" }
       assert_empty workers.requests("sample")
     end
@@ -271,7 +271,7 @@ class LaneTest < DuelTest
   def test_compare_tears_down_however_measuring_ends
     with_fake_workers do |workers|
       workers.benchmark("b")
-      workers.fail("candidate-2", "sample", "b")
+      workers.fail("head-2", "sample", "b")
 
       capture_io { assert_raises(Duel::Failed) { compare(workers) } } # (its thread's report too)
       assert_equal 6, workers.requests("teardown").size
@@ -314,7 +314,7 @@ class LaneTest < DuelTest
       assert_equal %w[same 60], timed.fetch("other").values_at("verdict", "pairs").map(&:to_s), "its own limit"
       assert_equal [1.02, 1.05], timed.values.map { |t| t.fetch("limit") }
       pairs = (0...60).map do |i|
-        pair = ["baseline-#{(i % 3) + 1}", "candidate-#{((i + (i / 3)) % 3) + 1}"]
+        pair = ["base-#{(i % 3) + 1}", "head-#{((i + (i / 3)) % 3) + 1}"]
         i.even? ? pair : pair.reverse
       end
 
@@ -327,10 +327,10 @@ class LaneTest < DuelTest
   # next to nothing too), and ratios to nothing are to one.
   def test_what_is_judged
     workers_values = {
-      # By baseline worker: warm-up pairs are of baseline-1, 2, 3, 1, 2.
-      "low" => {"baseline-1" => 500, "baseline-2" => 500, "baseline-3" => 1500},
-      "high" => {"baseline-1" => 500, "baseline-2" => 1500, "baseline-3" => 1500},
-      "late" => {"baseline-1" => 1500, "baseline-2" => 500, "baseline-3" => 1500}
+      # By baseline worker: warm-up pairs are of base-1, 2, 3, 1, 2.
+      "low" => {"base-1" => 500, "base-2" => 500, "base-3" => 1500},
+      "high" => {"base-1" => 500, "base-2" => 1500, "base-3" => 1500},
+      "late" => {"base-1" => 1500, "base-2" => 500, "base-3" => 1500}
     }
     with_fake_workers do |workers|
       workers.metrics = [FakeWorkers::CPU, *%w[low high late rising].map { |name| FakeWorkers::CPU.merge("name" => name, "floor" => 1000) },
@@ -564,7 +564,7 @@ class LaneTest < DuelTest
       workers.benchmark("b") { |_, n, _| {"timed" => {"cpu" => n * 100_000}, "counted" => {}, "heap" => n * (32 << 20)} }
 
       assert_equal 2, compare(workers).first.n
-      assert_equal [1, 2], samples(workers).select { |label, _, runs| runs == 3 && label == "candidate-1" }.map { |_, n| n }.uniq,
+      assert_equal [1, 2], samples(workers).select { |label, _, runs| runs == 3 && label == "head-1" }.map { |_, n| n }.uniq,
         "never more (sized again when its CPU time falls below the floor: in vain)"
       assert_equal 2 * Duel::Lane::WARMUP, samples(workers).count { |_, _, runs| runs == 5 }, "its floors taken once, not again in vain"
     end
@@ -594,7 +594,7 @@ class LaneTest < DuelTest
   # Counts are each version's least of COUNTS samples, of what both
   # versions report.
   def test_counts
-    counts = {"baseline-1" => 5, "baseline-2" => 3, "baseline-3" => 4, "candidate-1" => 9, "candidate-2" => nil, "candidate-3" => 7}
+    counts = {"base-1" => 5, "base-2" => 3, "base-3" => 4, "head-1" => 9, "head-2" => nil, "head-3" => 7}
     with_fake_workers do |workers|
       workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS.merge("name" => "older", "tolerance" => 0),
         FakeWorkers::ALLOCATIONS.merge("name" => "dropped"), FakeWorkers::ALLOCATIONS.merge("name" => "some")]
@@ -644,19 +644,19 @@ class LaneTest < DuelTest
       result = l.compare("b")
 
       assert_equal({"baseline" => 10, "candidate" => 5}, result.memory)
-      assert_equal [["baseline-7", 12], ["candidate-7", 12], ["candidate-7", 12], ["baseline-7", 12], ["baseline-7", 12],
-        ["candidate-7", 12]], workers.requests("memory").map { |label, _, args| [label, args.fetch(:n)] }
+      assert_equal [["base-7", 12], ["head-7", 12], ["head-7", 12], ["base-7", 12], ["base-7", 12],
+        ["head-7", 12]], workers.requests("memory").map { |label, _, args| [label, args.fetch(:n)] }
       assert_equal [{trial: false}] * 6, workers.requests("setup").filter_map { |label, _, args| args if label.end_with?("-7") },
         "no trial first: the allocator would keep what it freed"
       assert_equal 6, workers.log.count { |label, op| label.end_with?("-7") && op == "stop" }
-      fresh = %w[baseline-7 candidate-7 candidate-7 baseline-7 baseline-7 candidate-7]
+      fresh = %w[base-7 head-7 head-7 base-7 base-7 head-7]
 
       assert_equal fresh.flat_map { |label| ["#{label}'s other", label] }, stopped, "in reverse"
-      assert_equal %w[setup memory stop], workers.log.filter_map { |label, op| op if label == "candidate-7" }.first(3)
+      assert_equal %w[setup memory stop], workers.log.filter_map { |label, op| op if label == "head-7" }.first(3)
       stopped.clear
       l.stop
 
-      labels = %w[baseline-1 baseline-2 baseline-3 candidate-1 candidate-2 candidate-3]
+      labels = %w[base-1 base-2 base-3 head-1 head-2 head-3]
 
       assert_equal labels.flat_map { |label| [label, "#{label}'s other"] }.sort, stopped.sort
       assert(labels.all? { |label| stopped.index("#{label}'s other") < stopped.index(label) }, "each worker's last first")
@@ -682,9 +682,9 @@ class LaneTest < DuelTest
       profiles = l.profile("b", 3)
 
       assert_equal({"baseline" => {"samples" => 1}, "candidate" => {"samples" => 2}}, profiles)
-      assert_equal [["baseline-1", "setup", "b", {}], ["candidate-1", "setup", "b", {}],
-        ["baseline-1", "profile", "b", {n: 3, runs: 500}], ["candidate-1", "profile", "b", {n: 3, runs: 500}],
-        ["baseline-1", "teardown", "b", {}], ["candidate-1", "teardown", "b", {}]], workers.log
+      assert_equal [["base-1", "setup", "b", {}], ["head-1", "setup", "b", {}],
+        ["base-1", "profile", "b", {n: 3, runs: 500}], ["head-1", "profile", "b", {n: 3, runs: 500}],
+        ["base-1", "teardown", "b", {}], ["head-1", "teardown", "b", {}]], workers.log
       l.stop
     end
   end
@@ -693,11 +693,11 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       workers.benchmark("b")
       workers.profile("baseline", {"samples" => 1})
-      workers.fail("candidate-1", "profile")
+      workers.fail("head-1", "profile")
       l = lane(workers)
 
       assert_raises(Duel::Failed) { l.profile("b", 1) }
-      assert_equal %w[baseline-1 candidate-1], workers.requests("teardown").map(&:first)
+      assert_equal %w[base-1 head-1], workers.requests("teardown").map(&:first)
       l.stop
     end
   end
@@ -740,11 +740,11 @@ class LaneVersionsTest < DuelTest
     with_fake_workers do |workers|
       Duel::Lane.open(config, settings(processes: 1), sides) { nil }
 
-      assert_equal ["baseline-1", "/b", "/c"], workers.made.assoc("baseline-1").first(3)
-      assert_equal({env: {"V" => "b", "R" => "baseline-1"}, ruby: "/ruby-b"}, workers.made.assoc("baseline-1").last.slice(:env, :ruby))
-      assert_equal({env: {"V" => "c", "R" => "candidate-1"}, ruby: "/ruby-c"}, workers.made.assoc("candidate-1").last.slice(:env, :ruby))
-      assert_equal [["baseline-1", "/b", "/ruby-b"], ["candidate-1", "/c", "/ruby-c"]], given.sort
-      assert_equal ["b\n", "c\n"], %w[baseline-1 candidate-1].map { |name| File.read(File.join(tmpdir, name)) }
+      assert_equal ["base-1", "/b", "/c"], workers.made.assoc("base-1").first(3)
+      assert_equal({env: {"V" => "b", "R" => "base-1"}, ruby: "/ruby-b"}, workers.made.assoc("base-1").last.slice(:env, :ruby))
+      assert_equal({env: {"V" => "c", "R" => "head-1"}, ruby: "/ruby-c"}, workers.made.assoc("head-1").last.slice(:env, :ruby))
+      assert_equal [["base-1", "/b", "/ruby-b"], ["head-1", "/c", "/ruby-c"]], given.sort
+      assert_equal ["b\n", "c\n"], %w[base-1 head-1].map { |name| File.read(File.join(tmpdir, name)) }
     end
   end
 
@@ -807,7 +807,7 @@ class LaneVersionsTest < DuelTest
 
     assert_equal "the #{side} loaded #{path}, not a build of its own: #{feature} isn't built in #{root}. Set c.build in .duel.rb to " \
       "build each version (by default, it's `bundle exec rake compile` for a project with ext/ and a Rakefile)", error.message, message
-    assert_equal [%w[baseline-1 stop], %w[candidate-1 stop]], log.sort, "its workers stopped"
+    assert_equal [%w[base-1 stop], %w[head-1 stop]], log.sort, "its workers stopped"
   end
 
   # A baseline without a build of its own loads the candidate's, or (one
@@ -861,8 +861,8 @@ class LaneVersionsTest < DuelTest
     assert_not_its_own("baseline", candidates, feature, {feature => candidates}, {feature => candidates}, gem_dirs: gem_dirs)
   end
 
-  # A baseline in the candidate's tree (tmp/duel/base) has builds of its
-  # own there. And a tree reached by a symlink is where it leads.
+  # A baseline in the candidate's tree (one --base-dir names, say) has
+  # builds of its own there. And a tree reached by a symlink is where it leads.
   def test_a_baseline_inside_the_candidate
     inside = File.join(config.root, "tmp", "duel", "base")
     FileUtils.mkdir_p(inside)
@@ -915,8 +915,8 @@ class LaneVersionsTest < DuelTest
       assert_equal [{process: process}], runs.map(&:last).uniq, "a process a run"
       assert_equal [30_000_000, 33_000_000], result.timed.fetch("cpu").values_at("baseline", "candidate"), "the fastest of each sample's"
       assert_kind_of Float, result.seconds
-      assert_equal [%w[baseline-1 candidate-1], %w[baseline-1 candidate-1] * 3, %w[candidate-2 baseline-2] * 3,
-        %w[baseline-1 candidate-2] * 3], [runs.first(2).map(&:first), *runs.drop(2).map(&:first).each_slice(6).first(3)],
+      assert_equal [%w[base-1 head-1], %w[base-1 head-1] * 3, %w[head-2 base-2] * 3,
+        %w[base-1 head-2] * 3], [runs.first(2).map(&:first), *runs.drop(2).map(&:first).each_slice(6).first(3)],
         "the warm-up's pair, then measured ones, each of the fastest of PROCESS_RUNS a version, theirs in turn"
       assert_equal %w[run stop], workers.log.map { |entry| entry[1] }.uniq.sort, "nothing else"
     end
@@ -980,7 +980,7 @@ class LaneVersionsTest < DuelTest
   def test_a_process_benchmark_without_peak_memory
     with_fake_workers do |workers|
       workers.benchmark("boot", process: {"command" => nil, "ruby" => "1", "runs" => nil}) do |_, _, label|
-        {"timed" => {"cpu" => 1_000_000}, "peak" => (1 unless label == "candidate-1")}
+        {"timed" => {"cpu" => 1_000_000}, "peak" => (1 unless label == "head-1")}
       end
       l = lane(processes: 2)
 

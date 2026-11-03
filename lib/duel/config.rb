@@ -31,6 +31,14 @@ module Duel
     # Where the project is (and its config file).
     attr_reader :root
 
+    # Where Duel keeps what it keeps for the project, tmp/duel: the lock
+    # that keeps two runs from sharing it (see Lock), what prepare blocks
+    # build once (Resource#cached), in cache/, and the baseline's checkout
+    # where it can't go next to the repository (see Baseline#checkout), in
+    # base/. A run removes the lock when it ends, and what that leaves
+    # empty. `duel --clean` removes the rest.
+    def state = File.join(root, "tmp", "duel")
+
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor :benchmarks
 
@@ -312,18 +320,17 @@ module Duel
     # stopped when it's done with. The block returns the environment
     # variables it gets: a worker's, under its version's.
     #
-    # A version's (named "baseline" or "candidate", its #root the
-    # version's tree and its #ruby the Ruby it runs on) is prepared once
-    # for a run, in the runner, before any of its workers start:
-    # installing its bundle, say. Its environment is its workers' (and
-    # its process benchmarks').
+    # A version's (named "base" or "head", its #root the version's tree
+    # and its #ruby the Ruby it runs on) is prepared once for a run, in
+    # the runner, before any of its workers start: installing its bundle,
+    # say. Its environment is its workers' (and its process benchmarks').
     #
     #   c.prepare(:version) do |v|
     #     v.cached("bundle-#{Digest::SHA256.file(File.join(v.root, "Gemfile.lock"))}") { |_| v.run("bundle", "install", chdir: v.root) }
     #     {"BUNDLE_GEMFILE" => File.join(v.root, "Gemfile")}
     #   end
     #
-    # A worker's (named "baseline-1", say) is prepared by the runner as
+    # A worker's (named "base-1", say) is prepared by the runner as
     # the worker starts: a server of its own, say.
     #
     #   c.prepare(:worker) do |w|

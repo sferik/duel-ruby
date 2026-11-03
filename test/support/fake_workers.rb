@@ -109,7 +109,7 @@ class FakeWorkers
       @label = label
     end
 
-    def side = label.split("-").first
+    def side = Duel::Side::LABELS.key(label.split("-").first)
 
     def benchmarks = @workers.benchmarks
 

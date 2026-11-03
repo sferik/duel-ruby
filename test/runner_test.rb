@@ -91,7 +91,7 @@ class RunnerTest < DuelTest
       assert_equal 3, results.first.confirmations.size
       assert_equal [["f", 0.1, 0.1]], results.first.profile.fetch("grew")
       assert_equal 6 + (3 * 6) + 2, workers.made.size, "a lane, three more, and one of a worker each to profile"
-      assert_equal [["baseline-1", "a", {n: 11, runs: 500}], ["candidate-1", "a", {n: 11, runs: 500}]], workers.requests("profile")
+      assert_equal [["base-1", "a", {n: 11, runs: 500}], ["head-1", "a", {n: 11, runs: 500}]], workers.requests("profile")
     end
   end
 
@@ -226,17 +226,17 @@ class RunnerTest < DuelTest
       stub(Duel::Lane, :tmpdir, -> { File.join(lanes, (made << made.size).size.to_s).tap { |dir| FileUtils.mkdir_p(dir) } }) do
         elsewhere { Duel::Runner.new(config, settings, File.join(tmpdir, "base"), out: StringIO.new).run }
       end
-      bundle = ->(root) { {"BUNDLE_GEMFILE" => File.join(root, "Gemfile"), "SECOND" => File.join(candidate, "tmp", "duel", "cache", "t")} }
+      bundle = ->(root) { {"BUNDLE_GEMFILE" => File.join(root, "Gemfile"), "SECOND" => File.join(config.state, "cache", "t")} }
 
       run = File.join(lanes, "1")
 
-      assert_equal [["baseline", File.join(tmpdir, "base"), ruby, File.join(run, "baseline-1"), Duel::Rubies.environment(ruby)],
-        File.join(run, "baseline-2"), ["candidate", candidate, RbConfig.ruby, File.join(run, "candidate-1"), {}],
-        File.join(run, "candidate-2")], given
-      assert_equal %w[candidate baseline], stopped, "last first, once the run's done"
+      assert_equal [["base", File.join(tmpdir, "base"), ruby, File.join(run, "base-1"), Duel::Rubies.environment(ruby)],
+        File.join(run, "base-2"), ["head", candidate, RbConfig.ruby, File.join(run, "head-1"), {}],
+        File.join(run, "head-2")], given
+      assert_equal %w[head base], stopped, "last first, once the run's done"
       assert_equal({env: Duel::Rubies.environment(ruby).merge(bundle.call(File.join(tmpdir, "base"))), ruby: ruby},
-        workers.made.assoc("baseline-1").last.slice(:env, :ruby))
-      assert_equal({env: bundle.call(candidate), ruby: RbConfig.ruby}, workers.made.assoc("candidate-1").last.slice(:env, :ruby))
+        workers.made.assoc("base-1").last.slice(:env, :ruby))
+      assert_equal({env: bundle.call(candidate), ruby: RbConfig.ruby}, workers.made.assoc("head-1").last.slice(:env, :ruby))
       refute Dir.exist?(File.join(tmpdir, "lanes", "1")), "its directory removed"
     end
   end
@@ -250,12 +250,12 @@ class RunnerTest < DuelTest
     with_fake_workers do
       error = assert_raises(Duel::Failed) { Duel::Runner.new(config, settings, "base", out: StringIO.new).run }
 
-      assert_equal "baseline: two prepare blocks set X (1, 2)", error.message
+      assert_equal "base: two prepare blocks set X (1, 2)", error.message
       config.prepares.fetch(:version).clear
       config.prepare(:version) { |v| v.wait_until { false } }
       error = assert_raises(Duel::Failed) { Duel::Runner.new(config, settings(timeout: 0.01), "base", out: StringIO.new).run }
 
-      assert_equal "baseline's resource: not ready within 0.01s", error.message
+      assert_equal "base's resource: not ready within 0.01s", error.message
     end
   end
 
@@ -338,6 +338,92 @@ class RunnerTest < DuelTest
     end
   end
 
+  # Once it's done, a run removes the builds that the ones it used
+  # replace (see Duel::Resource.evict).
+  def test_replaced_builds_removed
+    config = Duel::Config.new(candidate)
+    cache = File.join(config.state, "cache")
+    FileUtils.mkdir_p(File.join(cache, "server-0.1-0123456789abcdef"))
+    config.prepare(:version) { |v| v.cached("server-0.2-1123456789abcdef") { |_| nil } && {} }
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      run_duel(workers, config: config)
+    end
+
+    assert_equal ["server-0.2-1123456789abcdef"], Dir.children(cache)
+  end
+
+  # Past its time limit, a run measures nothing more: what it hasn't
+  # measured is an error, and it fails.
+  def test_a_run_out_of_time
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      workers.benchmark("b")
+      results, out, runner = run_duel(workers, time_limit: 0.0)
+
+      assert_equal ["not measured: the run reached its time limit (0s, --time-limit)"] * 2, results.map(&:error)
+      refute runner.passed?(results)
+      assert_equal({"unmeasured" => %w[a b], "unconfirmed" => [], "across" => false}, runner.cut_short)
+      assert_includes out, "ERROR b: not measured: the run reached its time limit (0s, --time-limit)\n" \
+        "TIME LIMIT: the run measured for longer than 0s, --time-limit: 2 benchmarks not measured. Raise --time-limit, " \
+        "or make the slowest benchmarks quicker to settle\n2 benchmarks in"
+      assert_empty workers.requests("sample"), "nothing measured"
+    end
+  end
+
+  # A run is out of time once it has measured for longer than its limit,
+  # by the monotonic clock, from when it began: whatever the clock read
+  # then (a machine that started a moment ago reads little).
+  def test_out_of_time_by_the_clock
+    now = 1_000_000.0
+    clock = ->(id) { (id == Process::CLOCK_MONOTONIC) ? now : flunk("the monotonic clock") }
+    runner = stub(Process, :clock_gettime, clock) { Duel::Runner.new(Duel::Config.new(candidate), settings(time_limit: 10.0), tmpdir) }
+    stub(Process, :clock_gettime, clock) do
+      refute_predicate runner, :out_of_time?, "just begun"
+      now += 10.0
+
+      refute_predicate runner, :out_of_time?, "at its limit"
+      now += 0.5
+
+      assert_predicate runner, :out_of_time?, "past it"
+    end
+  end
+
+  # Within its time limit, a run does everything (and says nothing of it).
+  def test_a_run_within_its_time_limit
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      results, out, runner = run_duel(workers, time_limit: 3600.0)
+
+      assert_predicate results.first, :passed?
+      assert_nil runner.cut_short
+      refute_includes out, "TIME LIMIT"
+    end
+  end
+
+  # Slower across the board, with no time left to measure every
+  # benchmark again: slower, judged on the one measurement.
+  def test_slower_across_the_board_out_of_time
+    with_fake_workers do |workers|
+      names = Array.new(8) { |i| "b#{i}" }
+      names.each { |name| workers.benchmark(name) }
+      workers.per_iteration["candidate"] = 101_000
+      runner = Duel::Runner.new(Duel::Config.new(candidate), settings, File.join(tmpdir, "base"), out: (out = StringIO.new))
+      asked = 0
+      runner.define_singleton_method(:out_of_time?) { (asked += 1) > names.size }
+      results = elsewhere { runner.run }
+
+      assert_includes out.string, "\nSlower across the board in cpu, not measured again: the run reached its time limit " \
+        "(1800s, --time-limit)\n"
+      assert_includes out.string, "REGRESSION across the board: cpu slower, not measured again (the run reached its time limit)\n" \
+        "TIME LIMIT: the run measured for longer than 1800s, --time-limit: across the board judged without measuring again."
+      assert_equal %w[cpu], runner.regressed_across
+      refute runner.passed?(results)
+      assert_equal({"unmeasured" => [], "unconfirmed" => [], "across" => true}, runner.cut_short)
+      assert_equal 6, workers.made.size, "one lane: none to measure again"
+    end
+  end
+
   def test_out_by_default
     with_fake_workers do |workers|
       workers.benchmark("a")
@@ -353,13 +439,13 @@ class RunnerTest < DuelTest
       workers.benchmark("broken")
       workers.benchmark("gone")
       workers.benchmark("works")
-      workers.fail("candidate-1", "setup", "broken")
-      workers.fail("candidate-1", "setup", "gone", error: Errno::EPIPE.new)
+      workers.fail("head-1", "setup", "broken")
+      workers.fail("head-1", "setup", "gone", error: Errno::EPIPE.new)
       results, out, runner = run_duel(workers)
 
-      assert_equal ["Duel::Failed: candidate-1: RuntimeError: oops", "Errno::EPIPE: Broken pipe", nil], results.map(&:error)
+      assert_equal ["Duel::Failed: head-1: RuntimeError: oops", "Errno::EPIPE: Broken pipe", nil], results.map(&:error)
       assert_equal ["  #{"broken".ljust(48)} error", "  #{"gone".ljust(48)} error"], out.lines(chomp: true)[1, 2]
-      assert_includes out, "\nERROR broken: Duel::Failed: candidate-1: RuntimeError: oops\nERROR gone: Errno::EPIPE: Broken pipe\n"
+      assert_includes out, "\nERROR broken: Duel::Failed: head-1: RuntimeError: oops\nERROR gone: Errno::EPIPE: Broken pipe\n"
       assert_includes out, "3 benchmarks in 0s: 0 regressed, 2 errors"
       assert_equal 18, workers.made.size, "a new lane after each error"
       assert_equal 18, workers.log.count { |_, op| op == "stop" }
@@ -370,7 +456,7 @@ class RunnerTest < DuelTest
   def test_other_errors_are_raised
     with_fake_workers do |workers|
       workers.benchmark("a")
-      workers.fail("candidate-1", "setup", error: ArgumentError.new("a bug"))
+      workers.fail("head-1", "setup", error: ArgumentError.new("a bug"))
 
       capture_io { assert_raises(ArgumentError) { run_duel(workers) } }
       assert_equal 6, workers.log.count { |_, op| op == "stop" }, "its lane stopped"
@@ -380,7 +466,7 @@ class RunnerTest < DuelTest
   def test_lines
     with_fake_workers do |workers|
       workers.benchmark("skipped")
-      workers.fail("baseline-1", "setup", "skipped", error: Duel::Failed.new("baseline-1: NameError: no"))
+      workers.fail("base-1", "setup", "skipped", error: Duel::Failed.new("base-1: NameError: no"))
       workers.benchmark("more", peak_memory: true) do |side, n, _|
         {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => (side == "baseline") ? n : n + 1}, "heap" => 0}
       end
@@ -388,7 +474,7 @@ class RunnerTest < DuelTest
       workers.peaks("candidate", *[3 << 19] * 12)
       _, out, = run_duel(workers)
 
-      assert_equal "  #{"skipped".ljust(48)} skipped: not on the baseline (baseline-1: NameError: no)", out.lines[1].chomp
+      assert_equal "  #{"skipped".ljust(48)} skipped: not on the baseline (base-1: NameError: no)", out.lines[1].chomp
       assert_equal line("more", 12, "cpu 1.000 [1.000, 1.000] same  allocations 1→1.083  peak_memory 1.0MB→1.5MB"),
         out.lines[2].chomp
     end
@@ -424,10 +510,10 @@ class ConfirmTest < DuelTest
     end
   end
 
-  def confirm(*verdicts, first: "slower", out: StringIO.new)
+  def confirm(*verdicts, first: "slower", out: StringIO.new, **overrides)
     lane = FakeLane.new(verdicts.map { |v| suspect(v) })
     result = suspect(first)
-    runner = Duel::Runner.new(Duel::Config.new(tmpdir), settings, tmpdir, out: out)
+    runner = @runner = Duel::Runner.new(Duel::Config.new(tmpdir), settings(**overrides), tmpdir, out: out)
     original = Duel::Lane.method(:open)
     Duel::Lane.define_singleton_method(:open) { |*, &block| block.call(lane) }
     begin
@@ -436,6 +522,36 @@ class ConfirmTest < DuelTest
       Duel::Lane.define_singleton_method(:open, original)
     end
     result
+  end
+
+  # Past the run's time limit, a suspect is judged on the measurements it
+  # has: worse in every one, it fails.
+  def test_out_of_time
+    out = StringIO.new
+    result = confirm("slower", "slower", "slower", out: out, time_limit: 0.0)
+
+    assert_empty result.confirmations
+    assert_equal %w[cpu], result.regressed
+    assert_equal "  #{"x".ljust(48)} judged on 1 measurement: the run reached its time limit (0s, --time-limit)\n",
+      out.string.lines.last
+    assert_equal({"unmeasured" => [], "unconfirmed" => ["x"], "across" => false}, @runner.cut_short)
+    assert_equal "the run measured for longer than 0s, --time-limit: 1 benchmark judged without measuring every one again. " \
+      "Raise --time-limit, or make the slowest benchmarks quicker to settle", @runner.cut_short_note
+  end
+
+  # Out of time after a confirmation: judged on both measurements.
+  def test_out_of_time_after_a_confirmation
+    out = StringIO.new
+    lane = FakeLane.new([suspect("slower")])
+    result = suspect("slower")
+    runner = Duel::Runner.new(Duel::Config.new(tmpdir), settings, tmpdir, out: out)
+    asked = 0
+    runner.define_singleton_method(:out_of_time?) { (asked += 1) > 1 }
+    stub(Duel::Lane, :open, ->(*, &block) { block.call(lane) }) { elsewhere { runner.send(:confirm, [result]) } }
+
+    assert_equal 1, result.confirmations.size
+    assert_equal %w[cpu], result.regressed
+    assert_includes out.string, "judged on 2 measurements: the run reached its time limit (1800s, --time-limit)\n"
   end
 
   def test_every_confirmation_agrees

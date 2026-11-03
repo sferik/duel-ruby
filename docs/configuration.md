@@ -201,7 +201,7 @@ A prepare block can use the following methods:
 | `w.failed("message")` | Fails the same way, for any other reason. |
 | `w.at_stop { ... }` | Runs the block when the worker stops. |
 | `w.cached(key) { \|dir\| ... }` | Makes something once, for every worker. See the following example. |
-| `w.name` | The worker's name, for example `"baseline-1"`. |
+| `w.name` | The worker's name, for example `"base-1"`. |
 | `w.dir` | The worker's directory. `w.path("name")` returns the path of a file in it. |
 | `w.root` | The tree of the version that the worker runs. |
 | `w.ruby` | The path of the Ruby that the version runs on. See [Run each version on its own Ruby](#run-each-version-on-its-own-ruby). |
@@ -223,7 +223,11 @@ Some things take long to make, and are the same for every worker, such
 as a database's initial files. `w.cached` makes them once. The first
 worker that asks builds the directory, and the other workers, in this
 run and in later ones, get its path, to copy or to start from. The key
-names what's cached, so put a version in it. `duel --clean` removes
+names what's cached, so put a version in it. If the key ends with a hash
+of what the build depends on, such as `postgres-16.2-3f9c2a1b`, then
+when a run ends, Duel removes the other builds of that name, the part
+before the version and the hash, so an upgrade doesn't leave the old
+build behind. Each build that the run used stays. `duel --clean` removes
 every cached directory.
 
 ```ruby
@@ -267,8 +271,11 @@ Duel.configure do |c|
 end
 ```
 
-`v.name` is `"baseline"` or `"candidate"`, and `v.root` is the version's
-directory. What the block spawns stops when the run ends. A worker's
+`v.name` is `"base"` (the baseline) or `"head"` (the candidate), and
+`v.root` is the version's directory. The two names are the same length
+on purpose: where a process's stack starts depends on how long its
+arguments and environment are, so a name one byte longer can make every
+worker of one version measurably slower. What the block spawns stops when the run ends. A worker's
 prepare blocks get the version's environment too, as `w.env`. If a
 worker's prepare block sets a variable that the version's environment
 sets to a different value, the run fails.

@@ -27,13 +27,17 @@ module Duel
   # @api private
   YJIT_WARM = 2.0
 
+  # The seconds a run measures for, at most, by default (see
+  # Settings#time_limit and Runner#out_of_time?).
+  TIME_LIMIT = 1800.0
+
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
   Settings = Struct.new(:base, :base_dir, :candidate_dir, :filter, :jobs, :processes, :limit, :confidence, :warm, :force,
-    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target) do
+    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit) do
     # @type self: singleton(Settings)
     def self.defaults = new(filter: //, jobs: 1, processes: 3, limit: 1.02, confidence: 0.99, warm: nil, force: false,
-      timeout: 60.0)
+      timeout: 60.0, time_limit: TIME_LIMIT)
   end
 
   # One version as a run has it (see Runner#prepare), +name+d "baseline"
@@ -49,6 +53,21 @@ module Duel
       {"baseline" => new("baseline", File.expand_path(base_root), RbConfig.ruby, {}),
        "candidate" => new("candidate", File.expand_path(settings.candidate_dir || config.root), RbConfig.ruby, {})}
     end
+  end
+
+  class Side
+    # What each version's workers, their directories and their sockets
+    # are named for (see #label): "base" and "head", as long as each
+    # other, so that the two versions' workers get arguments and
+    # environments of the same length. Where a process's stack starts
+    # depends on how long they are, and at some lengths, the same code
+    # runs the same instructions in more cycles: a version whose workers'
+    # were a byte longer could measure slower in every one.
+    LABELS = {"baseline" => "base", "candidate" => "head"}.freeze
+
+    # What its workers, and its version's resources, are named for: "base"
+    # or "head".
+    def label = LABELS.fetch(name)
   end
 
   # A worker process (Duel::Worker) running one version of the code.
@@ -324,12 +343,12 @@ module Duel
     # A worker of +side+, with its own resources, and its version's Ruby
     # and environment.
     def spawn(side, index)
-      label = "#{side}-#{index + 1}"
       version = @sides.fetch(side)
+      label = "#{version.label}-#{index + 1}"
       env = version.env
       @config.prepares.fetch(:worker).each_with_index do |block, i|
         resource = Resource.new(File.join(@dir, "#{label}-#{i + 1}"), label, version.root, timeout: @settings.timeout,
-          cache: File.join(@config.root, "tmp", "duel", "cache"), ruby: version.ruby, env: version.env)
+          cache: File.join(@config.state, "cache"), ruby: version.ruby, env: version.env)
         keep(@resources, resource)
         env = Resource.environment(label, env, block.call(resource))
       end
@@ -851,23 +870,41 @@ module Duel
     # seconds the run took. Set by #run.
     attr_reader :rubies, :seconds
 
+    # What the run left undone when it reached its time limit
+    # (Settings#time_limit): {"unmeasured" => the benchmarks it didn't
+    # measure, "unconfirmed" => those it judged without every
+    # measurement again (see #confirm), "across" => whether it judged
+    # across the board without measuring every benchmark again (see
+    # #judge_across)}, or nil where it reached none. Set by #run.
+    def cut_short
+      return if @unmeasured.empty? && @unconfirmed.empty? && !@across_cut
+
+      {"unmeasured" => @unmeasured, "unconfirmed" => @unconfirmed, "across" => @across_cut}
+    end
+
     def initialize(config, settings, base_root, out: $stdout)
       @config = config
       @settings = settings
       @base_root = base_root
       @out = out
       @prepared = []
+      @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @lock = Mutex.new
+      @unmeasured = [] #: Array[String]
+      @unconfirmed = [] #: Array[String]
+      @across_cut = false
     end
 
     # Returns the Results.
     def run
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      started = @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @dir = Lane.tmpdir
       begin
         compare_all(started)
       ensure
         @prepared.reverse_each(&:stop)
         FileUtils.rm_rf(@dir)
+        Resource.evict(File.join(@config.state, "cache"))
       end
     end
 
@@ -876,6 +913,27 @@ module Duel
     def passed?(results) = results.all?(&:passed?) && regressed_across.empty?
 
     def regressed_across = @across.select { |_, v| v["confirmed"] }.keys
+
+    # What a run cut short at its time limit left undone (see #cut_short),
+    # or nil where it wasn't.
+    def cut_short_note
+      return unless cut_short
+
+      undone = [("#{Runner.count(@unmeasured.size, "benchmark")} not measured" unless @unmeasured.empty?),
+        ("#{Runner.count(@unconfirmed.size, "benchmark")} judged without measuring every one again" unless @unconfirmed.empty?),
+        ("across the board judged without measuring again" if @across_cut)].compact
+      "the run measured for longer than #{limit_text}: #{undone.join(", ")}. Raise --time-limit, or make the slowest " \
+        "benchmarks quicker to settle"
+    end
+
+    # Whether the run has measured for longer than its time limit
+    # (Settings#time_limit). Then it starts nothing more: a benchmark it
+    # hasn't measured is an error, unmeasured, and what looked worse is
+    # judged on the measurements it has, without measuring it again. It
+    # fails what still looks worse in all of them, so a run cut short
+    # never passes a regression it would have failed. Each measurement it
+    # started runs to its end.
+    def out_of_time? = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started > @settings.time_limit
 
     # The plugins the configuration used (Config#plugins), by name.
     def plugins = @config.plugins
@@ -918,10 +976,10 @@ module Duel
         side.ruby = Rubies.find(choice, side.root, side.name)
         side.env = Rubies.environment(side.ruby)
         @config.prepares.fetch(:version).each_with_index do |block, i|
-          resource = Resource.new(File.join(@dir, "#{side.name}-#{i + 1}"), side.name, side.root, timeout: @settings.timeout,
-            cache: File.join(@config.root, "tmp", "duel", "cache"), ruby: side.ruby, env: side.env)
+          resource = Resource.new(File.join(@dir, "#{side.label}-#{i + 1}"), side.label, side.root, timeout: @settings.timeout,
+            cache: File.join(@config.state, "cache"), ruby: side.ruby, env: side.env)
           @prepared << resource
-          side.env = Resource.environment(side.name, side.env, block.call(resource))
+          side.env = Resource.environment(side.label, side.env, block.call(resource))
         end
         side
       end
@@ -944,6 +1002,14 @@ module Duel
       slower = verdicts.select { |_, v| v.fetch("verdict") == "slower" }.keys
       return verdicts if slower.empty?
 
+      if out_of_time?
+        # (Judged on the one measurement: slower in it, so slower.)
+        @across_cut = true
+        @out.puts "\nSlower across the board in #{slower.join(", ")}, not measured again: the run reached its time limit (#{limit_text})"
+        slower.each { |metric| verdicts.fetch(metric)["confirmed"] = true }
+        return verdicts
+      end
+
       @out.puts "\nMeasuring every benchmark again, in fresh processes: slower across the board in #{slower.join(", ")}?"
       again = Across.new(with_lanes { |lanes| measure_all(lanes, names) }, confidence: @settings.confidence).verdicts
       slower.each { |metric| verdicts.fetch(metric)["confirmed"] = again.dig(metric, "verdict") == "slower" }
@@ -960,6 +1026,11 @@ module Duel
       lanes.each_index.map do |i|
         Thread.new do
           while (name, index = queue.deq)
+            if out_of_time?
+              results[index] = unmeasured(name)
+              next
+            end
+
             result = results[index] = attempt(lanes.fetch(i), name)
             @out.print "#{line(result)}\n" # (in one write: other threads write too)
             next unless result.error
@@ -979,6 +1050,16 @@ module Duel
       Result.new(name).tap { |r| r.error = "#{e.class}: #{e}" }
     end
 
+    # A benchmark the run reached its time limit before it measured: an
+    # error, so the run fails. (Each lane's thread adds to the list.)
+    # mutant:disable -- CRuby's Array#<< is atomic anyway, and JRuby's isn't
+    def unmeasured(name)
+      @lock.synchronize { @unmeasured << name }
+      Result.new(name).tap { |r| r.error = "not measured: the run reached its time limit (#{limit_text})" }
+    end
+
+    def limit_text = "#{@settings.time_limit.round}s, --time-limit"
+
     # Measures each suspect again, from scratch, in fresh processes, until
     # one measurement clears it or CONFIRM agree (and once more for each
     # too close to call, up to CONFIRM more: see Result#confirm).
@@ -989,6 +1070,12 @@ module Duel
         "#{CONFIRM} times each (#{CONFIRM + 1} if what's slower differs, and once more for each too close to call):"
       suspects.each do |result|
         while result.confirming?
+          if out_of_time?
+            @unconfirmed << result.name
+            @out.puts format("  %-48s judged on %s: the run reached its time limit (%s)", result.name,
+              Runner.count(result.confirmations.size + 1, "measurement"), limit_text)
+            break
+          end
           again = Lane.open(@config, @settings, @sides) { |lane| attempt(lane, result.name) }
           @out.puts line(again) + (result.confirm(again) ? "  (too close to call: once more)" : "")
         end
@@ -1019,8 +1106,10 @@ module Duel
         @out.puts format("across the board: %s %.3f [%.3f, %.3f] %s (limit %.4f, %d benchmarks)", metric, v.fetch("median"),
           low, high, v.fetch("verdict"), v.fetch("limit"), v.fetch("benchmarks"))
       end
-      regressed_across.each { |metric| @out.puts "REGRESSION across the board: #{metric} slower in both measurements" }
+      both = @across_cut ? "slower, not measured again (the run reached its time limit)" : "slower in both measurements"
+      regressed_across.each { |metric| @out.puts "REGRESSION across the board: #{metric} #{both}" }
       errors.each { |r| @out.puts "ERROR #{r.name}: #{r.error}" }
+      cut_short_note&.then { |note| @out.puts "TIME LIMIT: #{note}" }
       regressed.each do |r|
         @out.puts "REGRESSION #{r.name}: " +
           (r.mixed? ? "slower in every measurement, by one of #{r.regressed.join(", ")}" : "worse #{r.regressed.join(", ")} in every measurement")

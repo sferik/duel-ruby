@@ -303,10 +303,10 @@ Duel::Testing.compare(base, candidate).passed? # whole comparisons, in workers
 `Duel::Testing` has the following methods:
 
 - `prepare(config)`: runs the configuration's `c.prepare(:version)`
-  blocks, named for the version (`"candidate"`), and then its
+  blocks, named for the version (`"head"`), and then its
   `c.prepare(:worker)` blocks, as Duel prepares a worker. It sets the
   environment that they return while its block runs, and stops what
-  they started after. `name:` names the worker (`"candidate-1"` by
+  they started after. `name:` names the worker (`"head-1"` by
   default), and `root:` is the version's tree (the configuration's root
   by default). `cache:` is where `w.cached` builds go. By default,
   that's one directory for the whole test process. To look inside it,

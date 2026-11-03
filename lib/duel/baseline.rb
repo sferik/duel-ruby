@@ -124,13 +124,13 @@ module Duel
       sibling = File.join(File.dirname(top), ".#{Digest::SHA256.hexdigest(root).ljust(length, "0")[0, length]}")
       return sibling if File.writable?(File.dirname(top)) && (!File.exist?(sibling) || ours?(sibling))
 
-      File.join(@config.root, "tmp", "duel", "base")
+      File.join(@config.state, "base")
     end
 
-    # Removes what Duel keeps: tmp/duel, and the baseline's checkout (and
-    # git's record of it as a worktree).
+    # Removes what Duel keeps (Config#state: tmp/duel), and the baseline's
+    # checkout (and git's record of it as a worktree).
     def clean
-      FileUtils.rm_rf(File.join(@config.root, "tmp", "duel"))
+      FileUtils.rm_rf(@config.state)
       FileUtils.rm_rf(checkout)
       git("worktree", "prune", allow_failure: true) # (not a git repository, say)
     end

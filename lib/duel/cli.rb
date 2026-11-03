@@ -76,7 +76,7 @@ module Duel
 
       settings = @settings = catch(:version) { parse } or return 0
       config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
-      Lock.hold(File.join(config.root, "tmp", "duel")) { compare(config, settings) }
+      Lock.hold(config.state) { compare(config, settings) }
     rescue Error => e
       @err.puts "duel: #{e}"
       unfinished(Summary::FAILED_MARK, "couldn't compare", "error", e.to_s, 2)
@@ -451,6 +451,9 @@ module Duel
         o.on("--jobs N", Integer, "Benchmarks measured at once (default: half the CPUs)") { |v| settings.jobs = v }
         o.on("--processes N", Integer, "Worker processes per version (default: 3)") { |v| settings.processes = v }
         o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: 60)") { |v| settings.timeout = v }
+        o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)") do |v|
+          settings.time_limit = v
+        end
         o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: 1.02)") { |v| settings.limit = v }
         o.on("--warm SECONDS", Float, "Warm-up per benchmark (default: 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)") { |v| settings.warm = v }
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",

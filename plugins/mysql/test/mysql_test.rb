@@ -70,13 +70,13 @@ class MySQLTest < PluginTest
   def test_a_server_that_doesnt_start
     error = assert_raises(Duel::Failed) { prepare(config(args: ["--no-such-option"])) { flunk "started" } }
 
-    assert_match(/\Acandidate-1's resource: mysqld exited before it was ready\n.*no-such-option/m, error.message)
+    assert_match(/\Ahead-1's resource: mysqld exited before it was ready\n.*no-such-option/m, error.message)
   end
 
   def test_no_server
     error = assert_raises(Duel::Failed) { prepare(config(server: "no-such-mysqld")) { flunk "started" } }
 
-    assert_equal "candidate-1's resource: no no-such-mysqld on the PATH (give it as server:, or DUEL_MYSQL_SERVER)", error.message
+    assert_equal "head-1's resource: no no-such-mysqld on the PATH (give it as server:, or DUEL_MYSQL_SERVER)", error.message
   end
 
   def test_finding_the_server
@@ -98,7 +98,7 @@ class MySQLTest < PluginTest
   def test_a_data_directory_made_once
     config = self.config
     cache = own_cache
-    made = prepare(config, cache:, name: "baseline-1") { |env| File.exist?(log(env, "mysqld-initialize.log")) }
+    made = prepare(config, cache:, name: "base-1") { |env| File.exist?(log(env, "mysqld-initialize.log")) }
     made_once = Dir.children(cache)
 
     server = File.realpath(MYSQLD)
@@ -124,7 +124,7 @@ class MySQLTest < PluginTest
     [config(server:), with_env("DUEL_MYSQL_SERVER" => server) { config }].each do |config|
       error = assert_raises(Duel::Failed) { prepare(config, cache:) { flunk "started" } }
 
-      assert_equal "candidate-1's resource: mysqld-initialize exited with 1\nmysqld: can't\n", error.message
+      assert_equal "head-1's resource: mysqld-initialize exited with 1\nmysqld: can't\n", error.message
       assert_empty Dir.children(cache), "nothing left behind"
     end
   end

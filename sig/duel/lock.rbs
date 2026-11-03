@@ -8,5 +8,16 @@ module Duel
     # Runs the block holding +dir+'s lock. Fails, naming the run that
     # holds it, if another does.
     def self.hold: [T] (String dir) { () -> T } -> T
+
+    # The lock file at +path+, locked: the one there now.
+    def self.acquire: (String path, String dir) -> File
+
+    # The directories, +dir+ and those it's in, that aren't there yet,
+    # deepest first.
+    def self.missing: (String dir) -> Array[String]
+
+    # Removes the empty directories in +dir+, then +dir+, then those of
+    # +made+ that it's in, while they're empty.
+    def self.tidy: (String dir, Array[String] made) -> void
   end
 end

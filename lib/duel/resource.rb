@@ -42,7 +42,36 @@ module Duel
     # @api private
     CACHE = Mutex.new
 
-    # The worker it's for ("baseline-1", say), or the version ("baseline",
+    # What a cache key names, without the version and the hash it ends
+    # with: "mysql", of mysql-0.1.2-3f9c2a1b7e5d4c6a. Builds of one name
+    # are of one thing, and the one a run used replaces the rest (see
+    # .evict).
+    # @api private
+    NAME = /\A(.+?)(?:-\d[\w.]*)?-\h{8,}\z/
+
+    # The builds this process's runs used (#cached), by path.
+    # @api private
+    USED = Set.new
+
+    # Removes from +cache+ the builds that ones this process used replace:
+    # of the same name (see NAME), with another version or hash. A server
+    # or a plugin upgraded, or a lockfile changed, left its old build
+    # behind otherwise: tens of megabytes of a database's files, each
+    # time. A key that doesn't end with a hash is never removed, nor is
+    # any that this process used (each version's bundle, say). (Once a
+    # run's workers have started: none adds to USED then.)
+    # @api private
+    def self.evict(cache)
+      used = USED.select { |dir| File.dirname(dir) == cache }.map { |dir| File.basename(dir) }
+      names = used.filter_map { |key| key[NAME, 1] }
+      Dir.children(cache).each do |build|
+        FileUtils.rm_rf(File.join(cache, build)) if !used.include?(build) && names.include?(build[NAME, 1])
+      end
+    rescue Errno::ENOENT # (no cache)
+      nil
+    end
+
+    # The worker it's for ("base-1", say), or the version ("base",
     # for Config#prepare(:version)), the directory it has of its own, the
     # tree of the version that worker runs, and the Ruby it runs on (see
     # Config#ruby).
@@ -88,11 +117,17 @@ module Duel
     # block is given, and the rest get it built. A key names what's built
     # (put a version in it), as a file name: tmp/duel/cache/+key+, which
     # `duel --clean` removes. A build that fails leaves nothing behind.
+    # A key that ends with a hash (and a version before it, if you like:
+    # mysql-0.1.2-3f9c2a1b) replaces the builds of its name when the run
+    # ends (see .evict): the one a run used is the one that's kept.
     def cached(key)
       raise ArgumentError, "a cache key is a file name (letters, digits, - _ .), not #{key.inspect}" unless key.match?(KEY)
 
       dir = File.join(@cache, key)
-      CACHE.synchronize { build(dir) { |building| yield building } unless File.directory?(dir) }
+      CACHE.synchronize do
+        USED << dir
+        build(dir) { |building| yield building } unless File.directory?(dir)
+      end
       dir
     end
 

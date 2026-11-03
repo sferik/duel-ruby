@@ -42,6 +42,9 @@ module Duel
     # Where the project is (and its config file).
     attr_reader root: String
 
+    # Where Duel keeps what it keeps for the project: tmp/duel.
+    def state: () -> String
+
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor benchmarks: String
 

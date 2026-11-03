@@ -63,14 +63,14 @@ class MemcachedTest < PluginTest
   def test_a_server_that_doesnt_start
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: "false")) { flunk "started" } }
 
-    assert_equal "candidate-1's resource: false exited before it was ready", error.message
+    assert_equal "head-1's resource: false exited before it was ready", error.message
   end
 
   def test_the_server_from_the_environment
     ENV["DUEL_MEMCACHED_SERVER"] = "false"
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config) { flunk "started" } }
 
-    assert_equal "candidate-1's resource: false exited before it was ready", error.message
+    assert_equal "head-1's resource: false exited before it was ready", error.message
   ensure
     ENV.delete("DUEL_MEMCACHED_SERVER")
   end

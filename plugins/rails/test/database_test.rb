@@ -8,7 +8,7 @@ class DatabaseTest < PluginTest
 
   def config = Duel::Config.new(@dir)
 
-  def resource = Duel::Resource.new(@dir, "candidate-1", @dir, timeout: 1.0, cache: File.join(@dir, "cache"))
+  def resource = Duel::Resource.new(@dir, "head-1", @dir, timeout: 1.0, cache: File.join(@dir, "cache"))
 
   def test_sqlite_a_file_of_the_workers_own
     c = config

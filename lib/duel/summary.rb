@@ -116,7 +116,7 @@ module Duel
 
     # The Markdown, with the first +explained+ regressions explained.
     def render(explained)
-      [heading, @note, compared, failures, across(confirmed: true), details(explained)].compact.join("\n\n") + "\n"
+      [heading, @note, compared, cut_short, failures, across(confirmed: true), details(explained)].compact.join("\n\n") + "\n"
     end
 
     # The verdict: what failed (benchmarks, or a metric across the board),
@@ -142,6 +142,9 @@ module Duel
       why = " The baseline can't run the skipped #{(skipped == 1) ? "benchmark" : "benchmarks"}." if skipped.positive?
       "Compared #{@candidate} with #{@baseline}.#{why}"
     end
+
+    # What the run left undone at its time limit, if it reached it.
+    def cut_short = @runner.cut_short_note&.then { |note| "Time limit: #{note}." }
 
     # The benchmarks that failed: what got worse and by how much, or the
     # error, and where the most extra CPU went, if a profile says.

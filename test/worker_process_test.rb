@@ -49,7 +49,7 @@ class WorkerProcessTest < DuelTest
     spawned = @spawned
     pids = @pids
     threads = @threads
-    control = File.join(@dir, "candidate-1.sock")
+    control = File.join(@dir, "head-1.sock")
     play = method(:play)
     fake = lambda do |*args, **options|
       spawned << [args, options]
@@ -63,7 +63,7 @@ class WorkerProcessTest < DuelTest
       real.call(*command, **options).tap { |pid| pids << pid }
     end
     stub(Process, :spawn, fake) do
-      Duel::WorkerProcess.new("candidate-1", "/base", "/candidate", @dir, config_path: config_path, env: {"E" => "1"},
+      Duel::WorkerProcess.new("head-1", "/base", "/candidate", @dir, config_path: config_path, env: {"E" => "1"},
         timeout: timeout, ruby: ruby)
     end.tap { |worker| @workers << worker }
   end
@@ -83,15 +83,15 @@ class WorkerProcessTest < DuelTest
     worker = worker_process
 
     assert_equal [[{"E" => "1"}, RbConfig.ruby, *Duel::WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r",
-      "duel/worker", "-e", "Duel::Worker.main(*ARGV)", "/base", "/candidate", File.join(@dir, "candidate-1.sock")],
+      "duel/worker", "-e", "Duel::Worker.main(*ARGV)", "/base", "/candidate", File.join(@dir, "head-1.sock")],
       {in: File::NULL, close_others: true}], @spawned.first
     assert_equal File.expand_path("../lib", __dir__), Duel::WorkerProcess::LIB
-    assert_equal "candidate-1", worker.label
+    assert_equal "head-1", worker.label
     assert_equal({"a" => {"name" => "a", "n" => 1}, "b" => {"name" => "b", "n" => 2}}, worker.benchmarks)
     assert_equal [{"name" => "cpu"}], worker.metrics
     assert_equal [true, false, false], [worker.memory, worker.profiler, worker.yjit]
     assert_equal ["ruby 9.9", {"x.so" => "/x.so"}, ["/gems/"]], [worker.description, worker.extensions, worker.gem_dirs]
-    refute_path_exists File.join(@dir, "candidate-1.sock"), "its socket is gone once it's connected"
+    refute_path_exists File.join(@dir, "head-1.sock"), "its socket is gone once it's connected"
   end
 
   # A gem's spec, as Gem.loaded_specs has it.
@@ -141,9 +141,9 @@ class WorkerProcessTest < DuelTest
     end
     worker.stop
 
-    options = {env: {"E" => "1"}, chdir: "/base", log: File.join(@dir, "candidate-1.log"), timeout: 5.0}
+    options = {env: {"E" => "1"}, chdir: "/base", log: File.join(@dir, "head-1.log"), timeout: 5.0}
 
-    assert_equal [[["candidate-1"], options], %w[bin/rails runner 1], [ruby, "-I", "/base/lib", "-e", "require 'x'"], :stop], made
+    assert_equal [[["head-1"], options], %w[bin/rails runner 1], [ruby, "-I", "/base/lib", "-e", "require 'x'"], :stop], made
   end
 
   def test_a_worker_that_takes_a_while_to_load
@@ -176,28 +176,28 @@ class WorkerProcessTest < DuelTest
     worker = worker_process { {"error" => "KeyError: no", "backtrace" => ["a.rb:1", "b.rb:2"]} }
     error = assert_raises(Duel::Failed) { worker.request("setup", "x") }
 
-    assert_equal "candidate-1: KeyError: no\n  a.rb:1\n  b.rb:2", error.message
+    assert_equal "head-1: KeyError: no\n  a.rb:1\n  b.rb:2", error.message
   end
 
   def test_a_worker_that_exits
     worker = worker_process { nil }
     error = assert_raises(Duel::Failed) { worker.request("setup", "x") }
 
-    assert_equal "candidate-1 worker exited", error.message
+    assert_equal "head-1 worker exited", error.message
   end
 
   def test_a_worker_that_doesnt_answer
     worker = worker_process(timeout: 0.2) { sleep }
     error = assert_raises(Duel::Failed) { worker.request("setup", "x") }
 
-    assert_equal "candidate-1 worker didn't answer within 0.2s (killed: a benchmark that hangs?)", error.message
+    assert_equal "head-1 worker didn't answer within 0.2s (killed: a benchmark that hangs?)", error.message
     assert_raises(Errno::ECHILD, "killed, and waited for") { Process.wait(@pids.first) }
   end
 
   def test_a_worker_that_exits_while_loading
     error = assert_raises(Duel::Failed) { worker_process(%w[true], hello: nil) }
 
-    assert_equal "candidate-1 worker exited while loading", error.message
+    assert_equal "head-1 worker exited while loading", error.message
     assert_empty Dir.children(@dir), "its socket is gone"
   end
 
@@ -205,7 +205,7 @@ class WorkerProcessTest < DuelTest
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     error = assert_raises(Duel::Failed) { worker_process(hello: nil, timeout: 0.2) }
 
-    assert_equal "candidate-1 worker didn't load within 0.2s (killed: a benchmark that hangs?)", error.message
+    assert_equal "head-1 worker didn't load within 0.2s (killed: a benchmark that hangs?)", error.message
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2
     assert_raises(Errno::ECHILD) { Process.wait(@pids.first) }
     assert_empty Dir.children(@dir)

@@ -43,13 +43,14 @@ class SummaryTest < DuelTest
 
   # A runner that ran (with these verdicts across the board, Rubies and
   # seconds), for results made by hand.
-  def runner(across: {}, rubies: {"baseline" => "ruby 3.4", "candidate" => "ruby 3.4"}, seconds: 1.0, plugins: [])
+  def runner(across: {}, rubies: {"baseline" => "ruby 3.4", "candidate" => "ruby 3.4"}, seconds: 1.0, plugins: [], cut_short: nil)
     config = Duel::Config.new(candidate)
     config.define_singleton_method(:plugins) { plugins }
     Duel::Runner.new(config, settings, File.join(tmpdir, "base"), out: StringIO.new).tap do |r|
       r.instance_variable_set(:@across, across)
       r.instance_variable_set(:@rubies, rubies)
       r.instance_variable_set(:@seconds, seconds)
+      cut_short&.each { |what, value| r.instance_variable_set({"across" => :@across_cut}.fetch(what, :"@#{what}"), value) }
     end
   end
 
@@ -93,8 +94,8 @@ class SummaryTest < DuelTest
       workers.benchmark("broken")
       workers.benchmark("new")
       workers.benchmark("same: two", &measures)
-      workers.fail("candidate-1", "setup", "broken")
-      workers.fail("baseline-1", "setup", "new", error: Duel::Failed.new("baseline-1: NameError: no"))
+      workers.fail("head-1", "setup", "broken")
+      workers.fail("base-1", "setup", "new", error: Duel::Failed.new("base-1: NameError: no"))
       workers.profile("baseline", {"samples" => 100, "frames" => [["f", 10, 10], ["g", 5, 5]]})
       workers.profile("candidate", {"samples" => 110, "frames" => [["f", 20, 20], ["g", 6, 6]]})
 
@@ -106,7 +107,7 @@ class SummaryTest < DuelTest
         | Benchmark | Failure | Most extra CPU in |
         |---|---|---|
         | `slow: work` | cpu +10.0%, allocations 2 → 3 | `f` +10.0% |
-        | `broken` | error: `Duel::Failed: candidate-1: RuntimeError: oops` |  |
+        | `broken` | error: `Duel::Failed: head-1: RuntimeError: oops` |  |
 
         <details>
         <summary>Details: 8 benchmarks in 12s, 1 unsettled</summary>
@@ -130,7 +131,7 @@ class SummaryTest < DuelTest
         | `close: call` | unsettled | cpu 1.020 [1.020, 1.020] undecided |  |
         | `fast: work` | faster | cpu 0.900 [0.900, 0.900] faster |  |
         | `fewer: allocations` | changed | cpu 1.000 [1.000, 1.000] | allocations 3 → 2 |
-        | `new` | skipped | not on the baseline (baseline-1: NameError: no) |  |
+        | `new` | skipped | not on the baseline (base-1: NameError: no) |  |
         | `same: one` | same | cpu 1.000 [1.000, 1.000] |  |
         | `same: two` | same | cpu 1.000 [1.000, 1.000] |  |
 
@@ -240,6 +241,18 @@ class SummaryTest < DuelTest
 
     assert_includes two, "| `a` | error: `first` |\n| `b` | error: `only` |\n\n"
     assert_includes two, "<summary>Details: 2 benchmarks in 1s</summary>\n\n**`a`**\n\n```text\nfirst\nsecond\n```\n\n| Benchmark | Verdict"
+  end
+
+  # A run cut short at its time limit says what it left undone, under the
+  # versions.
+  def test_cut_short
+    cut = {"unmeasured" => %w[b c], "unconfirmed" => %w[a], "across" => true}
+    markdown = summary([errored("b", "not measured"), errored("c", "not measured")], runner: runner(cut_short: cut))
+
+    assert_includes markdown, "Compared def5678 with abc1234 (where HEAD left `main`).\n\nTime limit: the run measured for longer " \
+      "than 1800s, --time-limit: 2 benchmarks not measured, 1 benchmark judged without measuring every one again, across the " \
+      "board judged without measuring again. Raise --time-limit, or make the slowest benchmarks quicker to settle.\n\n| Benchmark |"
+    refute_includes summary([result("a")]), "Time limit", "only a run cut short"
   end
 
   # Benchmarks the baseline can't run are skipped, which fails nothing.

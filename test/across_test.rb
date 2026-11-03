@@ -84,6 +84,20 @@ class AcrossConfirmTest < DuelTest
     assert_includes @out.string, "slower across the board in cpu, db_cpu?"
   end
 
+  # Out of time: slower in the one measurement, so slower, and none
+  # measured again.
+  def test_confirmed_out_of_time
+    runner = runner(nil)
+    runner.define_singleton_method(:out_of_time?) { true }
+    verdicts = elsewhere { runner.send(:judge_across, results(1.02, %w[cpu db_cpu]), %w[b0]) }
+
+    assert verdicts.fetch("cpu").fetch("confirmed")
+    assert verdicts.fetch("db_cpu").fetch("confirmed")
+    assert_equal "\nSlower across the board in cpu, db_cpu, not measured again: the run reached its time limit " \
+      "(1800s, --time-limit)\n", @out.string
+    assert_equal({"unmeasured" => [], "unconfirmed" => [], "across" => true}, runner.cut_short)
+  end
+
   def test_cleared_when_not
     runner = runner(results(1.0))
     verdicts = elsewhere { runner.send(:judge_across, results(1.02), %w[b0]) }

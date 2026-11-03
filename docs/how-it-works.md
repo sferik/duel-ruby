@@ -150,7 +150,9 @@ under a hidden name that's as long as your project's directory name, for
 example `.3f9c2a1b` next to `my_parser`. Duel keeps it there for the
 next run. If your project has an `ext/` directory, Duel builds the
 baseline with `bundle exec rake compile`. To remove the baseline, git's
-record of it, and the rest of `tmp/duel`, run `duel --clean`.
+record of it, and the rest of `tmp/duel` (see
+[What Duel keeps in tmp/duel](#what-duel-keeps-in-tmpduel)), run
+`duel --clean`.
 
 If your project is in a subdirectory of its repository, as in a
 monorepo, run `duel` in that subdirectory. Duel checks out the whole
@@ -171,6 +173,27 @@ baseline at a longer path would measure slower, and hide a regression
 that small. If Duel can't write next to your project, or something else
 already has that name, it uses `tmp/duel/base` instead. Whenever the two
 versions' paths differ in length, Duel says so.
+
+### What Duel keeps in tmp/duel
+
+Duel keeps what it needs between runs in your project's `tmp/duel`:
+
+- `lock`, so that only one run at a time compares the project. A run
+  removes it when it ends.
+- `cache/`, what plugins build once and reuse, such as a database's
+  initial files. A build is named for what it is, its version, and a
+  hash, such as `mysql-0.1.2-3f9c2a1b7e5d4c6a`. When a run ends, Duel
+  removes the builds of the same name that the ones it used replace,
+  such as the files of a database server that you've since upgraded, so
+  the cache keeps one build of each.
+- `base/`, the baseline's checkout, when it can't go next to your
+  project.
+
+When a run ends, Duel removes `tmp/duel` if nothing is left in it, and
+`tmp` too if Duel made it. A project without plugins that build
+something keeps nothing there. `duel --clean` removes the rest. Each
+run's sockets and server directories are in a temporary directory,
+which the run removes when it ends.
 
 If nothing under `lib/` or `ext/`, your benchmarks, or `.duel.rb`
 changed since the baseline, there's nothing to compare, and Duel says

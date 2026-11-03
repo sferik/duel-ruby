@@ -13,7 +13,7 @@ class ProcessSampleTest < DuelTest
   # shouldn't lands.)
   def setup
     super
-    @log = File.join(tmpdir, "candidate-1.log")
+    @log = File.join(tmpdir, "head-1.log")
     @spawned = []
     @waited = []
     @samples = []
@@ -40,7 +40,7 @@ class ProcessSampleTest < DuelTest
 
   # A ProcessSample, stopped after the test.
   def sampler(env: {}, chdir: tmpdir, timeout: 30.0)
-    Duel::ProcessSample.new("candidate-1", env: env, chdir: chdir, log: @log, timeout: timeout).tap { |sample| @samples << sample }
+    Duel::ProcessSample.new("head-1", env: env, chdir: chdir, log: @log, timeout: timeout).tap { |sample| @samples << sample }
   end
 
   def run_once(*command, **options) = noting { sampler(**options).run(command) }
@@ -156,11 +156,11 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     error = assert_raises(Duel::Failed) { noting { runs.run(ruby("12.times { |i| puts i }; exit 3")) } }
 
-    assert_equal "candidate-1: #{RbConfig.ruby} -e 12.times { |i| puts i }; exit 3 exited with 3\n#{(2..11).map { |i| "#{i}\n" }.join}",
+    assert_equal "head-1: #{RbConfig.ruby} -e 12.times { |i| puts i }; exit 3 exited with 3\n#{(2..11).map { |i| "#{i}\n" }.join}",
       error.message
     error = assert_raises(Duel::Failed) { noting { runs.run(["kill -TERM $$"]) } }
 
-    assert_equal "candidate-1: kill -TERM $$ was killed by SIGTERM", error.message, "and said nothing"
+    assert_equal "head-1: kill -TERM $$ was killed by SIGTERM", error.message, "and said nothing"
     noting { runs.run(["true"]) }
 
     assert_equal 1, @spawned.size
@@ -177,7 +177,7 @@ class ProcessSampleTest < DuelTest
     runs = sampler(timeout: timeout)
     error = assert_raises(Duel::Failed) { noting { runs.run(["sh", "-c", "sleep 60 & echo $! > #{pids}; touch #{started}; wait"]) } }
 
-    assert_equal "candidate-1: sh -c sleep 60 & echo $! > #{pids}; touch #{started}; wait didn't end within #{timeout}s (killed)",
+    assert_equal "head-1: sh -c sleep 60 & echo $! > #{pids}; touch #{started}; wait didn't end within #{timeout}s (killed)",
       error.message
     assert_path_exists started
     assert_equal [[@spawned.first.first]], @waited, "waited for"
@@ -199,7 +199,7 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     error = assert_raises(Duel::Failed) { noting { runs.run(["sh", "-c", "kill -KILL $PPID"]) } }
 
-    assert_equal "candidate-1: the process running sh -c kill -KILL $PPID exited", error.message
+    assert_equal "head-1: the process running sh -c kill -KILL $PPID exited", error.message
     assert_equal [[@spawned.first.first]], @waited, "waited for"
     noting { runs.run(["true"]) }
 

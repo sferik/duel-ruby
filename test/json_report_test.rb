@@ -13,13 +13,14 @@ class JSONReportTest < DuelTest
 
   # A runner that ran (with these verdicts across the board, Rubies,
   # seconds and plugins), for results made by hand.
-  def runner(across: {}, rubies: {"baseline" => "ruby 3.4", "candidate" => "ruby 4.0"}, seconds: 1.5, plugins: [])
+  def runner(across: {}, rubies: {"baseline" => "ruby 3.4", "candidate" => "ruby 4.0"}, seconds: 1.5, plugins: [], cut_short: nil)
     config = Duel::Config.new(candidate)
     config.define_singleton_method(:plugins) { plugins }
     Duel::Runner.new(config, settings, File.join(tmpdir, "base"), out: StringIO.new).tap do |r|
       r.instance_variable_set(:@across, across)
       r.instance_variable_set(:@rubies, rubies)
       r.instance_variable_set(:@seconds, seconds)
+      cut_short&.each { |what, value| r.instance_variable_set({"across" => :@across_cut}.fetch(what, :"@#{what}"), value) }
     end
   end
 
@@ -50,7 +51,7 @@ class JSONReportTest < DuelTest
   end
 
   def settings_json = {"confidence" => 0.99, "limit" => 1.02, "filter" => "", "jobs" => 1, "processes" => 3, "timeout" => 60.0,
-                       "warm" => 0.0, "force" => false}
+                       "time_limit" => 1800.0, "warm" => 0.0, "force" => false}
 
   # A run that passed, with every key, and a benchmark's every key.
   def test_a_run_that_passed
@@ -68,7 +69,7 @@ class JSONReportTest < DuelTest
          "counted" => {"queries" => {"baseline" => 1.5, "candidate" => 1.0, "unit" => "query", "plural" => "queries", "worse" => false}},
          "peak_memory" => nil, "details" => {}, "explanation" => [], "error" => nil, "skipped" => nil}
       ],
-      "across" => {}, "errors" => []
+      "across" => {}, "errors" => [], "cut_short" => nil
     }
 
     assert_equal expected, report([result("a", counted: {"queries" => [3, 2]})])
@@ -131,13 +132,20 @@ class JSONReportTest < DuelTest
       report([result("a")], runner: runner(across: across), exit: 1).fetch("across"))
   end
 
+  # What a run cut short at its time limit left undone.
+  def test_cut_short
+    cut = {"unmeasured" => %w[b], "unconfirmed" => %w[a], "across" => true}
+
+    assert_equal cut, report([result("a")], runner: runner(cut_short: cut), exit: 1).fetch("cut_short")
+  end
+
   # The settings it ran with, and the plugins it used, by name.
   def test_settings_and_plugins
     report = report([], runner: runner(plugins: %i[rails activerecord]), limit: 1.05, confidence: 0.95, filter: /^parse:/,
-      jobs: 4, processes: 2, timeout: 9.5, warm: nil, force: true)
+      jobs: 4, processes: 2, timeout: 9.5, time_limit: 600.0, warm: nil, force: true)
 
     assert_equal({"confidence" => 0.95, "limit" => 1.05, "filter" => "^parse:", "jobs" => 4, "processes" => 2, "timeout" => 9.5,
-                  "warm" => nil, "force" => true}, report.fetch("settings"))
+                  "time_limit" => 600.0, "warm" => nil, "force" => true}, report.fetch("settings"))
     assert_equal %w[rails activerecord], report.fetch("plugins")
   end
 
@@ -145,7 +153,7 @@ class JSONReportTest < DuelTest
   def test_note
     assert_equal({"schema" => 1, "duel_version" => Duel::VERSION, "status" => "error", "exit" => 2, "message" => "duel: no", "comment" => "post",
                   "settings" => settings_json, "seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => [],
-                  "benchmarks" => [], "across" => {}, "errors" => []},
+                  "benchmarks" => [], "across" => {}, "errors" => [], "cut_short" => nil},
       Duel::JSONReport.note("error", 2, "duel: no", settings, "post"))
     assert_equal report([]).keys, Duel::JSONReport.note("error", 2, "duel: no", settings, "none").keys, "in the same order"
   end

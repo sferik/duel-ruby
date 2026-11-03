@@ -66,8 +66,8 @@ class TestingTest < DuelTest
       env
     end
 
-    assert_equal({"DUEL_TESTING_A" => "candidate-1", "DUEL_TESTING_B" => "b"}, given)
-    assert_equal [[:block, "candidate-1", "b"], [:stop, "candidate-1-2"], [:stop, "candidate-1", tmpdir, true]], log
+    assert_equal({"DUEL_TESTING_A" => "head-1", "DUEL_TESTING_B" => "b"}, given)
+    assert_equal [[:block, "head-1", "b"], [:stop, "head-1-2"], [:stop, "head-1", tmpdir, true]], log
     assert_equal ["before", nil], [ENV.fetch("DUEL_TESTING_B"), ENV.fetch("DUEL_TESTING_A", nil)], "as it was"
   end
 
@@ -77,11 +77,11 @@ class TestingTest < DuelTest
     config = Duel::Config.new(tmpdir)
     dirs = []
     2.times { config.prepare(:worker) { |w| (dirs << w.dir) && {} } }
-    Duel::Testing.prepare(config, name: "baseline-2") { nil }
+    Duel::Testing.prepare(config, name: "base-2") { nil }
 
     lane = File.dirname(dirs.first)
 
-    assert_equal %w[baseline-2-1 baseline-2-2], dirs.map { |dir| dir.delete_prefix("#{lane}/") }
+    assert_equal %w[base-2-1 base-2-2], dirs.map { |dir| dir.delete_prefix("#{lane}/") }
     assert_equal Duel::Lane.short_tmp, File.dirname(lane)
     assert_match(/\Aduel/, File.basename(lane))
     refute Dir.exist?(lane), "removed"
@@ -96,7 +96,7 @@ class TestingTest < DuelTest
       assert_raises(Duel::Failed) { Duel::Testing.prepare(config) { flunk "not started" } }
     end
 
-    assert_equal "candidate-1's resource: not ready within 0.01s", error.message
+    assert_equal "head-1's resource: not ready within 0.01s", error.message
   end
 
   def test_prepare_a_worker_and_version_of_its_own
@@ -104,7 +104,7 @@ class TestingTest < DuelTest
     config.prepare(:worker) { |w| {"WHO" => "#{w.name} #{w.root} #{w.cached("t") { |_| nil }}"} }
     cache = File.join(tmpdir, "cache")
 
-    assert_equal "baseline-2 /old #{cache}/t", Duel::Testing.prepare(config, name: "baseline-2", root: "/old", cache: cache) { ENV.fetch("WHO") }
+    assert_equal "base-2 /old #{cache}/t", Duel::Testing.prepare(config, name: "base-2", root: "/old", cache: cache) { ENV.fetch("WHO") }
     assert_equal File.join(Duel::Testing::CACHE, "t"), Duel::Testing.prepare(config) { ENV.fetch("WHO").split.last }, "one for every test"
   end
 
@@ -121,10 +121,10 @@ class TestingTest < DuelTest
       w.at_stop { log << [:stop, w.name, File.basename(w.dir)] }
       {"DUEL_TESTING_R" => ENV.fetch("DUEL_TESTING_V", "unset"), "DUEL_TESTING_W" => "version"}
     end
-    given = Duel::Testing.prepare(config, name: "baseline-12", root: "/old") { |env| env }
+    given = Duel::Testing.prepare(config, name: "base-12", root: "/old") { |env| env }
 
-    assert_equal({"DUEL_TESTING_V" => "baseline", "DUEL_TESTING_W" => "version", "DUEL_TESTING_R" => "unset"}, given)
-    assert_equal [[:stop, "baseline-12", "baseline-12-2"], [:stop, "baseline", "baseline-1"]], log
+    assert_equal({"DUEL_TESTING_V" => "base", "DUEL_TESTING_W" => "version", "DUEL_TESTING_R" => "unset"}, given)
+    assert_equal [[:stop, "base-12", "base-12-2"], [:stop, "base", "base-1"]], log
   end
 
   # Prepare blocks that fail, or clash, are stopped all the same.
@@ -135,8 +135,8 @@ class TestingTest < DuelTest
     config.prepare(:worker) { |_| {"X" => "2"} }
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config) { flunk "not started" } }
 
-    assert_equal "candidate-1: two prepare blocks set X (1, 2)", error.message
-    assert_equal ["candidate-1"], stopped
+    assert_equal "head-1: two prepare blocks set X (1, 2)", error.message
+    assert_equal ["head-1"], stopped
   end
 
   # What its metrics measure of a block, as a counted sample would: in a
@@ -483,7 +483,7 @@ class TestingTest < DuelTest
     assert_predicate passed, :passed?
     assert_equal ["work"], passed.results.map(&:name)
     assert_in_delta 1.5, passed["work"].timed.fetch("cpu").fetch("limit")
-    assert_equal %w[base/baseline-1 base/baseline-2 same/candidate-1 same/candidate-2], Dir[File.join(tmpdir, "*", "*-?")].map { |path| path.delete_prefix("#{tmpdir}/") }
+    assert_equal %w[base/base-1 base/base-2 same/head-1 same/head-2], Dir[File.join(tmpdir, "*", "*-?")].map { |path| path.delete_prefix("#{tmpdir}/") }
     assert_includes passed.output, "1 benchmark in"
     assert_same config, Duel.config
     failed = Duel::Testing.compare(base, slower, warm: warm, processes: 1, limit: 1.1)
