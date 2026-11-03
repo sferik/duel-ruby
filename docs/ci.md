@@ -190,8 +190,9 @@ jobs:
   # regressed), as the last push to the default branch that Duel compared
   # left it. It's red where the Duel job failed or found a regression,
   # even one that passed (with c.fail_on = :pull_requests in .duel.rb). A
-  # push with nothing to compare leaves it as it was. This job writes the
-  # badge, alone, to a branch of its own, which the README shows:
+  # push with nothing to compare leaves it as it was, and so does a run
+  # for an older push than the badge's. This job writes the badge, alone,
+  # to a branch of its own, which the README shows:
   #
   #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
   #
@@ -212,13 +213,13 @@ jobs:
           STATUS: ${{ needs.duel.outputs.status }}
           BADGES: https://raw.githubusercontent.com/sferik/duel-ruby/main/assets
         run: |
-          # (A newer push's run has the say.)
-          [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)" = "$GITHUB_SHA" ] || exit 0
+          # (Where the badge is a newer push's, that push's run has the say.
+          # Its commit names the push.)
+          last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
+          if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
           badge="badge.svg"
           if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then badge="badge-regressed.svg"; fi
           curl -fsSL "$BADGES/$badge" -o "$RUNNER_TEMP/badge.svg"
-          # (The same badge is left as it is.)
-          [ "$(gh api "repos/$GITHUB_REPOSITORY/contents/badge.svg?ref=$BRANCH" --jq .sha 2>/dev/null)" = "$(git hash-object "$RUNNER_TEMP/badge.svg")" ] && exit 0
           tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
           commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
@@ -457,12 +458,13 @@ says "perf regressed", in red, when the Duel job failed or found a
 regression, even one that passed, with
 [`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit), or that a
 label accepted. A push with nothing to compare leaves the badge as it
-was, and so does a run for a push that a newer push has replaced. The
-branch holds one commit, with the badge alone, and the job replaces it
-only when the badge changes. The job checks nothing out, and it gets
-the `contents: write` permission that moving a branch takes. For a
-project in a subdirectory of its repository, the branch names the
-directory, such as `duel/badge-gems-parser`.
+was, and so does a run that finishes after a newer push's, so the
+badge is always the newest push's that Duel compared. The branch holds
+one commit, with the badge alone, whose message names that push. The
+job checks nothing out, and it gets the `contents: write` permission
+that moving a branch takes. For a project in a subdirectory of its
+repository, the branch names the directory, such as
+`duel/badge-gems-parser`.
 
 Until the first push to your default branch after you add the
 workflow, the branch doesn't exist, and the badge doesn't show.

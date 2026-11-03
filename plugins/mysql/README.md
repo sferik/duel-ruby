@@ -1,6 +1,6 @@
 # duel-mysql
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-mysql/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-mysql.yml)
 [![duel-mysql](https://github.com/sferik/duel-ruby/actions/workflows/plugin-mysql.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-mysql.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-mysql.svg)](https://rubygems.org/gems/duel-mysql)
 

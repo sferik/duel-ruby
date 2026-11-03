@@ -234,6 +234,9 @@ jobs:
   duel:
     name: Duel
     runs-on: ubuntu-latest
+    # The run's status (passed, failed or neutral), for the badge.
+    outputs:
+      status: ${{ steps.compare.outputs.status }}
     # Duel runs in the plugin's directory (the default above), and checks
     # out the whole repository for the baseline, using its
     # plugins/memcached too.
@@ -251,6 +254,7 @@ jobs:
       # Against the main branch for a pull request, what was there before
       # for a push, and the last release on a schedule (slow creep).
       - name: Compare
+        id: compare
         env:
           DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
@@ -264,3 +268,41 @@ jobs:
             exit 0
           fi
           bundle exec duel
+
+  # Duel's badge, in plugins/memcached/README.md: green (perf guarded) or red (perf
+  # regressed), as the last push to main that Duel compared left it.
+  # This job writes it, alone, to a branch of its own, duel/badge-plugins-memcached, and
+  # checks nothing out (see docs/ci.md, Show whether the last push
+  # passed).
+  badge:
+    name: Update the badge
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
+    runs-on: ubuntu-latest
+    # (Nothing's checked out, so not in the plugin's directory.)
+    defaults:
+      run:
+        working-directory: .
+    permissions:
+      contents: write # to move the badge's branch
+    steps:
+      - name: Update the badge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: duel/badge-plugins-memcached
+          RESULT: ${{ needs.duel.result }}
+          STATUS: ${{ needs.duel.outputs.status }}
+          BADGES: https://raw.githubusercontent.com/sferik/duel-ruby/main/assets
+        run: |
+          # (Where the badge is a newer push's, that push's run has the say.
+          # Its commit names the push.)
+          last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
+          if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
+          badge="badge.svg"
+          if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then badge="badge-regressed.svg"; fi
+          curl -fsSL "$BADGES/$badge" -o "$RUNNER_TEMP/badge.svg"
+          tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
+          commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null

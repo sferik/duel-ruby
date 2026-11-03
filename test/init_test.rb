@@ -251,8 +251,8 @@ class InitTest < DuelTest
       #!/bin/bash
       echo "gh $*" >> #{log}
       case "$*" in
-        *"/commits/main --jq .sha") echo "$HEAD_SHA" ;;
-        *"/contents/badge.svg"*) [ -n "$EXISTING" ] && echo "$EXISTING" || exit 1 ;;
+        *"/commits/duel/badge --jq .commit.message") [ -n "$LAST" ] && echo "$LAST" || { echo '{"message":"Not Found"}'; exit 1; } ;;
+        *"/compare/"*) echo "$COMPARED" ;;
         *"git/trees"*) cat > #{tree}; echo tree1 ;;
         *"git/commits"*) echo commit1 ;;
         *"--method PATCH"*) [ -z "$NO_BRANCH" ] ;;
@@ -261,7 +261,7 @@ class InitTest < DuelTest
     File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl ${@: -3:1}" >> #{log}\ncp "#{File.expand_path("../assets", __dir__)}/${2##*/}" "$4"\n))
     FileUtils.chmod(0o755, Dir[File.join(bin, "*")])
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
-           "GITHUB_SHA" => "abc", "HEAD_SHA" => "abc", "BRANCH" => "duel/badge", "BADGES" => "https://badges", "EXISTING" => nil,
+           "GITHUB_SHA" => "abc", "BRANCH" => "duel/badge", "BADGES" => "https://badges", "LAST" => nil, "COMPARED" => nil,
            "NO_BRANCH" => nil}.merge(env)
 
     assert system(env, "bash", "-ec", run)
@@ -293,19 +293,23 @@ class InitTest < DuelTest
     assert_equal ["https://badges/badge-regressed.svg"], fetched
   end
 
-  def test_the_same_badge
-    _, calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed",
-      "EXISTING" => IO.popen(["git", "hash-object", File.expand_path("../assets/badge.svg", __dir__)], &:read).chomp)
+  # A newer push's badge replaces an older push's (or the same push's,
+  # run again), whatever it says.
+  def test_a_badge_for_a_newer_push
+    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "passed", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "behind")
 
-    assert_nil tree, "left as it is"
-    assert_empty calls.grep(/--method/)
+    assert_equal ["https://badges/badge.svg"], fetched
+    assert_includes calls, "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status", "the badge's push, from its commit"
+    assert_includes calls, "gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"
   end
 
+  # A run that finishes after a newer push's leaves that push's badge.
   def test_a_badge_for_an_older_push
-    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "passed", "HEAD_SHA" => "newer")
+    fetched, calls, = badge_run("RESULT" => "failure", "STATUS" => "", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "ahead")
 
     assert_empty fetched, "the newer push's run has the say"
-    assert_equal ["gh api repos/me/my_gem/commits/main --jq .sha"], calls
+    assert_equal ["gh api repos/me/my_gem/commits/duel/badge --jq .commit.message", "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status"],
+      calls
   end
 
   # The red badge is the green one, wider for its words.

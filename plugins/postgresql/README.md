@@ -1,6 +1,6 @@
 # duel-postgresql
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-postgresql/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-postgresql.yml)
 [![duel-postgresql](https://github.com/sferik/duel-ruby/actions/workflows/plugin-postgresql.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-postgresql.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-postgresql.svg)](https://rubygems.org/gems/duel-postgresql)
 

@@ -1,6 +1,6 @@
 # duel-gvl
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-gvl/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-gvl.yml)
 [![duel-gvl](https://github.com/sferik/duel-ruby/actions/workflows/plugin-gvl.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-gvl.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-gvl.svg)](https://rubygems.org/gems/duel-gvl)
 

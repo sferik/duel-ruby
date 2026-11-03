@@ -1,6 +1,6 @@
 # ⚔️ Duel: Performance regression guards for Ruby
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/perf.yml)
 [![Test](https://github.com/sferik/duel-ruby/actions/workflows/test.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/test.yml)
 [![Lint](https://github.com/sferik/duel-ruby/actions/workflows/lint.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/lint.yml)
 [![Mutant](https://github.com/sferik/duel-ruby/actions/workflows/mutant.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/mutant.yml)

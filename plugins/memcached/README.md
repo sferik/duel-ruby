@@ -1,6 +1,6 @@
 # duel-memcached
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-memcached/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-memcached.yml)
 [![duel-memcached](https://github.com/sferik/duel-ruby/actions/workflows/plugin-memcached.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-memcached.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-memcached.svg)](https://rubygems.org/gems/duel-memcached)
 

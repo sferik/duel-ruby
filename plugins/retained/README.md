@@ -1,6 +1,6 @@
 # duel-retained
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-retained/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-retained.yml)
 [![duel-retained](https://github.com/sferik/duel-ruby/actions/workflows/plugin-retained.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-retained.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-retained.svg)](https://rubygems.org/gems/duel-retained)
 

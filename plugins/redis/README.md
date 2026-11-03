@@ -1,6 +1,6 @@
 # duel-redis
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-redis/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-redis.yml)
 [![duel-redis](https://github.com/sferik/duel-ruby/actions/workflows/plugin-redis.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-redis.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-redis.svg)](https://rubygems.org/gems/duel-redis)
 

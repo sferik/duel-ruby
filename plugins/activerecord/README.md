@@ -1,6 +1,6 @@
 # duel-activerecord
 
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/duel/badge-plugins-activerecord/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-activerecord.yml)
 [![duel-activerecord](https://github.com/sferik/duel-ruby/actions/workflows/plugin-activerecord.yml/badge.svg)](https://github.com/sferik/duel-ruby/actions/workflows/plugin-activerecord.yml)
 [![Gem Version](https://badge.fury.io/rb/duel-activerecord.svg)](https://rubygems.org/gems/duel-activerecord)
 
