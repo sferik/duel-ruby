@@ -39,7 +39,6 @@ jobs:
     timeout-minutes: 20
     # The development versions (Ruby's, JRuby's and TruffleRuby's) get an
     # early look, but can't fail the build.
-    continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +63,9 @@ jobs:
             sudo ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
             sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
           fi
-      - uses: ruby/setup-ruby@v1
+      - id: ruby
+        uses: ruby/setup-ruby@v1
+        continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
@@ -80,8 +81,8 @@ jobs:
           JRUBY_OPTS: ${{ startsWith(matrix.ruby-version, 'jruby') && '--dev' || '' }}
         run: bundle exec rake test
       - name: Note an advisory failure
-        if: steps.tests.outcome == 'failure'
-        run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::The tests failed on ${{ matrix.ruby-version }}, a development version"
+        if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"
 
   coverage:
     name: Coverage (100% line, branch and method)
