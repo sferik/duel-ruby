@@ -270,7 +270,9 @@ class RetainedComparisonTest < PluginTest
     assert_includes leak["remember"].regressed, "retained_objects", leak.output
     assert_in_delta retained.fetch("n"), retained.fetch("candidate"), Duel::Retained::ALLOWANCE, leak.output
     assert_match(/REGRESSION remember: worse .*retained_objects/, leak.output)
-    assert_match(/^  retained_objects: -?[\d.e-]+ objects? → 1(\.\d+)? objects? an iteration$/, leak.output)
+    # (About one: an iteration or two may leave none alive, 0.9948 of
+    # them in 575, say.)
+    assert_match(/^  retained_objects: -?[\d.e-]+ objects? → (0\.9\d*|1(\.\d+)?) objects? an iteration$/, leak.output)
     assert_match(%r{^  retained_objects \(candidate\): an iteration: 1 String \(\S*/leak/lib/sample.rb:4\)$}, leak.output, "Duel's own objects left out")
     refute_match(/retained_objects \(baseline\)/, leak.output, "within its allowance")
   end

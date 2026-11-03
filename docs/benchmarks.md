@@ -217,7 +217,8 @@ To change that, pass these options to `duel`:
   benchmark thread's.
 - `peak_memory: true`: also judges the benchmark's peak memory, which is
   the most resident memory that its measured work reached, above where
-  it started. Duel takes each version's lowest peak from three fresh
+  it started, or on JRuby, the most of the JVM's heap that it had in
+  use. Duel takes each version's lowest peak from three fresh
   workers. Like every other measure, peak memory leaves out what
   `once` and `untimed` blocks leave behind.
 

@@ -73,7 +73,7 @@ Duel judges every benchmark on the following metrics:
 | `cpu` | The benchmark thread's CPU time (or the process's) | More than 2% slower, with 99% confidence |
 | `instructions` | Instructions retired, from the CPU's own counters | More than 1% more, with 99% confidence |
 | `allocations` | Ruby objects allocated (on CRuby) | One more per two iterations |
-| `peak_memory` | The most resident memory, above the start, that measured work reached (not `once` or `untimed`), with garbage collection running as usual (when asked for) | More than 10% and 1 MB more |
+| `peak_memory` | The most resident memory (on JRuby, the JVM's heap in use), above the start, that measured work reached (not `once` or `untimed`), with garbage collection running as usual (when asked for) | More than 10% and 1 MB more |
 | Yours | See [Add your own metrics](configuration.md#add-your-own-metrics) | |
 
 Instruction counts barely vary from run to run, so they catch slowdowns
@@ -207,6 +207,9 @@ Duel runs each benchmark for five seconds before it measures it
 (`--warm`). Their timings stay noisier than CRuby's, so Duel often
 leaves small timing regressions on them unsettled.
 
-Neither has an allocation count, an instruction count, or profiles, and
-each has peak memory only on Linux. StackProf runs on CRuby only: Duel
+Neither has an allocation count, an instruction count, or profiles.
+TruffleRuby has peak memory only on Linux. JRuby measures peak memory in
+the JVM's heap in use, on any operating system, because the JVM takes
+memory for its heap ahead of time, so resident memory barely moves as
+a benchmark's objects fill it. StackProf runs on CRuby only: Duel
 doesn't use it on JRuby or TruffleRuby, even where it's installed.

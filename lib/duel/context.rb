@@ -498,9 +498,10 @@ module Duel
   end
 
   # A stretch of a benchmark run for its peak memory: with the garbage
-  # collector working as usual, the most resident memory the process
-  # reached above where it started (after a full collection), watched
-  # every millisecond.
+  # collector working as usual, the most memory the process had in use
+  # (Native::Memory.used: resident memory, or on JRuby, the JVM's heap)
+  # above where it started (after a full collection), watched every
+  # millisecond.
   # @api private
   class MemorySample
     attr_reader :started, :stopped, :peak
@@ -570,8 +571,8 @@ module Duel
     end
 
     def resident
-      # (Resident memory is known: see Lane#peak_memory.)
-      Native::Memory.resident #: Integer
+      # (The memory in use is known: see Lane#peak_memory.)
+      Native::Memory.used #: Integer
     end
 
     def watch

@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `duel init` writes from making `duel/passed/main` or `duel/badge`, as
   Git can't have both, the job's error now names that branch and says to
   delete it, instead of GitHub's bare `Reference update failed`.
+- On JRuby, peak memory (`peak_memory: true`) is the most of the JVM's
+  heap that a benchmark had in use, not resident memory, which barely
+  moves there, as the JVM takes memory for its heap ahead of time: a
+  benchmark that needed 24 MB more could pass. JRuby now has peak
+  memory on macOS too.
 
 ## [0.1.2] - 2026-11-02
 

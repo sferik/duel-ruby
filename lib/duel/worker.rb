@@ -87,7 +87,7 @@ module Duel
     # peak memory and profiles can be measured here, and whether YJIT is on.
     def hello
       {"benchmarks" => @benchmarks.values.map(&:to_h), "metrics" => @specs, "ruby" => RUBY_DESCRIPTION,
-       "memory" => !Native::Memory.resident.nil?, "profiler" => Worker.profiler?, "yjit" => Worker.yjit?,
+       "memory" => !Native::Memory.used.nil?, "profiler" => Worker.profiler?, "yjit" => Worker.yjit?,
        "extensions" => Worker.extensions, "gem_dirs" => Worker.gem_dirs}
     end
 

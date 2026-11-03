@@ -95,12 +95,12 @@ class WorkerTest < DuelTest
 
   def test_hello_tells_whether_memory_and_profiles_can_be_measured
     worker = Duel::Worker.new
-    hello = stub(Duel::Native::Memory, :resident, -> { 1 }) do
+    hello = stub(Duel::Native::Memory, :used, -> { 1 }) do
       stub(Duel::Worker, :profiler?, -> { true }) { stub(Duel::Worker, :yjit?, -> { true }) { worker.hello } }
     end
 
     assert_equal [true, true, true], hello.values_at("memory", "profiler", "yjit")
-    hello = stub(Duel::Native::Memory, :resident, -> {}) do
+    hello = stub(Duel::Native::Memory, :used, -> {}) do
       stub(Duel::Worker, :profiler?, -> { false }) { stub(Duel::Worker, :yjit?, -> { false }) { worker.hello } }
     end
 
@@ -463,7 +463,7 @@ class WorkerRequestsTest < DuelTest
 
   # Without a trial, a benchmark's own setup runs in its memory sample.
   def test_memory_without_a_trial
-    skip "no way to tell resident memory here" unless Duel::Native::Memory.resident
+    skip "no way to tell the memory in use here" unless Duel::Native::Memory.used
 
     duel("set up") do
       once { @input = "x" * 1024 }
@@ -477,7 +477,7 @@ class WorkerRequestsTest < DuelTest
   end
 
   def test_memory
-    skip "no way to tell resident memory here" unless Duel::Native::Memory.resident
+    skip "no way to tell the memory in use here" unless Duel::Native::Memory.used
 
     reply = worker.handle("op" => "memory", "name" => "hold", "n" => 3)
 

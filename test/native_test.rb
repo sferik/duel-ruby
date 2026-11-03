@@ -153,6 +153,27 @@ class NativeTest < DuelTest
     assert_equal 25 * Etc.sysconf(Etc::SC_PAGESIZE), Duel::Native::Memory.resident(statm: statm, macos: nil)
   end
 
+  # Peak memory is measured in resident memory, but on JRuby, in the
+  # JVM's heap in use (see the next test).
+  def test_the_memory_in_use
+    skip "the JVM's heap, on JRuby" if RUBY_ENGINE == "jruby"
+
+    assert_equal 1234, stub(Duel::Native::Memory, :resident, -> { 1234 }) { Duel::Native::Memory.used }
+  end
+
+  # On JRuby, a benchmark's objects show in the heap in use, though
+  # resident memory barely moves as they fill what the JVM took ahead.
+  def test_the_memory_in_use_on_jruby
+    skip "resident memory, off JRuby" unless RUBY_ENGINE == "jruby"
+
+    GC.start
+    before = Duel::Native::Memory.used
+    kept = Random.bytes(32 << 20)
+
+    assert_operator Duel::Native::Memory.used - before, :>=, 32 << 20
+    assert_equal 32 << 20, kept.bytesize
+  end
+
   def test_resident_memory_from_macos
     missing = File.join(tmpdir, "none")
 

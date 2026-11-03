@@ -93,6 +93,8 @@ module Duel
       MACOS: MacOS?
 
       def self.resident: (?statm: String, ?macos: MacOS?) -> Integer?
+
+      def self.used: () -> Integer?
     end
   end
 end

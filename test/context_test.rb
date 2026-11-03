@@ -401,7 +401,7 @@ class ContextTest < DuelTest
   # Peak memory is the measured work's: what an untimed block holds
   # isn't in it (it's measured nowhere else either).
   def test_a_memory_sample_watches_resident_memory
-    skip "no way to tell resident memory here" unless Duel::Native::Memory.resident
+    skip "no way to tell the memory in use here" unless Duel::Native::Memory.used
     # (A JVM's heap, JRuby's or TruffleRuby's, is the VM's to grow: one
     # allocation needn't show in resident memory.)
     skip "a VM's heap, not Ruby's allocations" unless RUBY_ENGINE == "ruby"
@@ -435,7 +435,7 @@ class ContextTest < DuelTest
     resident = -> { (looks += 1) && levels.fetch((Thread.current == main) ? :own : :seen) }
     collections = []
     sample = Duel::MemorySample.new
-    stub(Duel::Native::Memory, :resident, resident) do
+    stub(Duel::Native::Memory, :used, resident) do
       stub(GC, :start, ->(**options) { collections << options }) { sample.start }
       levels[:seen] = 250
       sleep 0.05
@@ -462,7 +462,7 @@ class ContextTest < DuelTest
     level = 100
     peak = lambda do |&work|
       sample = Duel::MemorySample.new
-      stub(Duel::Native::Memory, :resident, -> { level }) do
+      stub(Duel::Native::Memory, :used, -> { level }) do
         stub(GC, :start, ->(**) {}) { sample.start }
         work.call(sample)
         sample.stop
@@ -493,7 +493,7 @@ class ContextTest < DuelTest
       resident += 5
       seen << [:run, Duel.measuring?]
     end)
-    peaks = stub(Duel::Native::Memory, :resident, -> { resident }) do
+    peaks = stub(Duel::Native::Memory, :used, -> { resident }) do
       stub(GC, :start, ->(**) {}) { Array.new(2) { Duel::MemorySample.new.tap { |s| harness.run_memory(1, s) }.peak } }
     end
 
@@ -504,7 +504,7 @@ class ContextTest < DuelTest
     tried.trial
     seen.clear
     # (Resident memory stubbed: JRuby can't tell it on macOS.)
-    stub(Duel::Native::Memory, :resident, -> { resident }) { tried.run_memory(1, Duel::MemorySample.new) }
+    stub(Duel::Native::Memory, :used, -> { resident }) { tried.run_memory(1, Duel::MemorySample.new) }
 
     assert_empty seen
     untried = Duel::Harness.new(definition { once { seen << :measured } })

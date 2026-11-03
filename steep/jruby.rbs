@@ -5,3 +5,12 @@ module Kernel
 
   def java: () -> untyped
 end
+
+# What Duel defines on JRuby only.
+module Duel
+  module Native
+    module Memory
+      HEAP: untyped
+    end
+  end
+end

@@ -297,7 +297,7 @@ class HarnessTest < DuelTest
     assert_equal 2, ticks(harness, 2)
     assert_equal [[:config, "x"], [:file, :mine, false], :iteration, [:config, "x"], [:file, :mine, false], :iteration, :iteration], log
     memory = Duel::MemorySample.new
-    stub(Duel::Native::Memory, :resident, -> { 1 }) { harness.run_memory(1, memory) }
+    stub(Duel::Native::Memory, :used, -> { 1 }) { harness.run_memory(1, memory) }
 
     assert_equal [[:config, "x"], [:file, :mine, false], :iteration], log.last(3), "a peak memory sample's too"
   end
@@ -313,7 +313,7 @@ class HarnessTest < DuelTest
     end
     harness = Duel::Harness.new(definition(around_iteration: around) { (level += 5) && sleep(0.005) })
     sample = Duel::MemorySample.new
-    stub(Duel::Native::Memory, :resident, -> { level }) { stub(GC, :start, ->(**) {}) { harness.run_memory(3, sample) } }
+    stub(Duel::Native::Memory, :used, -> { level }) { stub(GC, :start, ->(**) {}) { harness.run_memory(3, sample) } }
 
     assert_equal 15, sample.peak, "5 an iteration"
   end

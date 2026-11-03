@@ -157,6 +157,26 @@ module Duel
         page_size = Etc.sysconf(Etc::SC_PAGESIZE) #: Integer
         Integer(File.read(statm).split.fetch(1)) * page_size
       end
+
+      # The memory a benchmark's peak is measured in (see MemorySample),
+      # in bytes, or nil where it can't tell: resident memory, but on
+      # JRuby, the JVM's heap in use.
+      def self.used = resident
     end
+
+    # simplecov:disable JRuby's heap is the JVM's (JRuby's test run covers
+    # this).
+    if RUBY_ENGINE == "jruby"
+      module Memory
+        # The JVM takes memory for its heap ahead of time, and keeps what it
+        # used while it started, so resident memory barely moves as a
+        # benchmark's objects fill it: 24 MB more of them can show as none.
+        # The heap in use shows them.
+        HEAP = java.lang.management.ManagementFactory.getMemoryMXBean
+
+        def self.used = HEAP.getHeapMemoryUsage.getUsed
+      end
+    end
+    # simplecov:enable
   end
 end

@@ -77,7 +77,7 @@ class EndToEndTest < DuelTest
   # Peak memory, for a benchmark that asks: one that needs 24 MB more at
   # its peak fails, and the same memory passes.
   def test_peak_memory
-    skip "no way to tell resident memory here" unless Duel::Native::Memory.resident
+    skip "no way to tell the memory in use here" unless Duel::Native::Memory.used
 
     # (With a setup of its own: the fresh workers measuring it run no trial.)
     benchmarks = %(require "sample"\nduel("big", peak_memory: true) { once { @more = 0 }\n Sample.big.size + @more }\n)
