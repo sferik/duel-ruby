@@ -167,7 +167,8 @@ jobs:
   # the last commit Duel passed, which a branch marks (each branch pushed
   # has its own), so slowdowns too small for any one push to fail add up
   # until they fail one. This job moves the branch to a push that passed
-  # (or makes it). It checks nothing out and runs none of the code. To
+  # (or makes it), but never back: where a newer push's run moved it
+  # first, it stays. It checks nothing out and runs none of the code. To
   # accept a regression, move the branch yourself (for main, git push
   # origin main:duel/passed/main).
   passed:
@@ -183,8 +184,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: duel/passed/${{ github.ref_name }}
         run: |
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
+          # (Forward: GitHub moves it only where it's behind the push.)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
+          at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
+          if [ -z "$at" ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
+            exit 0
+          fi
+          compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status)
+          case "$compared" in
+            # (A newer push's run moved it, or this one's did, run again.)
+            ahead | identical) ;;
+            # (History rewritten, a force push's, say: moved anyway.)
+            diverged | behind) gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null ;;
+            *) echo "::error::Couldn't compare $BRANCH with this push: $compared" && exit 1 ;;
+          esac
 
   # Duel's badge, for the README: green (perf guarded) or red (perf
   # regressed), as the last push to the default branch that Duel compared
@@ -423,11 +437,14 @@ branch that the workflow guards has its own (see
 [Guard other branches](#guard-other-branches)). When a push passes, or has
 nothing to compare, Duel sets the `passed` output to `true`, and the
 Mark the commit passed job moves the branch to the push, or creates the
-branch. That job checks nothing out either, and it gets the
-`contents: write` permission that moving a branch takes. Until the
-branch exists, and when the push's history doesn't have its commit,
-Duel compares the push with the commit before it. For a project in a
-subdirectory of its repository, the branch names the directory, such as
+branch. It never moves the branch back: when two pushes run at once and
+the older one finishes last, the branch stays at the newer push. After
+a force push rewrites the branch's history, it moves the branch anyway.
+That job checks nothing out either, and it gets the `contents: write`
+permission that moving a branch takes. Until the branch exists, and
+when the push's history doesn't have its commit, Duel compares the push
+with the commit before it. For a project in a subdirectory of its
+repository, the branch names the directory, such as
 `duel/passed-gems-parser/main`.
 
 After a regression, the branch stays where it is, so every push fails
@@ -661,8 +678,9 @@ duel:commit-comment:
 # With c.push_base = :last_passed in .duel.rb, a push is compared with the
 # last commit Duel passed, which a branch marks (duel/passed/main for
 # main), so slowdowns too small for any one push to fail add up until they
-# fail one. This job moves the branch to a push that passed (or makes it).
-# To accept a regression, move the branch yourself (for main, git push
+# fail one. This job moves the branch to a push that passed (or makes it),
+# but never back: where a newer push's job moved it first, it stays. To
+# accept a regression, move the branch yourself (for main, git push
 # origin main:duel/passed/main).
 duel:passed:
   image: alpine:3
@@ -673,12 +691,19 @@ duel:passed:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl
+    - apk add --no-cache --quiet curl jq
     - |
       [ "$DUEL_PASSED" = true ] || exit 0
       api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
       token="PRIVATE-TOKEN: $DUEL_TOKEN"
       branch="duel/passed/$CI_COMMIT_BRANCH"
+      at=$(curl -sf -H "$token" "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')" | jq -r '.commit.id // empty') || at=
+      if [ -n "$at" ]; then
+        base=$(curl -sf -H "$token" "$api/repository/merge_base?refs%5B%5D=$CI_COMMIT_SHA&refs%5B%5D=$at" | jq -r '.id // empty') || base=
+        [ -n "$base" ] || { echo "Couldn't compare $branch with this push" && exit 1; }
+        # (A newer push's job moved it, or this one's did, run again.)
+        [ "$base" = "$CI_COMMIT_SHA" ] && exit 0
+      fi
       curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
       curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches"
 ```

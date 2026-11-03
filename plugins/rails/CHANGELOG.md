@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   badge, which turns red when Duel fails a push to the default branch,
   as the workflow that `duel init` writes does.
 
+### Fixed
+
+- The workflow that `rails generate duel:install` writes no longer
+  moves the branch that marks the last commit Duel passed backward,
+  when two pushes run at once and the older one finishes last.
+
 ## [0.1.2] - 2026-11-02
 
 ### Added

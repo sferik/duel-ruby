@@ -212,11 +212,68 @@ class InitTest < DuelTest
     assert_equal ["duel", {"contents" => "write"}, "Mark the commit passed"], passed.values_at("needs", "permissions", "name")
     assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}", passed.fetch("if")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/passed/${{ github.ref_name }}"}, step.fetch("env"))
-    assert_equal %(gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||\n) +
-      %(  gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null\n), step.fetch("run")
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
     assert_equal 1, passed.fetch("steps").size
+  end
+
+  # What the step that marks a push passed asks gh, with gh stubbed: for
+  # a push (abc) whose fast-forward GitHub refuses (+refused+), where the
+  # branch is +at+ (nil, missing), and compared with the push +compared+.
+  def passed_run(refused: false, at: nil, compared: nil, success: true)
+    gem
+    init.run
+    run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
+    File.write(File.join(bin, "gh"), <<~SH)
+      #!/bin/bash
+      echo "gh $*" >> #{log}
+      case "$*" in
+        *"force=true"*) ;;
+        *"--method PATCH"*) [ -z "$REFUSED" ] ;;
+        *"/git/ref/heads/"*) [ -n "$AT" ] && echo "$AT" || exit 1 ;;
+        *"/compare/"*) echo "$COMPARED" ;;
+      esac
+    SH
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
+           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared}
+
+    assert_equal success, system(env, "bash", "-ec", run, out: File::NULL)
+    File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
+  end
+
+  def test_marking_a_push_passed_moves_the_branch_forward
+    assert_equal ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc"], passed_run, "no force"
+  end
+
+  def test_marking_a_push_passed_makes_the_branch
+    assert_equal ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc", "git/ref/heads/duel/passed/main --jq .object.sha",
+      "--method POST git/refs -f ref=refs/heads/duel/passed/main -f sha=abc"], passed_run(refused: true)
+  end
+
+  # A run that finishes after a newer push's (or this push's, run again)
+  # leaves the branch where that one moved it, never back.
+  def test_marking_a_push_passed_after_a_newer_one
+    %w[ahead identical].each do |compared|
+      calls = passed_run(refused: true, at: "def", compared: compared)
+
+      assert_equal "compare/abc...def --jq .status", calls.last, compared
+      assert_empty calls.grep(/force|POST/), compared
+    end
+  end
+
+  # Where history was rewritten (a force push), it's moved anyway.
+  def test_marking_a_push_passed_after_a_rewrite
+    %w[diverged behind].each do |compared|
+      assert_equal "--method PATCH git/refs/heads/duel/passed/main -f sha=abc -F force=true",
+        passed_run(refused: true, at: "def", compared: compared).last, compared
+    end
+  end
+
+  def test_marking_a_push_passed_without_a_comparison
+    assert_equal "compare/abc...def --jq .status", passed_run(refused: true, at: "def", compared: "", success: false).last
   end
 
   # A push to the default branch that Duel compared updates the badge, by
@@ -245,7 +302,7 @@ class InitTest < DuelTest
     init.run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge", "steps", 0, "run")
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    log = File.join(tmpdir, "log")
+    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
     tree = File.join(tmpdir, "tree.json")
     File.write(File.join(bin, "gh"), <<~SH)
       #!/bin/bash
@@ -665,6 +722,46 @@ class InitTest < DuelTest
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
+  end
+
+  # What GitLab's job that marks a push passed asks its API, with curl
+  # stubbed: for a push (abc) where the branch is +at+ (nil, missing),
+  # whose merge base with the push is +base+.
+  def gitlab_passed_run(at: nil, base: nil, success: true)
+    gem
+    init("--gitlab").run
+    script = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml")).dig("duel:passed", "script", 1)
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
+    File.write(File.join(bin, "curl"), <<~SH)
+      #!/bin/sh
+      url=$(for arg; do last=$arg; done; echo "$last")
+      method=GET
+      case "$*" in *"-X DELETE"*) method=DELETE ;; *"--data-urlencode"*) method=POST ;; esac
+      echo "$method ${url#https://gitlab/api/v4/projects/7/}" >> #{log}
+      case "$method $url" in
+        "GET "*/merge_base*) echo "{\\"id\\":\\"$BASE\\"}" ;;
+        "GET "*/branches/*) [ -n "$AT" ] && echo "{\\"commit\\":{\\"id\\":\\"$AT\\"}}" || exit 22 ;;
+      esac
+    SH
+    FileUtils.chmod(0o755, File.join(bin, "curl"))
+    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "DUEL_PASSED" => "true", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
+           "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base}
+
+    assert_equal success, system(env, "sh", "-ec", "set -o pipefail\n#{script}", out: File::NULL)
+    File.readlines(log, chomp: true)
+  end
+
+  def test_gitlab_marking_a_push_passed
+    moved = ["DELETE repository/branches/duel%2Fpassed%2Fmain", "POST repository/branches"]
+
+    assert_equal ["GET repository/branches/duel%2Fpassed%2Fmain", *moved], gitlab_passed_run, "made"
+    assert_equal moved, gitlab_passed_run(at: "old", base: "old").last(2), "moved forward"
+    assert_equal moved, gitlab_passed_run(at: "def", base: "123").last(2), "moved anyway, after a rewrite"
+    assert_equal "GET repository/merge_base?refs%5B%5D=abc&refs%5B%5D=def", gitlab_passed_run(at: "def", base: "abc").last,
+      "left where a newer push's job moved it"
+    assert_equal "GET repository/merge_base?refs%5B%5D=abc&refs%5B%5D=def", gitlab_passed_run(at: "def", base: "", success: false).last,
+      "no comparison"
   end
 
   # For a project in a subdirectory, its own jobs, file, and branch, and

@@ -126,8 +126,9 @@
 # With c.push_base = :last_passed in .duel.rb, a push is compared with the
 # last commit Duel passed, which a branch marks (<%= passed_branch %>/main for
 # main), so slowdowns too small for any one push to fail add up until they
-# fail one. This job moves the branch to a push that passed (or makes it).
-# To accept a regression, move the branch yourself (for main, git push
+# fail one. This job moves the branch to a push that passed (or makes it),
+# but never back: where a newer push's job moved it first, it stays. To
+# accept a regression, move the branch yourself (for main, git push
 # origin main:<%= passed_branch %>/main).
 <%= gitlab_job %>:passed:
   image: alpine:3
@@ -138,11 +139,18 @@
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl
+    - apk add --no-cache --quiet curl jq
     - |
       [ "$DUEL_PASSED" = true ] || exit 0
       api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
       token="PRIVATE-TOKEN: $DUEL_TOKEN"
       branch="<%= passed_branch %>/$CI_COMMIT_BRANCH"
+      at=$(curl -sf -H "$token" "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')" | jq -r '.commit.id // empty') || at=
+      if [ -n "$at" ]; then
+        base=$(curl -sf -H "$token" "$api/repository/merge_base?refs%5B%5D=$CI_COMMIT_SHA&refs%5B%5D=$at" | jq -r '.id // empty') || base=
+        [ -n "$base" ] || { echo "Couldn't compare $branch with this push" && exit 1; }
+        # (A newer push's job moved it, or this one's did, run again.)
+        [ "$base" = "$CI_COMMIT_SHA" ] && exit 0
+      fi
       curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
       curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches"

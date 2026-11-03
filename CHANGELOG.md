@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   red ("perf regressed") when the Duel job failed or found a
   regression, even one that passed.
 
+### Fixed
+
+- The workflow that `duel init` writes (and its GitLab CI jobs) no
+  longer moves the branch that marks the last commit Duel passed
+  backward. When two pushes ran at once and the older one finished
+  last, the branch went back to the older push, so the next push was
+  compared with it, and a regression already accepted counted again.
+  Now the branch only moves forward, or after a force push rewrites
+  its history.
+
 ## [0.1.2] - 2026-11-02
 
 ### Added
