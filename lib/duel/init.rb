@@ -249,5 +249,9 @@ module Duel
     # What names the branches that mark the last commit Duel passed in a
     # push, before the branch pushed's name (see Baseline#passed_branch).
     def passed_branch = ["duel/passed", working_directory&.tr("/", "-")].compact.join("-")
+
+    # The branch that holds the workflow's badge: duel/badge, or for a
+    # project in a subdirectory, duel/badge-<its path>.
+    def badge_branch = ["duel/badge", working_directory&.tr("/", "-")].compact.join("-")
   end
 end

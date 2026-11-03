@@ -57,7 +57,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel commit-comment passed], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -101,6 +101,9 @@ class GeneratorTest < PluginTest
     assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  passed:\n.*?^          BRANCH:/m],
       workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
     assert_equal "duel/passed/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
+    own = File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  # Duel's badge.*\z/m]
+
+    assert_equal own.gsub("<%= badge_branch %>", "duel/badge"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -145,7 +148,8 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog/${{ github.ref_name }}"],
+    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog/${{ github.ref_name }}",
+      "          BRANCH: duel/badge-apps-blog"],
       (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|BRANCH: /).uniq,
       "comments, and a branch, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],

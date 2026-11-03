@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The workflow that `rails generate duel:install` writes keeps Duel's
+  badge, which turns red when Duel fails a push to the default branch,
+  as the workflow that `duel init` writes does.
+
 ## [0.1.2] - 2026-11-02
 
 ### Added

@@ -325,14 +325,21 @@ says.
 ### Show that a project is guarded
 
 To show that Duel guards your project, add its badge to your README,
-next to your other badges:
+next to your other badges. With the workflow that `duel init` writes,
+the badge turns red when Duel fails a push to your default branch.
+Replace `OWNER/REPO` with your repository's:
+
+```markdown
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+```
+
+See [Show whether the last push passed](docs/ci.md#show-whether-the-last-push-passed)
+for how the workflow keeps it. Without the workflow, such as on GitLab
+CI, use Duel's own badge, which is always green:
 
 ```markdown
 [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
 ```
-
-The badge links to Duel. It doesn't show whether a comparison passed:
-your CI's status does that.
 
 ## Plugins
 

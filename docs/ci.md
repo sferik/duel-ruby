@@ -185,6 +185,45 @@ jobs:
         run: |
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null 2>&1 ||
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
+
+  # Duel's badge, for the README: green (perf guarded) or red (perf
+  # regressed), as the last push to the default branch that Duel compared
+  # left it. It's red where the Duel job failed or found a regression,
+  # even one that passed (with c.fail_on = :pull_requests in .duel.rb). A
+  # push with nothing to compare leaves it as it was. This job writes the
+  # badge, alone, to a branch of its own, which the README shows:
+  #
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+  #
+  # It checks nothing out and runs none of the code.
+  badge:
+    name: Update the badge
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to move the badge's branch
+    steps:
+      - name: Update the badge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: duel/badge
+          RESULT: ${{ needs.duel.result }}
+          STATUS: ${{ needs.duel.outputs.status }}
+          BADGES: https://raw.githubusercontent.com/sferik/duel-ruby/main/assets
+        run: |
+          # (A newer push's run has the say.)
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)" = "$GITHUB_SHA" ] || exit 0
+          badge="badge.svg"
+          if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then badge="badge-regressed.svg"; fi
+          curl -fsSL "$BADGES/$badge" -o "$RUNNER_TEMP/badge.svg"
+          # (The same badge is left as it is.)
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/contents/badge.svg?ref=$BRANCH" --jq .sha 2>/dev/null)" = "$(git hash-object "$RUNNER_TEMP/badge.svg")" ] && exit 0
+          tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
+          commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null
 ```
 
 A newer push to a pull request cancels the pull request's run, if it's
@@ -402,6 +441,31 @@ git push origin main:duel/passed/main
 If you set `c.push_base` back to `:before`, delete the branches too
 (`git push origin --delete duel/passed/main`), because the step that
 finds the baseline's Ruby uses one whenever it exists.
+
+## Show whether the last push passed
+
+The Update the badge job keeps a badge that turns red when Duel fails.
+After each push to your default branch, it writes `badge.svg` to a
+branch of its own, `duel/badge`, so your README can show it:
+
+```markdown
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+```
+
+The badge says "perf guarded", in green, when Duel passed the push. It
+says "perf regressed", in red, when the Duel job failed or found a
+regression, even one that passed, with
+[`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit), or that a
+label accepted. A push with nothing to compare leaves the badge as it
+was, and so does a run for a push that a newer push has replaced. The
+branch holds one commit, with the badge alone, and the job replaces it
+only when the badge changes. The job checks nothing out, and it gets
+the `contents: write` permission that moving a branch takes. For a
+project in a subdirectory of its repository, the branch names the
+directory, such as `duel/badge-gems-parser`.
+
+Until the first push to your default branch after you add the
+workflow, the branch doesn't exist, and the badge doesn't show.
 
 ## Guard other branches
 

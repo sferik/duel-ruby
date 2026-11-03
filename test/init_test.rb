@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "json"
 require "yaml"
 
 # `duel init`, in a project of the test's own.
@@ -78,7 +79,7 @@ class InitTest < DuelTest
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[duel commit-comment passed], jobs.keys
+    assert_equal %w[duel commit-comment passed badge], jobs.keys
     assert_equal %w[checkout setup-ruby Find Compare Say Keep], steps.call("duel")
     assert_equal %w[Get Comment], steps.call("commit-comment")
     assert_equal %w[Move], steps.call("passed")
@@ -216,6 +217,104 @@ class InitTest < DuelTest
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
     assert_equal 1, passed.fetch("steps").size
+  end
+
+  # A push to the default branch that Duel compared updates the badge, by
+  # a job of its own that writes it to a branch, and runs none of the
+  # code: red where the Duel job failed or found a regression.
+  def test_the_badge
+    gem
+    init.run
+    badge = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge")
+    step = badge.dig("steps", 0)
+
+    assert_equal ["duel", {"contents" => "write"}, "Update the badge"], badge.values_at("needs", "permissions", "name")
+    assert_equal "${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && " \
+      "(needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}", badge.fetch("if")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/badge", "RESULT" => "${{ needs.duel.result }}",
+                  "STATUS" => "${{ needs.duel.outputs.status }}", "BADGES" => "https://raw.githubusercontent.com/sferik/duel-ruby/main/assets"},
+      step.fetch("env"))
+    refute badge.key?("defaults"), "nothing checked out"
+    assert_equal 1, badge.fetch("steps").size
+  end
+
+  # The badge's script, with gh and curl stubbed: [what it fetched, what
+  # it asked gh, the tree it made] for a run with +env+.
+  def badge_run(env)
+    gem
+    init.run
+    run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge", "steps", 0, "run")
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    log = File.join(tmpdir, "log")
+    tree = File.join(tmpdir, "tree.json")
+    File.write(File.join(bin, "gh"), <<~SH)
+      #!/bin/bash
+      echo "gh $*" >> #{log}
+      case "$*" in
+        *"/commits/main --jq .sha") echo "$HEAD_SHA" ;;
+        *"/contents/badge.svg"*) [ -n "$EXISTING" ] && echo "$EXISTING" || exit 1 ;;
+        *"git/trees"*) cat > #{tree}; echo tree1 ;;
+        *"git/commits"*) echo commit1 ;;
+        *"--method PATCH"*) [ -z "$NO_BRANCH" ] ;;
+      esac
+    SH
+    File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl ${@: -3:1}" >> #{log}\ncp "#{File.expand_path("../assets", __dir__)}/${2##*/}" "$4"\n))
+    FileUtils.chmod(0o755, Dir[File.join(bin, "*")])
+    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
+           "GITHUB_SHA" => "abc", "HEAD_SHA" => "abc", "BRANCH" => "duel/badge", "BADGES" => "https://badges", "EXISTING" => nil,
+           "NO_BRANCH" => nil}.merge(env)
+
+    assert system(env, "bash", "-ec", run)
+    calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
+    [calls.grep(/\Acurl /).map { |call| call.delete_prefix("curl ") }, calls.grep(/\Agh /), (JSON.parse(File.read(tree)) if File.exist?(tree))]
+  end
+
+  def test_a_green_badge
+    fetched, calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed")
+
+    assert_equal ["https://badges/badge.svg"], fetched
+    assert_equal({"tree" => [{"path" => "badge.svg", "mode" => "100644", "type" => "blob",
+                              "content" => File.read(File.expand_path("../assets/badge.svg", __dir__))}]}, tree)
+    assert_includes calls, %(gh api --method POST repos/me/my_gem/git/commits -f message=Duel's badge, for abc -f tree=tree1 --jq .sha)
+    assert_equal ["gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"], calls.grep(/refs/),
+      "the branch moved"
+  end
+
+  def test_a_red_badge_for_a_regression
+    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "failed", "NO_BRANCH" => "1")
+
+    assert_equal ["https://badges/badge-regressed.svg"], fetched, "red, though the job passed (c.fail_on)"
+    assert_equal "gh api --method POST repos/me/my_gem/git/refs -f ref=refs/heads/duel/badge -f sha=commit1", calls.last, "the branch made"
+  end
+
+  def test_a_red_badge_for_a_failed_job
+    fetched, = badge_run("RESULT" => "failure", "STATUS" => "")
+
+    assert_equal ["https://badges/badge-regressed.svg"], fetched
+  end
+
+  def test_the_same_badge
+    _, calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed",
+      "EXISTING" => IO.popen(["git", "hash-object", File.expand_path("../assets/badge.svg", __dir__)], &:read).chomp)
+
+    assert_nil tree, "left as it is"
+    assert_empty calls.grep(/--method/)
+  end
+
+  def test_a_badge_for_an_older_push
+    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "passed", "HEAD_SHA" => "newer")
+
+    assert_empty fetched, "the newer push's run has the say"
+    assert_equal ["gh api repos/me/my_gem/commits/main --jq .sha"], calls
+  end
+
+  # The red badge is the green one, wider for its words.
+  def test_the_red_badge
+    green, red = %w[badge badge-regressed].map { |name| File.read(File.expand_path("../assets/#{name}.svg", __dir__)) }
+
+    assert_equal green.sub('width="133"', 'width="142"').gsub("perf guarded", "perf regressed").sub("#34D058", "#EA4A5A")
+      .sub("#28A745", "#D73A49").sub("M0 0h76.939C78.629 0 80 1.343 80 3v14c0 1.657-1.37 3-3.061 3H0V0z",
+        "M0 0h85.939C87.629 0 89 1.343 89 3v14c0 1.657-1.37 3-3.061 3H0V0z"), red
   end
 
   # On a push, a job of its own comments on the commit, as Duel says
@@ -503,6 +602,8 @@ class InitTest < DuelTest
       "a workflow of its own, and its comments"
     assert_includes comments.dig("jobs", "comment", "steps", 1, "run"), %(marker="<!-- duel gems/parser"\n)
     assert_equal "duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "a branch of its own"
+    assert_equal "duel/badge-gems-parser", YAML.safe_load(workflow).dig("jobs", "badge", "steps", 0, "env", "BRANCH"), "a badge of its own"
+    assert_includes workflow, "https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg"
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
     refute YAML.safe_load(workflow).dig("jobs", "commit-comment").key?("defaults"), "nothing checked out there"

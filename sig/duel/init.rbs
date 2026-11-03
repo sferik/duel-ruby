@@ -104,6 +104,9 @@ module Duel
     # The branch that marks the last commit Duel passed in a push.
     def passed_branch: () -> String
 
+    # The branch that holds the workflow's badge.
+    def badge_branch: () -> String
+
     # Where the GitLab CI jobs are, from the repository's root.
     def gitlab_file: () -> String
 

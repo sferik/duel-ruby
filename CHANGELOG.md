@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The workflow that `duel init` writes keeps a badge for the README
+  that turns red when Duel fails a push to the default branch. Its
+  Update the badge job writes `badge.svg` to a branch of its own,
+  `duel/badge`, green ("perf guarded") when Duel passed the push, and
+  red ("perf regressed") when the Duel job failed or found a
+  regression, even one that passed.
+
 ## [0.1.2] - 2026-11-02
 
 ### Added
