@@ -153,4 +153,15 @@
         [ "$base" = "$CI_COMMIT_SHA" ] && exit 0
       fi
       curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
-      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches"
+      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches" && exit 0
+      # (Git can't make a branch where another's name is a folder of its
+      # name: a branch named duel blocks duel/passed/main. If one does,
+      # this names it.)
+      prefix=$branch
+      while [ "${prefix%/*}" != "$prefix" ]; do
+        prefix=${prefix%/*}
+        if curl -sf -o /dev/null -H "$token" "$api/repository/branches/$(echo "$prefix" | sed 's|/|%2F|g')"; then
+          echo "The branch $prefix keeps Duel from making $branch, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+        fi
+      done
+      exit 1

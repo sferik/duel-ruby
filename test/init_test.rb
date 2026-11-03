@@ -220,7 +220,8 @@ class InitTest < DuelTest
   # What the step that marks a push passed asks gh, with gh stubbed: for
   # a push (abc) whose fast-forward GitHub refuses (+refused+), where the
   # branch is +at+ (nil, missing), and compared with the push +compared+.
-  def passed_run(refused: false, at: nil, compared: nil, success: true)
+  # A branch named +blocker+ keeps it from making the branch.
+  def passed_run(refused: false, at: nil, compared: nil, blocker: nil, success: true)
     gem
     init.run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
@@ -232,15 +233,17 @@ class InitTest < DuelTest
       case "$*" in
         *"force=true"*) ;;
         *"--method PATCH"*) [ -z "$REFUSED" ] ;;
-        *"/git/ref/heads/"*) [ -n "$AT" ] && echo "$AT" || exit 1 ;;
+        *"--method POST"*) [ -z "$BLOCKER" ] ;;
+        *"/git/ref/heads/"*"--jq"*) [ -n "$AT" ] && echo "$AT" || exit 1 ;;
+        *"/git/ref/heads/"*) [ "${2##*/git/ref/heads/}" = "$BLOCKER" ] ;;
         *"/compare/"*) echo "$COMPARED" ;;
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "gh"))
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
-           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared}
+           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "BLOCKER" => blocker}
 
-    assert_equal success, system(env, "bash", "-ec", run, out: File::NULL)
+    assert_equal success, system(env, "bash", "-ec", run, out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
   end
 
@@ -269,6 +272,18 @@ class InitTest < DuelTest
     %w[diverged behind].each do |compared|
       assert_equal "--method PATCH git/refs/heads/duel/passed/main -f sha=abc -F force=true",
         passed_run(refused: true, at: "def", compared: compared).last, compared
+    end
+  end
+
+  # A branch whose name is a folder of the branch's keeps it from being
+  # made (Git can't have both), and the error names that branch.
+  def test_marking_a_push_passed_where_a_branch_blocks_it
+    %w[duel duel/passed].each do |blocker|
+      calls = passed_run(refused: true, blocker: blocker, success: false)
+
+      assert_equal ["git/ref/heads/duel/passed", "git/ref/heads/duel"], calls.last(2), blocker
+      assert_equal "::error::The branch #{blocker} keeps Duel from making duel/passed/main, as Git can't have both. " \
+        "Delete it (git push origin --delete #{blocker}), or rename it.\n", File.read(@said), blocker
     end
   end
 
@@ -727,7 +742,8 @@ class InitTest < DuelTest
   # What GitLab's job that marks a push passed asks its API, with curl
   # stubbed: for a push (abc) where the branch is +at+ (nil, missing),
   # whose merge base with the push is +base+.
-  def gitlab_passed_run(at: nil, base: nil, success: true)
+  # A branch named +blocker+ keeps it from making the branch.
+  def gitlab_passed_run(at: nil, base: nil, blocker: nil, success: true)
     gem
     init("--gitlab").run
     script = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml")).dig("duel:passed", "script", 1)
@@ -741,14 +757,16 @@ class InitTest < DuelTest
       echo "$method ${url#https://gitlab/api/v4/projects/7/}" >> #{log}
       case "$method $url" in
         "GET "*/merge_base*) echo "{\\"id\\":\\"$BASE\\"}" ;;
-        "GET "*/branches/*) [ -n "$AT" ] && echo "{\\"commit\\":{\\"id\\":\\"$AT\\"}}" || exit 22 ;;
+        "GET "*/branches/duel%2Fpassed%2Fmain) [ -n "$AT" ] && echo "{\\"commit\\":{\\"id\\":\\"$AT\\"}}" || exit 22 ;;
+        "GET "*/branches/*) [ "${url##*/branches/}" = "$BLOCKER" ] || exit 22 ;;
+        "POST "*) [ -z "$BLOCKER" ] || exit 22 ;;
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "curl"))
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "DUEL_PASSED" => "true", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
-           "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base}
+           "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base, "BLOCKER" => blocker}
 
-    assert_equal success, system(env, "sh", "-ec", "set -o pipefail\n#{script}", out: File::NULL)
+    assert_equal success, system(env, "sh", "-ec", "set -o pipefail\n#{script}", out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true)
   end
 
@@ -762,6 +780,14 @@ class InitTest < DuelTest
       "left where a newer push's job moved it"
     assert_equal "GET repository/merge_base?refs%5B%5D=abc&refs%5B%5D=def", gitlab_passed_run(at: "def", base: "", success: false).last,
       "no comparison"
+  end
+
+  def test_gitlab_marking_a_push_passed_where_a_branch_blocks_it
+    calls = gitlab_passed_run(blocker: "duel", success: false)
+
+    assert_equal ["GET repository/branches/duel%2Fpassed", "GET repository/branches/duel"], calls.last(2)
+    assert_equal "The branch duel keeps Duel from making duel/passed/main, as Git can't have both. " \
+      "Delete it (git push origin --delete duel), or rename it.\n", File.read(@said)
   end
 
   # For a project in a subdirectory, its own jobs, file, and branch, and

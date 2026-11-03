@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The workflow that `rails generate duel:install` writes no longer
   moves the branch that marks the last commit Duel passed backward,
   when two pushes run at once and the older one finishes last.
+- Where a branch named `duel` keeps that workflow from making its
+  branches, as Git can't have both, the job's error names it.
 
 ## [0.1.2] - 2026-11-02
 

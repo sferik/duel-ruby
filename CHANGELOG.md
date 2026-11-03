@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compared with it, and a regression already accepted counted again.
   Now the branch only moves forward, or after a force push rewrites
   its history.
+- Where a branch named `duel` (or `duel/passed`) keeps the workflow that
+  `duel init` writes from making `duel/passed/main` or `duel/badge`, as
+  Git can't have both, the job's error now names that branch and says to
+  delete it, instead of GitHub's bare `Reference update failed`.
 
 ## [0.1.2] - 2026-11-02
 

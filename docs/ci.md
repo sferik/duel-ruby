@@ -184,11 +184,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: duel/passed/${{ github.ref_name }}
         run: |
+          # (Git can't make a branch where another's name is a folder of its
+          # name: a branch named duel blocks duel/passed/main. If one does,
+          # this names it.)
+          blocked() {
+            prefix=$BRANCH
+            while [ "${prefix%/*}" != "$prefix" ]; do
+              prefix=${prefix%/*}
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
+                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+              fi
+            done
+            exit 1
+          }
           # (Forward: GitHub moves it only where it's behind the push.)
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
           at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
           if [ -z "$at" ]; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null || blocked
             exit 0
           fi
           compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status)
@@ -227,6 +240,19 @@ jobs:
           STATUS: ${{ needs.duel.outputs.status }}
           BADGES: https://raw.githubusercontent.com/sferik/duel-ruby/main/assets
         run: |
+          # (Git can't make a branch where another's name is a folder of its
+          # name: a branch named duel blocks duel/passed/main. If one does,
+          # this names it.)
+          blocked() {
+            prefix=$BRANCH
+            while [ "${prefix%/*}" != "$prefix" ]; do
+              prefix=${prefix%/*}
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
+                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+              fi
+            done
+            exit 1
+          }
           # (Where the badge is a newer push's, that push's run has the say.
           # Its commit names the push.)
           last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
@@ -238,7 +264,7 @@ jobs:
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
           commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null || blocked
 ```
 
 A newer push to a pull request cancels the pull request's run, if it's
@@ -446,6 +472,13 @@ when the push's history doesn't have its commit, Duel compares the push
 with the commit before it. For a project in a subdirectory of its
 repository, the branch names the directory, such as
 `duel/passed-gems-parser/main`.
+
+Git can't have a branch named `duel` and a branch named
+`duel/passed/main` at once, because a branch's name is a path, and
+`duel` can't be both a file and a folder. If your repository has a
+branch named `duel`, say the one that added Duel, the job can't make
+its branch, and its error says so. Delete that branch
+(`git push origin --delete duel`), or rename it.
 
 After a regression, the branch stays where it is, so every push fails
 (or with [`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit),
@@ -705,7 +738,18 @@ duel:passed:
         [ "$base" = "$CI_COMMIT_SHA" ] && exit 0
       fi
       curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
-      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches"
+      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches" && exit 0
+      # (Git can't make a branch where another's name is a folder of its
+      # name: a branch named duel blocks duel/passed/main. If one does,
+      # this names it.)
+      prefix=$branch
+      while [ "${prefix%/*}" != "$prefix" ]; do
+        prefix=${prefix%/*}
+        if curl -sf -o /dev/null -H "$token" "$api/repository/branches/$(echo "$prefix" | sed 's|/|%2F|g')"; then
+          echo "The branch $prefix keeps Duel from making $branch, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+        fi
+      done
+      exit 1
 ```
 
 ## Run each version on its own Ruby on CI
