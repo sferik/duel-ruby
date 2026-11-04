@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-04
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.2] - 2026-11-02
 
 No changes of its own: released in step with the other Duel gems.
@@ -81,7 +85,8 @@ later, with `pg_stat_statements`.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.2...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.3...HEAD
+[0.1.3]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.2...duel-postgresql-v0.1.3
 [0.1.2]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.1...duel-postgresql-v0.1.2
 [0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.0...duel-postgresql-v0.1.1
 [0.1.0]: https://github.com/sferik/duel-ruby/releases/tag/duel-postgresql-v0.1.0
