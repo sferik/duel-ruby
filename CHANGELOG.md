@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JRuby's `GC.start` collects nothing, so the garbage left from before
   stayed in use until the benchmark's own objects made room. Duel now
   collects it with the JVM's own call (`java.lang.System.gc`).
+- Where a repository's history was replaced, so the commit that
+  `duel/passed/BRANCH` marks has no history in common with a push, the
+  Mark the commit passed job failed, as GitHub can't compare the two.
+  It now moves the branch to the push, as it does where history was
+  rewritten. Update the job in `.github/workflows/perf.yml` to pick
+  this up.
 
 ## [0.1.3] - 2026-11-04
 

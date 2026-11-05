@@ -219,9 +219,10 @@ class InitTest < DuelTest
 
   # What the step that marks a push passed asks gh, with gh stubbed: for
   # a push (abc) whose fast-forward GitHub refuses (+refused+), where the
-  # branch is +at+ (nil, missing), and compared with the push +compared+.
-  # A branch named +blocker+ keeps it from making the branch.
-  def passed_run(refused: false, at: nil, compared: nil, blocker: nil, success: true)
+  # branch is +at+ (nil, missing), and compared with the push +compared+
+  # (or not, where gh fails with +compare_error+). A branch named +blocker+
+  # keeps it from making the branch.
+  def passed_run(refused: false, at: nil, compared: nil, compare_error: nil, blocker: nil, success: true)
     gem
     init.run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
@@ -236,12 +237,13 @@ class InitTest < DuelTest
         *"--method POST"*) [ -z "$BLOCKER" ] ;;
         *"/git/ref/heads/"*"--jq"*) [ -n "$AT" ] && echo "$AT" || exit 1 ;;
         *"/git/ref/heads/"*) [ "${2##*/git/ref/heads/}" = "$BLOCKER" ] ;;
-        *"/compare/"*) echo "$COMPARED" ;;
+        *"/compare/"*) [ -z "$COMPARE_ERROR" ] || { echo "$COMPARE_ERROR" >&2; exit 1; }; echo "$COMPARED" ;;
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "gh"))
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
-           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "BLOCKER" => blocker}
+           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "COMPARE_ERROR" => compare_error,
+           "BLOCKER" => blocker}
 
     assert_equal success, system(env, "bash", "-ec", run, out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
@@ -275,6 +277,13 @@ class InitTest < DuelTest
     end
   end
 
+  # Where history was replaced, GitHub can't compare the commits (they
+  # have no history in common), and it's moved anyway.
+  def test_marking_a_push_passed_after_history_was_replaced
+    assert_equal "--method PATCH git/refs/heads/duel/passed/main -f sha=abc -F force=true",
+      passed_run(refused: true, at: "def", compare_error: "gh: No common ancestor between abc and def. (HTTP 404)").last
+  end
+
   # A branch whose name is a folder of the branch's keeps it from being
   # made (Git can't have both), and the error names that branch.
   def test_marking_a_push_passed_where_a_branch_blocks_it
@@ -289,6 +298,13 @@ class InitTest < DuelTest
 
   def test_marking_a_push_passed_without_a_comparison
     assert_equal "compare/abc...def --jq .status", passed_run(refused: true, at: "def", compared: "", success: false).last
+  end
+
+  # Where gh fails to compare them otherwise, the error says why.
+  def test_marking_a_push_passed_where_the_comparison_fails
+    assert_equal "compare/abc...def --jq .status",
+      passed_run(refused: true, at: "def", compare_error: "gh: Server Error (HTTP 500)", success: false).last
+    assert_equal "::error::Couldn't compare duel/passed/main with this push: gh: Server Error (HTTP 500)\n", File.read(@said)
   end
 
   # A push to the default branch that Duel compared updates the badge, by
