@@ -436,7 +436,7 @@ class ContextTest < DuelTest
     collections = []
     sample = Duel::MemorySample.new
     stub(Duel::Native::Memory, :used, resident) do
-      stub(GC, :start, ->(**options) { collections << options }) { sample.start }
+      stub(Duel::Native::Memory, :collect, -> { collections << :collected }) { sample.start }
       levels[:seen] = 250
       sleep 0.05
       levels[:seen] = 150
@@ -450,7 +450,7 @@ class ContextTest < DuelTest
   def test_a_memory_sample_keeps_the_most_the_watcher_saw
     sample, collections, looks = memory_sample(120)
 
-    assert_equal [{full_mark: true, immediate_sweep: true}], collections, "from a clean slate"
+    assert_equal [:collected], collections, "from a clean slate"
     assert_equal 150, sample.peak, "the most, above where it started"
     assert_includes 5..100, looks, "every millisecond or so"
     refute_predicate sample.instance_variable_get(:@watcher), :alive?
@@ -463,7 +463,7 @@ class ContextTest < DuelTest
     peak = lambda do |&work|
       sample = Duel::MemorySample.new
       stub(Duel::Native::Memory, :used, -> { level }) do
-        stub(GC, :start, ->(**) {}) { sample.start }
+        stub(Duel::Native::Memory, :collect, -> {}) { sample.start }
         work.call(sample)
         sample.stop
       end
@@ -494,7 +494,7 @@ class ContextTest < DuelTest
       seen << [:run, Duel.measuring?]
     end)
     peaks = stub(Duel::Native::Memory, :used, -> { resident }) do
-      stub(GC, :start, ->(**) {}) { Array.new(2) { Duel::MemorySample.new.tap { |s| harness.run_memory(1, s) }.peak } }
+      stub(Duel::Native::Memory, :collect, -> {}) { Array.new(2) { Duel::MemorySample.new.tap { |s| harness.run_memory(1, s) }.peak } }
     end
 
     assert_equal [[:setup, false], [:run, true], [:run, true]], seen, "set up once"

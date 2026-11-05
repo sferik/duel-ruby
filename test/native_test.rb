@@ -161,12 +161,36 @@ class NativeTest < DuelTest
     assert_equal 1234, stub(Duel::Native::Memory, :resident, -> { 1234 }) { Duel::Native::Memory.used }
   end
 
+  # Off JRuby, the garbage is collected by a full collection, swept at
+  # once (on JRuby, see the next test).
+  def test_collecting_the_garbage
+    skip "the JVM's collection, on JRuby" if RUBY_ENGINE == "jruby"
+
+    collections = []
+    stub(GC, :start, ->(**options) { collections << options }) { Duel::Native::Memory.collect }
+
+    assert_equal [{full_mark: true, immediate_sweep: true}], collections
+  end
+
+  # On JRuby, the garbage is collected by the JVM, as GC.start collects
+  # nothing there: what's in use falls by it.
+  def test_collecting_the_garbage_on_jruby
+    skip "GC.start, off JRuby" unless RUBY_ENGINE == "jruby"
+
+    Random.bytes(32 << 20)
+    before = Duel::Native::Memory.used
+    Duel::Native::Memory.collect
+
+    assert_operator before - Duel::Native::Memory.used, :>=, 32 << 20
+  end
+
   # On JRuby, a benchmark's objects show in the heap in use, though
   # resident memory barely moves as they fill what the JVM took ahead.
+  # The garbage collected first doesn't make room for them as they come.
   def test_the_memory_in_use_on_jruby
     skip "resident memory, off JRuby" unless RUBY_ENGINE == "jruby"
 
-    GC.start
+    Duel::Native::Memory.collect
     before = Duel::Native::Memory.used
     kept = Random.bytes(32 << 20)
 

@@ -508,7 +508,7 @@ module Duel
 
     def start
       @started = true
-      GC.start(full_mark: true, immediate_sweep: true)
+      Native::Memory.collect
       @base = resident
       @peak = 0
       @watcher = Thread.new do

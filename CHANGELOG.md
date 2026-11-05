@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- On JRuby, peak memory came out short, by tens of megabytes at times,
+  and a benchmark that needed more memory could pass. A peak is
+  measured above what's in use after the garbage is collected, but
+  JRuby's `GC.start` collects nothing, so the garbage left from before
+  stayed in use until the benchmark's own objects made room. Duel now
+  collects it with the JVM's own call (`java.lang.System.gc`).
+
 ## [0.1.3] - 2026-11-04
 
 ### Added

@@ -162,6 +162,10 @@ module Duel
       # in bytes, or nil where it can't tell: resident memory, but on
       # JRuby, the JVM's heap in use.
       def self.used = resident
+
+      # Collects every object that's garbage, so that what's in use (see
+      # .used) is what's live: a full collection, swept at once.
+      def self.collect = GC.start(full_mark: true, immediate_sweep: true)
     end
 
     # simplecov:disable JRuby's heap is the JVM's (JRuby's test run covers
@@ -175,6 +179,11 @@ module Duel
         HEAP = java.lang.management.ManagementFactory.getMemoryMXBean
 
         def self.used = HEAP.getHeapMemoryUsage.getUsed
+
+        # JRuby's GC.start collects nothing. The JVM's own call does:
+        # without it, a peak was measured above garbage that the benchmark's
+        # objects then made room for, and came out tens of megabytes short.
+        def self.collect = java.lang.System.gc
       end
     end
     # simplecov:enable

@@ -234,5 +234,7 @@ Neither has an allocation count, an instruction count, or profiles.
 TruffleRuby has peak memory only on Linux. JRuby measures peak memory in
 the JVM's heap in use, on any operating system, because the JVM takes
 memory for its heap ahead of time, so resident memory barely moves as
-a benchmark's objects fill it. StackProf runs on CRuby only: Duel
+a benchmark's objects fill it. The peak starts from the heap in use
+after a collection that Duel asks the JVM for, as JRuby's `GC.start`
+collects nothing. StackProf runs on CRuby only: Duel
 doesn't use it on JRuby or TruffleRuby, even where it's installed.
