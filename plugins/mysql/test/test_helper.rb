@@ -29,6 +29,9 @@ end
 Process.singleton_class.prepend(OwnDataDir)
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+# (The tests use Trilogy themselves: the plugin loads it only once it
+# connects.)
+require "trilogy"
 require "duel/mysql"
 require "duel/testing"
 # Mutant runs the tests itself (and autorun, at exit, would run them all

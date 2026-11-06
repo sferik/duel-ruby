@@ -7,6 +7,10 @@
 # given (Canned), so the server's timing (and its settling) isn't in
 # them.
 
+# (The plugin loads Trilogy as it first connects, which a canned
+# connection never does: see Duel::MySQL.require_trilogy.)
+require "trilogy"
+
 # A worker's server, as performance_schema has it after a suite's
 # statements ran: +size+ statements by digest, each one's [queries,
 # rows, rows examined, time (ps)] so far, the same for every run.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- In trilogy's own repository, every worker would measure the bundle's
+  release of trilogy, not its version's own, as the plugin required
+  trilogy as it loaded, in `.duel.rb`, before the worker loaded the
+  version. It now requires trilogy as it first connects: in the
+  runner, to the server it started, and in a worker, once the version
+  has loaded.
+
 ## [0.1.3] - 2026-11-04
 
 No changes of its own: released in step with the other Duel gems.

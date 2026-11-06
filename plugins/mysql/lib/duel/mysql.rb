@@ -3,7 +3,6 @@
 require "duel"
 require "digest"
 require "fileutils"
-require "trilogy"
 require_relative "mysql/version"
 
 module Duel
@@ -81,6 +80,17 @@ module Duel
       config.metric(METRICS) { statements.read }.costly.details { |stretches, sample| statements.details(stretches, sample.n) }
       connection
     end
+
+    # Loads Trilogy, as the first connection is made: not as the plugin
+    # loads, in .duel.rb, before a worker loads its version. In trilogy's
+    # own repository, trilogy is what's measured, and the worker would load
+    # whichever trilogy the load path led to first (the bundle's release,
+    # say), and keep it. (In the runner, which loads no version, the
+    # bundle's.)
+    # mutant:disable -- the tests' process has Trilogy loaded from the start,
+    # so a require changes nothing there: test_loads_trilogy_only_when_used
+    # checks it, in a process of its own
+    def self.require_trilogy = require("trilogy")
 
     # Runs SQL on a connection of its own to the server on +socket+;
     # returns the last statement's result.
@@ -386,6 +396,7 @@ module Duel
       end
 
       def initialize(socket)
+        MySQL.require_trilogy
         # (As root: trilogy's user, unless it's given another.)
         @client = Trilogy.new(socket: socket, database: DATABASE, multi_statement: true)
       end

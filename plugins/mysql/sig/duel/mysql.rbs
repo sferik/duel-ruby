@@ -51,6 +51,9 @@ module Duel
 
     # Runs SQL on a connection of its own to the server on +socket+;
     # returns the last statement's result.
+    # Loads Trilogy, as the first connection is made.
+    def self.require_trilogy: () -> bool
+
     def self.run: (String socket, String sql) -> ::Trilogy::Result
 
     # What the worker's server has done so far, but for the plugin's own

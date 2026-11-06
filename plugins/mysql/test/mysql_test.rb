@@ -23,6 +23,30 @@ class MySQLTest < PluginTest
   # The plugin registers itself, as c.use :mysql finds it, and is
   # configured once (one server for each worker), however many times it's
   # used: what it returns is its connection, each worker's.
+  # Not as the plugin loads (in .duel.rb, before a worker loads its
+  # version, which in trilogy's own repository is trilogy): once it
+  # connects.
+  def test_loads_trilogy_only_when_used
+    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", <<~RUBY], &:read)
+      require "duel/mysql"
+      before = defined?(Trilogy)
+      Duel::MySQL.require_trilogy
+      print [before.inspect, defined?(Trilogy::Error).inspect].join(" ")
+    RUBY
+
+    assert_equal %(nil "constant"), loaded
+  end
+
+  # What Trilogy isn't loaded for yet, first: a connection (the runner's,
+  # to see that its server answers, and the worker's).
+  def test_loads_trilogy_before_it_connects
+    unloaded = Class.new(StandardError)
+
+    replacing(Duel::MySQL, :require_trilogy, -> { raise unloaded }) do
+      assert_raises(unloaded) { Duel::MySQL::Connection.new("/nowhere.sock") }
+    end
+  end
+
   def test_registered
     config = Duel::Config.new(@dir)
     connection = config.use(:mysql)
