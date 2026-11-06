@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-06
+
+### Fixed
+
+- Where a repository's history was replaced, so the commit that
+  `duel/passed/BRANCH` marks has no history in common with a push, the
+  Mark the commit passed job in the workflow that
+  `rails generate duel:install` writes failed, as GitHub can't compare
+  the two. It now moves the branch to the push, as it does where
+  history was rewritten. Update the job in
+  `.github/workflows/perf.yml` to pick this up.
+
 ## [0.1.3] - 2026-11-04
 
 ### Added
@@ -194,7 +206,8 @@ Rails 7.2 or later, and Ruby 3.4 or later.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.3...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.4...HEAD
+[0.1.4]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.3...duel-rails-v0.1.4
 [0.1.3]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.2...duel-rails-v0.1.3
 [0.1.2]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.1...duel-rails-v0.1.2
 [0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.0...duel-rails-v0.1.1

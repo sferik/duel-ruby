@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-06
+
 ### Fixed
 
 - In trilogy's own repository, every worker would measure the bundle's
@@ -87,7 +89,8 @@ or later (not MariaDB).
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.3...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.4...HEAD
+[0.1.4]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.3...duel-mysql-v0.1.4
 [0.1.3]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.2...duel-mysql-v0.1.3
 [0.1.2]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.1...duel-mysql-v0.1.2
 [0.1.1]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.0...duel-mysql-v0.1.1
