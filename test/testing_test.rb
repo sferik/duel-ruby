@@ -461,7 +461,7 @@ class TestingTest < DuelTest
     assert_equal %w[cpu instructions], comparison["mixed"].regressed
   end
 
-  # A warm-up where a JIT needs one (see EndToEndTest#settings).
+  # A warm-up where a JIT needs one (see EndToEnd#settings).
   def warm = Duel::JIT_WARM.zero? ? 0.0 : 1.5
 
   # Whole comparisons, in worker processes (two of each version, unless
