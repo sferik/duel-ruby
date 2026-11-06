@@ -89,10 +89,10 @@ module Duel
 
     # This process's resident memory in bytes, or nil where it can't tell.
     module Memory
-      STATM: String
+      STATUS: String
       MACOS: MacOS?
 
-      def self.resident: (?statm: String, ?macos: MacOS?) -> Integer?
+      def self.resident: (?status: String, ?macos: MacOS?) -> Integer?
 
       def self.used: () -> Integer?
 

@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "etc"
 require "fiddle"
 require "rbconfig"
 
@@ -145,17 +144,19 @@ module Duel
 
     # This process's resident memory in bytes, or nil where it can't tell.
     module Memory
-      STATM = "/proc/self/statm"
+      # (Its VmRSS line, in kB: no page size to know, as /proc/self/statm's
+      # pages need, which would take Etc, a gem a worker would load before
+      # its version.)
+      STATUS = "/proc/self/status"
       # (Never false: Steep doesn't see that false || nil is nil.)
       MACOS = (FIDDLE && MacOS.open) || nil #: MacOS?
 
       # From /proc (Linux), else from macOS's counter, else nil.
-      def self.resident(statm: STATM, macos: MACOS)
-        return macos&.resident unless File.readable?(statm)
+      def self.resident(status: STATUS, macos: MACOS)
+        return macos&.resident unless File.readable?(status)
 
-        # (The page size is always known.)
-        page_size = Etc.sysconf(Etc::SC_PAGESIZE) #: Integer
-        Integer(File.read(statm).split.fetch(1)) * page_size
+        kb = File.read(status)[/^VmRSS:\s+(\d+) kB$/, 1] #: String
+        Integer(kb) * 1024
       end
 
       # The memory a benchmark's peak is measured in (see MemorySample),

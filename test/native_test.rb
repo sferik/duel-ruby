@@ -147,10 +147,10 @@ class NativeTest < DuelTest
   end
 
   def test_resident_memory_from_proc
-    statm = File.join(tmpdir, "statm")
-    File.write(statm, "100 25 3 1 0 20 0\n")
+    status = File.join(tmpdir, "status")
+    File.write(status, "Name:\truby\nVmHWM:\t   99999 kB\nVmRSS:\t   25600 kB\nRssAnon:\t   12 kB\n")
 
-    assert_equal 25 * Etc.sysconf(Etc::SC_PAGESIZE), Duel::Native::Memory.resident(statm: statm, macos: nil)
+    assert_equal 25_600 * 1024, Duel::Native::Memory.resident(status: status, macos: nil)
   end
 
   # Peak memory is measured in resident memory, but on JRuby, in the
@@ -201,8 +201,8 @@ class NativeTest < DuelTest
   def test_resident_memory_from_macos
     missing = File.join(tmpdir, "none")
 
-    assert_equal 4096, Duel::Native::Memory.resident(statm: missing, macos: Struct.new(:resident).new(4096))
-    assert_nil Duel::Native::Memory.resident(statm: missing, macos: nil)
+    assert_equal 4096, Duel::Native::Memory.resident(status: missing, macos: Struct.new(:resident).new(4096))
+    assert_nil Duel::Native::Memory.resident(status: missing, macos: nil)
   end
 
   # A child, waited for with wait4(2): how it ended (WIFEXITED,
@@ -260,12 +260,12 @@ class NativeTest < DuelTest
   end
 
   def test_resident_memory_here
-    statm = File.join(tmpdir, "statm")
-    File.write(statm, "100 25 3 1 0 20 0\n")
-    from_statm = with_constants(Duel::Native::Memory, STATM: statm) { Duel::Native::Memory.resident(macos: nil) }
+    status = File.join(tmpdir, "status")
+    File.write(status, "VmRSS:\t      25 kB\n")
+    from_status = with_constants(Duel::Native::Memory, STATUS: status) { Duel::Native::Memory.resident(macos: nil) }
 
-    assert_equal 25 * Etc.sysconf(Etc::SC_PAGESIZE), from_statm
-    from_macos = with_constants(Duel::Native::Memory, STATM: File.join(tmpdir, "none"), MACOS: Struct.new(:resident).new(1)) do
+    assert_equal 25 * 1024, from_status
+    from_macos = with_constants(Duel::Native::Memory, STATUS: File.join(tmpdir, "none"), MACOS: Struct.new(:resident).new(1)) do
       Duel::Native::Memory.resident
     end
 

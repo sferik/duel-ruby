@@ -225,12 +225,14 @@ class WorkerTest < DuelTest
 
   # Nothing a version could be: in json's own repository, a json of
   # Duel's would be the candidate's, loaded into every baseline worker
-  # ahead of the baseline's.
-  def test_loads_no_json_before_the_version
-    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-r", "duel/worker", "-e",
-      'print $LOADED_FEATURES.grep(%r{/json(\.rb|/)}).join(" ")'], &:read)
+  # ahead of the baseline's (and likewise etc in etc's).
+  GEMS = %w[json etc].freeze
 
-    assert_empty loaded
+  def test_loads_no_gem_a_version_could_be_before_the_version
+    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-r", "duel/worker", "-e", "puts $LOADED_FEATURES"],
+      &:read).lines(chomp: true)
+
+    assert_empty loaded.grep(%r{/(#{GEMS.join("|")})(\.rb|\.#{RbConfig::CONFIG["DLEXT"]}|/)})
   end
 
   # The worker's main loop, in this process, over a real socket.

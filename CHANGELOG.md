@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loaded the version. A worker and the runner now send each other
   their messages marshaled, so a worker loads nothing a version could
   be before it loads the version.
+- A worker loaded etc, a gem, before it loaded the version it
+  measures, for the page size that `/proc/self/statm` counts resident
+  memory in. In etc's own repository, a worker would load the
+  bundle's etc before the version's own. A worker now reads resident
+  memory, in kB, from `/proc/self/status` (VmRSS), and loads no etc.
 - A worker that loaded a native extension twice, the candidate's that
   something required before the worker loaded the version and then the
   version's own over it, went unnoticed, as loading the version took
