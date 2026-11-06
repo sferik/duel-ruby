@@ -1,10 +1,11 @@
 name: duel-rails
 
-# duel-rails, a gem of its own in plugins/rails: its tests, lint, types,
-# mutation testing and benchmarks. They run only when something in it
-# changes, or this workflow does, or duel-activerecord does (its Gemfile
-# takes that from plugins/activerecord). Nightly, only its benchmarks
-# run, against its last release. Run by hand (Actions > duel-rails > Run
+# duel-rails, a gem of its own in plugins/rails: its tests, lint,
+# types, mutation testing and benchmarks. They run only when something
+# in it changes, or this workflow does, or duel-activerecord does (its
+# Gemfile takes that from plugins/activerecord). Nightly, only its
+# benchmarks run, against its last release, and its tests on
+# TruffleRuby (the slowest). Run by hand (Actions > duel-rails > Run
 # workflow), mutant mutates every subject and Duel compares anyway.
 on:
   push:
@@ -35,8 +36,6 @@ defaults:
 jobs:
   test:
     name: Test on ${{ matrix.ruby-version }}, Rails ${{ matrix.rails }}
-    # (Nightly, only the comparison with the last release runs.)
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # The development versions (Ruby's and TruffleRuby's) get an early
     # look, but can't fail the build.
@@ -44,13 +43,11 @@ jobs:
       fail-fast: false
       matrix:
         # No JRuby: its Rails needs JDBC adapters, which lag behind Rails.
-        ruby-version: ["3.4", "4.0", "ruby-head", "truffleruby-head"]
+        # TruffleRuby's, the slowest, run nightly (on the schedule), alone:
+        # a push or pull request waits for the rest only.
+        ruby-version: ${{ fromJSON(github.event_name == 'schedule' && '["truffleruby-head"]' || '["3.4", "4.0", "ruby-head"]') }}
         rails: [">= 7.2"]
-        include:
-          - ruby-version: "3.4"
-            rails: "~> 7.2.0"
-          - ruby-version: "3.4"
-            rails: "~> 8.0.0"
+        include: ${{ fromJSON(github.event_name == 'schedule' && '[]' || '[{"ruby-version":"3.4","rails":"~> 7.2.0"},{"ruby-version":"3.4","rails":"~> 8.0.0"}]') }}
     env:
       RAILS: ${{ matrix.rails }}
     steps:

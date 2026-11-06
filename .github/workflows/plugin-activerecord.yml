@@ -1,10 +1,11 @@
 name: duel-activerecord
 
-# duel-activerecord, a gem of its own in plugins/activerecord: its tests, lint, types,
-# mutation testing and benchmarks. They run only when something in it
-# changes, or this workflow does. Nightly, only its benchmarks run,
-# against its last release. Run by hand (Actions > duel-activerecord > Run
-# workflow), mutant mutates every subject and Duel compares anyway.
+# duel-activerecord, a gem of its own in plugins/activerecord: its
+# tests, lint, types, mutation testing and benchmarks. They run only
+# when something in it changes, or this workflow does. Nightly, only
+# its benchmarks run, against its last release, and its tests on
+# TruffleRuby (the slowest). Run by hand (Actions > duel-activerecord >
+# Run workflow), mutant mutates every subject and Duel compares anyway.
 on:
   push:
     branches: [main]
@@ -32,8 +33,6 @@ defaults:
 jobs:
   test:
     name: Test on ${{ matrix.ruby-version }}, Active Record ${{ matrix.activerecord }}
-    # (Nightly, only the comparison with the last release runs.)
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # A hang fails the job, rather than running for GitHub's six hours
     timeout-minutes: 20
@@ -46,13 +45,11 @@ jobs:
         # sqlite3 gem, a C extension), whose adapter holds Active Record
         # to 7.2 there (the plugin itself is plain Ruby).
         # The slowest first, so they start before the rest of the queue
-        ruby-version: ["jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head", "3.4", "4.0", "ruby-head"]
+        # TruffleRuby's, the slowest, run nightly (on the schedule), alone:
+        # a push or pull request waits for the rest only.
+        ruby-version: ${{ fromJSON(github.event_name == 'schedule' && '["truffleruby-head"]' || '["jruby-10.0", "jruby-10.1", "jruby-head", "3.4", "4.0", "ruby-head"]') }}
         activerecord: [">= 7.2"]
-        include:
-          - ruby-version: "3.4"
-            activerecord: "~> 7.2.0"
-          - ruby-version: "3.4"
-            activerecord: "~> 8.0.0"
+        include: ${{ fromJSON(github.event_name == 'schedule' && '[]' || '[{"ruby-version":"3.4","activerecord":"~> 7.2.0"},{"ruby-version":"3.4","activerecord":"~> 8.0.0"}]') }}
     env:
       ACTIVERECORD: ${{ matrix.activerecord }}
     steps:

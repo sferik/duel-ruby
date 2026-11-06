@@ -57,8 +57,9 @@ can't follow the code, a `# steep:ignore` names the diagnostic, below a
 comment saying why it's safe.
 
 CI runs the tests on CRuby 3.4 and 4.0 and JRuby 10.0 and 10.1, and on
-the development versions of all three Rubies, CRuby's, JRuby's and
-TruffleRuby's (which may fail without failing the build), enforces the
+the development versions of CRuby and JRuby, and nightly, TruffleRuby's,
+the slowest (development versions may fail without failing the build),
+enforces the
 coverage (SimpleCov's strict profile, on CRuby 3.4),
 runs [mutant](https://github.com/mbj/mutant), checks types (on CRuby 3.4
 and 4.0), lints, and compares Duel's own benchmarks with the main

@@ -11,6 +11,9 @@ on:
     paths-ignore:
       - "plugins/**"
       - ".github/workflows/plugin-*.yml"
+  # Nightly, TruffleRuby's tests (see the test job's matrix) only.
+  schedule:
+    - cron: "30 4 * * *"
   # By hand (Actions > Test > Run workflow): a push GitHub can't diff (a
   # force-pushed root commit, say) matches no paths, so starts nothing.
   workflow_dispatch:
@@ -30,7 +33,9 @@ jobs:
       fail-fast: false
       matrix:
         # The slowest first, so they start before the rest of the queue
-        ruby-version: ["jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head", "3.4", "4.0", "ruby-head"]
+        # TruffleRuby's, the slowest, run nightly (on the schedule), alone:
+        # a push or pull request waits for the rest only.
+        ruby-version: ${{ fromJSON(github.event_name == 'schedule' && '["truffleruby-head"]' || '["jruby-10.0", "jruby-10.1", "jruby-head", "3.4", "4.0", "ruby-head"]') }}
     steps:
       - uses: actions/checkout@v7
       - id: ruby
@@ -57,6 +62,8 @@ jobs:
 
   coverage:
     name: Coverage (100% line, branch and method)
+    # (Nightly, only TruffleRuby's tests run.)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

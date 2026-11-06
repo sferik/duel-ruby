@@ -1,10 +1,11 @@
 name: duel-redis
 
-# duel-redis, a gem of its own in plugins/redis: its tests, lint, types,
-# mutation testing and benchmarks. They run only when something in it
-# changes, or this workflow does. Nightly, only its benchmarks run,
-# against its last release. Run by hand (Actions > duel-redis > Run
-# workflow), mutant mutates every subject and Duel compares anyway.
+# duel-redis, a gem of its own in plugins/redis: its tests, lint,
+# types, mutation testing and benchmarks. They run only when something
+# in it changes, or this workflow does. Nightly, only its benchmarks
+# run, against its last release, and its tests on TruffleRuby (the
+# slowest). Run by hand (Actions > duel-redis > Run workflow), mutant
+# mutates every subject and Duel compares anyway.
 on:
   push:
     branches: [main]
@@ -32,8 +33,6 @@ defaults:
 jobs:
   test:
     name: Test on ${{ matrix.ruby-version }}
-    # (Nightly, only the comparison with the last release runs.)
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # A hang fails the job, rather than running for GitHub's six hours
     timeout-minutes: 20
@@ -43,7 +42,9 @@ jobs:
       fail-fast: false
       matrix:
         # The slowest first, so they start before the rest of the queue
-        ruby-version: ["jruby-10.0", "jruby-10.1", "jruby-head", "truffleruby-head", "3.4", "4.0", "ruby-head"]
+        # TruffleRuby's, the slowest, run nightly (on the schedule), alone:
+        # a push or pull request waits for the rest only.
+        ruby-version: ${{ fromJSON(github.event_name == 'schedule' && '["truffleruby-head"]' || '["jruby-10.0", "jruby-10.1", "jruby-head", "3.4", "4.0", "ruby-head"]') }}
     steps:
       - uses: actions/checkout@v7
       - run: sudo apt-get install -y redis-server
