@@ -72,6 +72,20 @@ happens, Duel stops and tells you to set `c.build` to a command that
 builds each version, such as `c.build = "make"`. See
 [Prepare each version](configuration.md#prepare-each-version).
 
+## Duel says a version loaded an extension twice
+
+A worker loads `.duel.rb` and your plugins before it loads its version.
+If one of them requires your library, or a gem that requires it, the
+worker finds the library wherever the load path leads, such as the
+candidate's `lib/` or an installed release. Duel then loads the
+version's own build, but a native extension can't be unloaded, so both
+stay loaded, and the comparison wouldn't be of the version's code alone.
+Duel stops and names the extension and both of its files.
+
+To fix it, require what loads your library in a block that runs once the
+version has loaded, such as `c.in_worker`, not at the top of `.duel.rb`
+or as a plugin loads.
+
 ## Duel says that the versions' paths differ in length
 
 The baseline's path is as long and as deep as your project's, because

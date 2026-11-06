@@ -877,6 +877,35 @@ class LaneVersionsTest < DuelTest
     pass "each its own"
   end
 
+  # A version that loaded an extension twice (the candidate's, that a
+  # plugin required before the version loaded, and its own over it)
+  # fails, whatever its last is.
+  def test_a_version_that_loaded_an_extension_twice
+    feature = "my_gem/ext.#{dlext}"
+    paths = [File.join(config.root, "lib", feature), File.join(base, "lib", feature)]
+    error = nil
+    log = with_fake_workers do |workers|
+      workers.extensions.update("baseline" => {feature => paths.last}, "candidate" => {})
+      workers.twice.update("baseline" => {feature => paths})
+      error = assert_raises(Duel::Failed) { lane }
+      workers.log
+    end
+
+    assert_equal "the baseline loaded #{feature} twice, from #{paths.join(" and ")}: something required it before Duel loaded " \
+      "the baseline, and both stay loaded. Require what loads it in a block that runs once the version has loaded " \
+      "(c.in_worker, in .duel.rb), not as .duel.rb or a plugin loads", error.message
+    assert_equal [%w[base-1 stop], %w[head-1 stop]], log.sort, "its workers stopped"
+
+    log = with_fake_workers do |workers|
+      workers.twice.update("candidate" => {feature => paths})
+      error = assert_raises(Duel::Failed) { lane }
+      workers.log
+    end
+
+    assert_match(/\Athe candidate loaded #{Regexp.escape(feature)} twice/, error.message)
+    assert_equal [%w[base-1 stop], %w[head-1 stop]], log.sort
+  end
+
   # A tree that isn't there (yet) is where its path says.
   def test_a_tree_that_isnt_there
     feature = "x.#{dlext}"

@@ -85,9 +85,10 @@ module Duel
     attr_reader :label, :benchmarks, :metrics, :memory, :profiler, :yjit
 
     # The Ruby it runs on (RUBY_DESCRIPTION), the native extensions it
-    # loaded (see Worker.extensions), and the directories gems are
-    # installed in (see Worker.gem_dirs).
-    attr_reader :description, :extensions, :gem_dirs
+    # loaded (see Worker.extensions), those it loaded twice (see
+    # Worker.twice), and the directories gems are installed in (see
+    # Worker.gem_dirs).
+    attr_reader :description, :extensions, :twice, :gem_dirs
 
     # Where a worker on +ruby+ loads Duel from, ahead of anything else
     # (a version's own bundle, which may not have Duel, or an older one):
@@ -128,6 +129,7 @@ module Duel
       @yjit = hello.fetch("yjit")
       @description = hello.fetch("ruby")
       @extensions = hello.fetch("extensions")
+      @twice = hello.fetch("twice")
       @gem_dirs = hello.fetch("gem_dirs")
     end
 
@@ -366,10 +368,17 @@ module Duel
     # be of its code. An installed gem's extension (in the directories
     # gems are installed in, by the worker that loaded it) is in no
     # version's tree, even in a bundle there (vendor/bundle, say, which
-    # both versions may load from).
+    # both versions may load from). And fails if a version's workers
+    # loaded one twice (see Worker.twice): the candidate's, that something
+    # required before Duel loaded the version, and then its own over it.
     def check_builds
       workers = {"baseline" => @bases.first, "candidate" => @candidates.first}
       workers.each do |side, worker|
+        worker.twice.each do |feature, paths|
+          raise Failed, "the #{side} loaded #{feature} twice, from #{paths.join(" and ")}: something required it before " \
+            "Duel loaded the #{side}, and both stay loaded. Require what loads it in a block that runs once the version " \
+            "has loaded (c.in_worker, in .duel.rb), not as .duel.rb or a plugin loads"
+        end
         other = (side == "baseline") ? "candidate" : "baseline"
         theirs = workers.fetch(other).then { |w| w.extensions.select { |_, path| inside?(path, other, w) } }
         worker.extensions.each do |feature, path|

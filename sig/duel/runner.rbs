@@ -108,6 +108,7 @@ module Duel
     @runs: ProcessSample?
     @description: String
     @extensions: Hash[String, String]
+    @twice: Hash[String, Array[String]]
     @gem_dirs: Array[String]
     @pid: Integer
     @socket: UNIXSocket
@@ -134,6 +135,9 @@ module Duel
 
     # The native extensions it loaded, by feature.
     attr_reader extensions: Hash[String, String]
+
+    # Those it loaded from more than one file, by feature.
+    attr_reader twice: Hash[String, Array[String]]
 
     # The directories gems are installed in, as real paths ending in "/".
     attr_reader gem_dirs: Array[String]

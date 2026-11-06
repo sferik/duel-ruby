@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loaded the version. A worker and the runner now send each other
   their messages marshaled, so a worker loads nothing a version could
   be before it loads the version.
+- A worker that loaded a native extension twice, the candidate's that
+  something required before the worker loaded the version and then the
+  version's own over it, went unnoticed, as loading the version took
+  the candidate's off `$LOADED_FEATURES`. Duel now fails, and names the
+  extension and both of its files.
 - On JRuby, peak memory came out short, by tens of megabytes at times,
   and a benchmark that needed more memory could pass. A peak is
   measured above what's in use after the garbage is collected, but

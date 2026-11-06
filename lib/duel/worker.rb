@@ -25,6 +25,9 @@ module Duel
 
     def self.main(version_root, candidate_root, control, config_path = nil)
       config = config_path ? Duel.load_config(config_path) : (Duel.config = Config.new(candidate_root))
+      # (What was loaded before the version, which loading it may take off
+      # $LOADED_FEATURES, to load its own over: see Worker.twice.)
+      before = $LOADED_FEATURES.dup
       config.load_into(File.expand_path(version_root))
       TOPLEVEL_BINDING.receiver.extend(DSL)
       config.benchmark_files.each { |file| load file }
@@ -34,7 +37,7 @@ module Duel
       begin
         # The benchmarks are the only work in this process: it starts tidy.
         GC.start
-        worker = new(config.metrics, config.measures, hooks: config.hooks)
+        worker = new(config.metrics, config.measures, hooks: config.hooks, before: before)
         begin
           socket = UNIXSocket.new(control)
           Message.write(socket, worker.hello)
@@ -51,8 +54,10 @@ module Duel
 
     # Its metric instances: the plugins' outermost, then the built-in
     # ones, CPU innermost (see Worker.made). +hooks+: the configuration's
-    # (see Harness).
-    def initialize(plugin_metrics = [], measures = {}, hooks: NO_HOOKS)
+    # (see Harness). +before+: the features loaded before the version was
+    # (see Worker.main).
+    def initialize(plugin_metrics = [], measures = {}, hooks: NO_HOOKS, before: [])
+      @before = before
       @metrics, @specs = Worker.made(plugin_metrics + BUILT_IN, measures)
       @benchmarks = Duel.benchmarks
       @hooks = hooks
@@ -90,7 +95,7 @@ module Duel
     def hello
       {"benchmarks" => @benchmarks.values.map(&:to_h), "metrics" => @specs, "ruby" => RUBY_DESCRIPTION,
        "memory" => !Native::Memory.used.nil?, "profiler" => Worker.profiler?, "yjit" => Worker.yjit?,
-       "extensions" => Worker.extensions, "gem_dirs" => Worker.gem_dirs}
+       "extensions" => Worker.extensions, "twice" => Worker.twice(@before + $LOADED_FEATURES), "gem_dirs" => Worker.gem_dirs}
     end
 
     # The native extensions loaded (CRuby's and TruffleRuby's builds, and
@@ -98,13 +103,26 @@ module Duel
     # from the directory on the load path it was found in (the deepest,
     # of several), "my_gem/my_gem.bundle", say, or else its file's name.
     # (For the runner to check each version loaded its own builds: see
+    # Lane#check_builds.) Of a feature loaded from more than one file, the
+    # last.
+    def self.extensions(features = $LOADED_FEATURES, load_path = $LOAD_PATH) = loaded(features, load_path).transform_values(&:last)
+
+    # The native extensions of +features+ loaded from more than one file,
+    # as {feature => real paths}, in the order they loaded. In a baseline
+    # worker, one of the candidate's that something required before the
+    # worker loaded the version (Duel's own json, in json's repository,
+    # say), and then the version's own: as an extension can't be
+    # unloaded, both stay loaded. (For the runner to fail: see
     # Lane#check_builds.)
-    def self.extensions(features = $LOADED_FEATURES, load_path = $LOAD_PATH)
+    def self.twice(features, load_path = $LOAD_PATH) = loaded(features, load_path).select { |_, paths| paths.size > 1 }
+
+    # The native extensions loaded, as {feature => real paths}.
+    def self.loaded(features, load_path)
       dirs = load_path.map { |dir| File.join(File.expand_path(dir), "") }
-      features.select { |feature| File.absolute_path?(feature) && feature.end_with?(".#{RbConfig::CONFIG.fetch("DLEXT")}") }.to_h do |path|
+      features.select { |feature| File.absolute_path?(feature) && feature.end_with?(".#{RbConfig::CONFIG.fetch("DLEXT")}") }.group_by do |path|
         dir = dirs.select { |prefix| path.start_with?(prefix) }.max_by(&:size)
-        [dir ? path.delete_prefix(dir) : File.basename(path), File.realpath(path)]
-      end
+        dir ? path.delete_prefix(dir) : File.basename(path)
+      end.transform_values { |paths| paths.map { |path| File.realpath(path) }.uniq }
     end
 
     # The directories gems are installed in, Gem.path's that are there, as

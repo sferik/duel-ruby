@@ -129,6 +129,22 @@ class WorkerTest < DuelTest
     assert_equal Duel::Worker.extensions, hello.fetch("extensions")
   end
 
+  # Of the native extensions, those loaded from more than one file, in
+  # the order they loaded: a version's own over the candidate's, say.
+  def test_twice
+    dlext = RbConfig::CONFIG["DLEXT"]
+    candidate, base = %w[candidate base].map { |name| FileUtils.mkdir_p(File.join(tmpdir, name, "lib", "my_gem")).first }
+    paths = [candidate, base].map { |dir| File.join(dir, "ext.#{dlext}").tap { |path| File.write(path, "") } }
+    once = File.join(base, "once.#{dlext}").tap { |path| File.write(path, "") }
+    load_path = [File.dirname(candidate), File.dirname(base)]
+
+    assert_equal({"my_gem/ext.#{dlext}" => paths.map { |path| File.realpath(path) }},
+      Duel::Worker.twice([paths.first, once, paths.last, paths.first], load_path))
+    assert_empty Duel::Worker.twice([paths.first, once], load_path)
+    assert_equal Duel::Worker.twice([paths.first, *$LOADED_FEATURES]), Duel::Worker.new(before: [paths.first]).hello.fetch("twice"),
+      "this process's, with what was loaded before the version"
+  end
+
   # The directories gems are installed in (that are there), at their
   # real paths, each once: what the runner tells an installed gem's
   # extension from a build by.
@@ -246,6 +262,34 @@ class WorkerTest < DuelTest
   ensure
     ConfigProbe.supported = nil
     $LOAD_PATH.delete(File.join(root, "lib"))
+  end
+
+  # A baseline worker that had the candidate's build loaded before it
+  # loaded the baseline (Duel's own json did, in json's repository): what
+  # loading the version took off $LOADED_FEATURES still counts.
+  def test_main_says_what_it_loaded_twice
+    dlext = RbConfig::CONFIG["DLEXT"]
+    candidate, base = %w[candidate base].map { |name| project(File.join(tmpdir, name)) }
+    [candidate, base].each do |root|
+      File.write(File.join(root, "twinned.gemspec"), "")
+      File.write(File.join(root, "lib", "twinned.#{dlext}"), "")
+      File.write(File.join(root, "lib", "twinned.rb"), %($LOADED_FEATURES << File.join(__dir__, "twinned.#{dlext}")\n))
+    end
+    early = [File.join(candidate, "lib", "twinned.rb"), File.join(candidate, "lib", "twinned.#{dlext}")]
+    $LOADED_FEATURES.push(*early)
+    control = File.join(short_tmpdir, "c.sock")
+    server = UNIXServer.new(control)
+    worker = Thread.new { Duel::Worker.main(base, candidate, control) }
+    socket = server.accept
+    hello = Duel::Message.read(socket)
+    socket.close
+    worker.join(5)
+
+    assert_equal({"twinned.#{dlext}" => [candidate, base].map { |root| File.realpath(File.join(root, "lib", "twinned.#{dlext}")) }},
+      hello.fetch("twice"))
+  ensure
+    $LOADED_FEATURES.reject! { |feature| feature.include?("twinned") }
+    $LOAD_PATH.delete(File.join(base, "lib"))
   end
 
   def test_main_reads_a_config_file

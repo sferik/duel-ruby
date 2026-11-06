@@ -18,9 +18,9 @@ class FakeWorkers
   attr_accessor :metrics, :memory, :profiler, :yjit
 
   # Each version's Ruby (RUBY_DESCRIPTION), native extensions
-  # ({feature => path}) and directories gems are installed in, by
-  # version.
-  attr_reader :rubies, :extensions, :gem_dirs
+  # ({feature => path}), those loaded twice ({feature => paths}) and
+  # directories gems are installed in, by version.
+  attr_reader :rubies, :extensions, :twice, :gem_dirs
 
   # Each version's CPU time per iteration, in nanoseconds (by default).
   attr_reader :per_iteration
@@ -41,6 +41,7 @@ class FakeWorkers
     @profiles = {}
     @rubies = {"baseline" => RUBY_DESCRIPTION, "candidate" => RUBY_DESCRIPTION}
     @extensions = {"baseline" => {}, "candidate" => {}}
+    @twice = {"baseline" => {}, "candidate" => {}}
     @gem_dirs = {"baseline" => [], "candidate" => []}
   end
 
@@ -134,6 +135,8 @@ class FakeWorkers
     def description = @workers.rubies.fetch(side)
 
     def extensions = @workers.extensions.fetch(side)
+
+    def twice = @workers.twice.fetch(side)
 
     def gem_dirs = @workers.gem_dirs.fetch(side)
 

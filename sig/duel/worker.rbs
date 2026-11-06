@@ -5,7 +5,7 @@ module Duel
   class Worker
     type hello = { "benchmarks" => Array[Definition::summary], "metrics" => Array[Metric::spec], "ruby" => String,
                    "memory" => bool, "profiler" => bool, "yjit" => bool, "extensions" => Hash[String, String],
-                   "gem_dirs" => Array[String] }
+                   "twice" => Hash[String, Array[String]], "gem_dirs" => Array[String] }
 
     type ok = { "ok" => true }
 
@@ -24,12 +24,20 @@ module Duel
     @specs: Array[Metric::spec]
     @benchmarks: Hash[String, Definition]
     @hooks: Hash[Symbol, Array[hook]]
+    @before: Array[String]
     @harnesses: Hash[String, Harness]
 
     def self.main: (String version_root, String candidate_root, String control, ?String? config_path) -> void
 
     # The native extensions loaded, by feature, at their real paths.
     def self.extensions: (?Array[String] features, ?Array[String] load_path) -> Hash[String, String]
+
+    # Those of +features+ loaded from more than one file, by feature, at
+    # their real paths, in the order they loaded.
+    def self.twice: (Array[String] features, ?Array[String] load_path) -> Hash[String, Array[String]]
+
+    # The native extensions loaded, by feature, at their real paths.
+    def self.loaded: (Array[String] features, Array[String] load_path) -> Hash[String, Array[String]]
 
     # The directories gems are installed in, as real paths ending in "/".
     def self.gem_dirs: (?Array[String] dirs) -> Array[String]
@@ -44,7 +52,7 @@ module Duel
     def self.yjit?: () -> bool
 
     def initialize: (?Array[singleton(Metric)] plugin_metrics, ?Hash[String, Hash[Symbol, untyped]] measures,
-                     ?hooks: Hash[Symbol, Array[hook]]) -> void
+                     ?hooks: Hash[Symbol, Array[hook]], ?before: Array[String]) -> void
 
     # Closes its metrics, last first, as it ends.
     def close: () -> void
