@@ -30,6 +30,30 @@ class PostgreSQLTest < PluginTest
     end
   end
 
+  # Not as the plugin loads (in .duel.rb, before a worker loads its
+  # version, which in pg's own repository is pg): once it's used.
+  def test_loads_pg_only_when_used
+    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", <<~RUBY], &:read)
+      require "duel/postgresql"
+      before = defined?(PG)
+      Duel::PostgreSQL.require_pg
+      print [before.inspect, defined?(PG::Connection).inspect].join(" ")
+    RUBY
+
+    assert_equal %(nil "constant"), loaded
+  end
+
+  # What pg isn't loaded for yet, first: the server (in the runner), and
+  # the plugin's connection to it (in the worker, once its version has
+  # loaded).
+  def test_loads_pg_before_it_uses_it
+    unloaded = Class.new(StandardError)
+    replacing(Duel::PostgreSQL, :require_pg, -> { raise unloaded }) do
+      assert_raises(unloaded) { prepare(config) { flunk "started" } }
+      assert_raises(unloaded) { Duel::Testing.in_worker(config) { flunk "connected" } }
+    end
+  end
+
   def test_a_server_of_the_workers_own
     url = prepare(config) do |env|
       dir = env.fetch("PGHOST")

@@ -21,8 +21,13 @@ module Duel
     # these readings.
     STATEMENTS: String
 
-    # STATEMENTS' columns, as pg decodes them.
-    COLUMNS: ::PG::TypeMapByColumn
+    # STATEMENTS' columns, as pg decodes them (made once pg is loaded).
+    self.@column_types: ::PG::TypeMapByColumn?
+
+    def self.column_types: () -> ::PG::TypeMapByColumn
+
+    # Loads pg, once Duel has loaded the worker's version.
+    def self.require_pg: () -> bool
 
     # Statements' texts, by query id.
     TEXTS: String

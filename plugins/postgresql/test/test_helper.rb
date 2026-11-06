@@ -31,6 +31,8 @@ end
 Process.singleton_class.prepend(OwnDataDir)
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+# (The tests use pg themselves: the plugin loads it only once it's used.)
+require "pg"
 require "duel/postgresql"
 require "duel/testing"
 # Mutant runs the tests itself (and autorun, at exit, would run them all

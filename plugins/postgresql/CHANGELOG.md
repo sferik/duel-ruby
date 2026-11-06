@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- In pg's own repository, every worker measured the bundle's release
+  of pg, not its version's own, as the plugin required pg as it
+  loaded, in `.duel.rb`, before the worker loaded the version. It now
+  requires pg once it's used: in the runner, to start the server, and
+  in a worker, once the version has loaded.
+
 ## [0.1.3] - 2026-11-04
 
 No changes of its own: released in step with the other Duel gems.

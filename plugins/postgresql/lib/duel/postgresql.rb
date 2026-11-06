@@ -3,7 +3,6 @@
 require "duel"
 require "digest"
 require "fileutils"
-require "pg"
 require_relative "postgresql/version"
 
 module Duel
@@ -69,6 +68,7 @@ module Duel
     # Config#in_worker, and in tests, Duel::Testing.in_worker).
     def self.configure(config, bin: ENV.fetch("DUEL_POSTGRESQL_BIN", nil), settings: {}, setup: nil, env: %w[DATABASE_URL])
       config.prepare(:worker) do |w|
+        require_pg
         programs = File.expand_path(bin || Cluster.find_bin ||
           w.failed("no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)"))
         data = w.path("data")
@@ -88,11 +88,24 @@ module Duel
           .merge(env.to_h { |name| [name, url] })
       end
       # (In the worker, libpq's environment is its server's.)
-      connection = config.in_worker { |w| PG.connect.tap { |pg| w.at_stop { pg.close } } }
+      connection = config.in_worker do |w|
+        require_pg
+        PG.connect.tap { |pg| w.at_stop { pg.close } }
+      end
       statements = Statements.new(connection)
       config.metric(METRICS) { statements.read }.costly.details { |stretches, sample| statements.details(stretches, sample.n) }
       connection
     end
+
+    # Loads pg, once Duel has loaded the worker's version: not as the
+    # plugin loads, in .duel.rb, before it. In pg's own repository, pg is
+    # what's measured, and the worker would load whichever pg the load
+    # path led to first (the bundle's release, say), and keep it. (In the
+    # runner, which loads no version, the bundle's.)
+    # mutant:disable -- the tests' process has pg loaded from the start, so
+    # a require changes nothing there: test_loads_pg_only_when_used checks
+    # it, in a process of its own
+    def self.require_pg = require("pg")
 
     # Runs SQL on a connection of its own to +url+; returns the last
     # statement's result. (async_exec is exec, by its other name: one a
@@ -132,9 +145,14 @@ module Duel
 
     # STATEMENTS' columns, as pg decodes them: the query id as text, the
     # counts as Integers and the time (ms) as a Float, with no String
-    # made for a number only to be parsed.
-    COLUMNS = PG::TypeMapByColumn.new([nil, PG::TextDecoder::Integer.new, PG::TextDecoder::Integer.new,
-      PG::TextDecoder::Integer.new, PG::TextDecoder::Float.new])
+    # made for a number only to be parsed. (Made once pg is loaded: see
+    # .require_pg.)
+    # mutant:disable -- kept from one reading to the next only so as not to
+    # make it again: a reading is the same without
+    def self.column_types
+      @column_types ||= PG::TypeMapByColumn.new([nil, PG::TextDecoder::Integer.new, PG::TextDecoder::Integer.new,
+        PG::TextDecoder::Integer.new, PG::TextDecoder::Float.new])
+    end
 
     # Statements' texts, by query id (a PostgreSQL array of them).
     TEXTS = "SELECT DISTINCT ON (queryid) queryid, coalesce(query, '') FROM pg_stat_statements WHERE queryid = ANY($1::bigint[])"
@@ -145,7 +163,7 @@ module Duel
     def self.columns(connection)
       settle
       # (None is NULL: every statement has a query id.)
-      result = connection.async_exec(STATEMENTS).map_types!(COLUMNS)
+      result = connection.async_exec(STATEMENTS).map_types!(column_types)
       [result.column_values(0), result.column_values(1), result.column_values(2), result.column_values(3), result.column_values(4)]
     end
 

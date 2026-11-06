@@ -5,6 +5,10 @@
 # with them: what the server takes to answer isn't the plugin's, and
 # isn't the same from one run to the next.
 
+# (The plugin loads pg as a worker connects to its server, which this
+# connection stands in for: see Duel::PostgreSQL.require_pg.)
+require "pg"
+
 # A query's result, as pg gives it: its rows, every value a String, or
 # by column, decoded by a type map (Result#map_types!). It's decoded once:
 # pg's decoding isn't the plugin's work.
