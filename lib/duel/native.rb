@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fiddle"
 require "rbconfig"
 
 module Duel
@@ -15,9 +14,19 @@ module Duel
     CPU = RbConfig::CONFIG["host_cpu"]
     UINT64 = 8 # bytes, the size of every count read
 
+    # Loads Fiddle, as the first C function is made (see .function): not
+    # as Duel loads, which in a worker is before its version (in fiddle's
+    # own repository, fiddle).
+    # mutant:disable -- the tests' process has Fiddle loaded from the start,
+    # so a require changes nothing there: WorkerTest's
+    # test_loads_no_gem_a_version_could_be_before_the_version checks it, in
+    # a process of its own
+    def self.require_fiddle = require("fiddle")
+
     # A C function of the process's own libraries, by name, taking and
     # returning Fiddle types (:INT, :LONG, :VOIDP...).
     def self.function(name, args, returns)
+      require_fiddle
       Fiddle::Function.new(Fiddle.dlopen(nil)[name], args.map { |type| Fiddle.const_get(:"TYPE_#{type}") },
         Fiddle.const_get(:"TYPE_#{returns}"))
     end
@@ -148,11 +157,19 @@ module Duel
       # pages need, which would take Etc, a gem a worker would load before
       # its version.)
       STATUS = "/proc/self/status"
-      # (Never false: Steep doesn't see that false || nil is nil.)
-      MACOS = (FIDDLE && MacOS.open) || nil #: MacOS?
+      # macOS's counter, which reads resident memory there, or nil: opened
+      # as resident memory is first read, as opening it loads Fiddle.
+      # mutant:disable -- kept only so as not to open it again: it's the
+      # same counter however often it's opened
+      def self.macos_counter
+        return @macos if defined?(@macos)
+
+        # (Never false: Steep doesn't see that false || nil is nil.)
+        @macos = (FIDDLE && MacOS.open) || nil #: MacOS?
+      end
 
       # From /proc (Linux), else from macOS's counter, else nil.
-      def self.resident(status: STATUS, macos: MACOS)
+      def self.resident(status: STATUS, macos: macos_counter)
         return macos&.resident unless File.readable?(status)
 
         kb = File.read(status)[/^VmRSS:\s+(\d+) kB$/, 1] #: String

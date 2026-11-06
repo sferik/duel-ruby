@@ -225,8 +225,8 @@ class WorkerTest < DuelTest
 
   # Nothing a version could be: in json's own repository, a json of
   # Duel's would be the candidate's, loaded into every baseline worker
-  # ahead of the baseline's (and likewise etc in etc's).
-  GEMS = %w[json etc].freeze
+  # ahead of the baseline's (and likewise etc and fiddle in theirs).
+  GEMS = %w[json etc fiddle].freeze
 
   def test_loads_no_gem_a_version_could_be_before_the_version
     loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-r", "duel/worker", "-e", "puts $LOADED_FEATURES"],

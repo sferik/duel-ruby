@@ -69,6 +69,10 @@ end
 TestDirs.open
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+# (The tests use Fiddle themselves, in the fakes they give Duel's calls
+# into the operating system: Duel loads it only as it makes a real one,
+# which it never does on JRuby.)
+require "fiddle"
 require "duel"
 require "duel/cli"
 require "duel/worker"

@@ -15,6 +15,9 @@ module Duel
 
     # A C function of the process's own libraries, by name, taking and
     # returning Fiddle types (:INT, :LONG, :VOIDP...).
+    # Loads Fiddle, as the first C function is made.
+    def self.require_fiddle: () -> bool
+
     def self.function: (String name, Array[Symbol] args, Symbol returns) -> _Function
 
     # Instructions retired in user space, from the CPU's counters.
@@ -90,7 +93,10 @@ module Duel
     # This process's resident memory in bytes, or nil where it can't tell.
     module Memory
       STATUS: String
-      MACOS: MacOS?
+      self.@macos: MacOS?
+
+      # macOS's counter, opened as resident memory is first read, or nil.
+      def self.macos_counter: () -> MacOS?
 
       def self.resident: (?status: String, ?macos: MacOS?) -> Integer?
 

@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   memory in. In etc's own repository, a worker would load the
   bundle's etc before the version's own. A worker now reads resident
   memory, in kB, from `/proc/self/status` (VmRSS), and loads no etc.
+- A worker loaded fiddle, a gem, as Duel loaded, before it loaded the
+  version it measures, so in fiddle's own repository, a worker would
+  load the bundle's fiddle before the version's own. Duel now loads
+  fiddle as it first calls into the operating system, once the
+  version has loaded (and on JRuby, which Duel makes no such calls
+  on, never).
 - A worker that loaded a native extension twice, the candidate's that
   something required before the worker loaded the version and then the
   version's own over it, went unnoticed, as loading the version took

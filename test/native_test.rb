@@ -142,6 +142,16 @@ class NativeTest < DuelTest
     assert_nil counter_with(:linux, :macos, fiddle: false)
   end
 
+  # Fiddle is loaded as the first C function is made, not before (as Duel
+  # loads, in a worker, before its version).
+  def test_a_function_loads_fiddle_first
+    unloaded = Class.new(StandardError)
+
+    stub(Duel::Native, :require_fiddle, -> { raise unloaded }) do
+      assert_raises(unloaded) { Duel::Native.function("getpid", [], :INT) }
+    end
+  end
+
   def test_a_counter_must_read
     assert_raises(NotImplementedError) { Duel::Native::Counter.new("thread").read }
   end
@@ -265,8 +275,8 @@ class NativeTest < DuelTest
     from_status = with_constants(Duel::Native::Memory, STATUS: status) { Duel::Native::Memory.resident(macos: nil) }
 
     assert_equal 25 * 1024, from_status
-    from_macos = with_constants(Duel::Native::Memory, STATUS: File.join(tmpdir, "none"), MACOS: Struct.new(:resident).new(1)) do
-      Duel::Native::Memory.resident
+    from_macos = with_constants(Duel::Native::Memory, STATUS: File.join(tmpdir, "none")) do
+      stub(Duel::Native::Memory, :macos_counter, -> { Struct.new(:resident).new(1) }) { Duel::Native::Memory.resident }
     end
 
     assert_equal 1, from_macos
