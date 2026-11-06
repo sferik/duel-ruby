@@ -584,20 +584,29 @@ class WorkerRequestsTest < DuelTest
     refute_empty frames
   end
 
+  # The timed work and the untimed work of the benchmark below, each a
+  # method of its own: a sample taken in either is in its frame, where
+  # one could miss a C call as short as Math.sqrt's, and land in the
+  # block around it.
+  def timed_work = 20_000.times { Math.sqrt(2) }
+
+  def untimed_work = 20_000.times { Math.cbrt(2) }
+
   # Untimed work, a large share of the run, isn't in its profile.
   def test_a_profile_leaves_untimed_work_out
     skip "StackProf is CRuby's" unless RUBY_ENGINE == "ruby"
 
+    test = self
     duel("partly untimed") do
-      untimed { 20_000.times { Math.cbrt(2) } }
-      20_000.times { Math.sqrt(2) }
+      untimed { test.untimed_work }
+      test.timed_work
     end
     w = Duel::Worker.new
     w.handle("op" => "setup", "name" => "partly untimed")
     names = w.handle("op" => "profile", "name" => "partly untimed", "n" => 1, "runs" => 20).fetch("frames").map(&:first)
 
-    assert_includes names, "Math.sqrt"
-    refute_includes names, "Math.cbrt"
+    assert_includes names, "WorkerRequestsTest#timed_work"
+    refute_includes names, "WorkerRequestsTest#untimed_work"
   end
 
   # YJIT is on where Ruby has it, and it's enabled (by an app, say).
