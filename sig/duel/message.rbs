@@ -1,0 +1,11 @@
+module Duel
+  # What the runner and a worker say to each other, marshaled.
+  # @api private
+  module Message
+    # Sends +message+ over +io+.
+    def self.write: (IO io, untyped message) -> Integer
+
+    # The next message over +io+, or nil once the other end has closed it.
+    def self.read: (IO io) -> untyped
+  end
+end

@@ -102,3 +102,10 @@ class Module
   def define_method: (interned name) { (?) [self: untyped] -> untyped } -> Symbol
                    | ...
 end
+
+module Marshal
+  # Marshal.load reads from an IO (a socket's, say), which RBS's
+  # _Source, with its non-nil getbyte and read, leaves out.
+  def self.load: (IO source) -> untyped
+               | ...
+end

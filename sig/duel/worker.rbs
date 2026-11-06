@@ -1,6 +1,6 @@
 module Duel
   # A worker process: loads one version of the code and the candidate's
-  # benchmarks, and answers the runner's requests, one JSON object a line.
+  # benchmarks, and answers the runner's requests (see Message).
   # @api private
   class Worker
     type hello = { "benchmarks" => Array[Definition::summary], "metrics" => Array[Metric::spec], "ruby" => String,

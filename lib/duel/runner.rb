@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "json"
 require "rbconfig"
 require "socket"
 require "tmpdir"
@@ -9,6 +8,7 @@ require_relative "../duel"
 require_relative "stats"
 require_relative "profile"
 require_relative "across"
+require_relative "message"
 require_relative "resource"
 require_relative "rubies"
 require_relative "process_sample"
@@ -134,7 +134,8 @@ module Duel
     # Sends a request, and returns the reply, or raises Failed with its
     # error.
     def request(op, name, **args)
-      @socket.puts JSON.generate({"op" => op, "name" => name, **args})
+      # (By name: +args+ come by keyword, as Symbols.)
+      Message.write(@socket, {"op" => op, "name" => name, **args.transform_keys(&:to_s)})
       reply = read
       raise Failed, "#{@label}: #{reply.fetch("error")}\n  #{reply.fetch("backtrace").join("\n  ")}" if reply.key?("error")
 
@@ -185,8 +186,7 @@ module Duel
 
     def read
       hung("answer") unless @socket.wait_readable(@timeout)
-      line = @socket.gets or raise Failed, "#{@label} worker exited"
-      JSON.parse(line)
+      Message.read(@socket) or raise Failed, "#{@label} worker exited"
     end
 
     # Kills a worker that didn't +what+ within the timeout, and fails.

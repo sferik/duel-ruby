@@ -70,12 +70,12 @@ class WorkerProcessTest < DuelTest
 
   def play(control, hello, &serve)
     socket = UNIXSocket.new(control)
-    socket.puts JSON.generate(hello)
-    socket.each_line do |line|
-      reply = serve.call(JSON.parse(line))
+    Duel::Message.write(socket, hello)
+    while (request = Duel::Message.read(socket))
+      reply = serve.call(request)
       break socket.close unless reply
 
-      socket.puts JSON.generate(reply)
+      Duel::Message.write(socket, reply)
     end
   end
 

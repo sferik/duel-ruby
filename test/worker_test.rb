@@ -207,6 +207,16 @@ class WorkerTest < DuelTest
       worker.handle("op" => "dance", "name" => "x").fetch("error")
   end
 
+  # Nothing a version could be: in json's own repository, a json of
+  # Duel's would be the candidate's, loaded into every baseline worker
+  # ahead of the baseline's.
+  def test_loads_no_json_before_the_version
+    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-r", "duel/worker", "-e",
+      'print $LOADED_FEATURES.grep(%r{/json(\.rb|/)}).join(" ")'], &:read)
+
+    assert_empty loaded
+  end
+
   # The worker's main loop, in this process, over a real socket.
   def test_main_loads_a_version_and_answers_over_the_socket
     root = project(File.join(tmpdir, "version"))
@@ -219,12 +229,12 @@ class WorkerTest < DuelTest
     worker = stub(GC, :start, ->(**options) { (collections << options) && collect.call(**options) }) do
       Thread.new { Duel::Worker.main(File.join(root, "..", "version"), root, control) }.tap { server = server.accept }
     end
-    hello = JSON.parse(server.gets)
+    hello = Duel::Message.read(server)
 
     assert_equal ["work"], hello.fetch("benchmarks").map { |b| b.fetch("name") }
-    server.puts JSON.generate({"op" => "setup", "name" => "work"})
+    Duel::Message.write(server, {"op" => "setup", "name" => "work"})
 
-    assert_equal({"ok" => true}, JSON.parse(server.gets))
+    assert_equal({"ok" => true}, Duel::Message.read(server))
     server.close
     worker.join(5)
 
@@ -266,16 +276,16 @@ class WorkerTest < DuelTest
     worker = Thread.new { Duel::Worker.main(root, root, control, File.join(root, ".duel.rb")) }
     socket = server.accept
 
-    hello = JSON.parse(socket.gets)
+    hello = Duel::Message.read(socket)
 
     assert_equal ["configured"], hello.fetch("benchmarks").map { |b| b.fetch("name") }
     assert_equal ["probe_metric", 4], hello.fetch("metrics").first.values_at("name", "tolerance"), "the config's metrics, and its changes"
     assert_equal root, ConfigProbe.loaded
     assert_equal ["configured"], ConfigProbe.worker, "its in_worker blocks, once the benchmarks have loaded"
     refute ConfigProbe.stopped
-    socket.puts JSON.generate({"op" => "setup", "name" => "configured"})
+    Duel::Message.write(socket, {"op" => "setup", "name" => "configured"})
 
-    assert_equal({"ok" => true}, JSON.parse(socket.gets))
+    assert_equal({"ok" => true}, Duel::Message.read(socket))
     socket.close
     worker.join(5)
 

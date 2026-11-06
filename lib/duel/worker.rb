@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require "json"
 require "rbconfig"
 require "socket"
 require_relative "../duel"
 require_relative "context"
+require_relative "message"
 require_relative "profile"
 
 module Duel
@@ -13,8 +13,8 @@ module Duel
   # WorkerProcess) with Worker.main(VERSION_ROOT, CANDIDATE_ROOT, CONTROL
   # [, CONFIG]), it gives its main object the DSL, loads the benchmarks,
   # connects to the runner's Unix socket at CONTROL, sends what it has
-  # (see #hello), and answers one JSON request per line with one JSON
-  # reply. (Not over stdin: a JRuby started by JRuby sees its stdin pipe
+  # (see #hello), and answers each request with a reply (see Message).
+  # (Not over stdin: a JRuby started by JRuby sees its stdin pipe
   # closed.)
   # @api private
   class Worker
@@ -37,8 +37,10 @@ module Duel
         worker = new(config.metrics, config.measures, hooks: config.hooks)
         begin
           socket = UNIXSocket.new(control)
-          socket.puts JSON.generate(worker.hello)
-          socket.each_line { |line| socket.puts JSON.generate(worker.handle(JSON.parse(line))) }
+          Message.write(socket, worker.hello)
+          while (request = Message.read(socket))
+            Message.write(socket, worker.handle(request))
+          end
         ensure
           worker.close
         end
