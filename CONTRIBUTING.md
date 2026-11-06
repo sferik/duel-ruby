@@ -36,6 +36,7 @@ That means two things above all:
 ```sh
 bundle install
 bundle exec rake test                     # Minitest, with 100% line, branch and method coverage (CRuby)
+bundle exec rake test:parallel            # the same in 3 processes at once, without coverage, as CI runs it
 COVERAGE=false bundle exec ruby -Ilib -Itest test/stats_test.rb  # some of the tests
 bundle exec mutant run                    # mutation testing (CRuby): every mutant killed
 bundle exec rubocop && bundle exec standardrb

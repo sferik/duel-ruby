@@ -15,6 +15,31 @@ Rake::TestTask.new(:test) do |t|
   t.warning = false
 end
 
+namespace :test do
+  # The test files in PROCESSES processes at once (3 by default: CI's
+  # runners have 4 CPUs, and many tests start worker processes of their
+  # own), each given files by the time they took (test/parallel_runtime.log),
+  # so that they finish about together. Each process has its own
+  # directories (see TestDirs, in test/test_helper.rb). Coverage is off:
+  # each process runs only some of the files (`rake test` checks it).
+  desc "Run the tests in several processes at once (PROCESSES=3)"
+  task :parallel do
+    sh({"COVERAGE" => "false"}, "parallel_test", "test", "-n", ENV.fetch("PROCESSES", "3"), "--group-by", "runtime",
+      "--runtime-log", "test/parallel_runtime.log")
+  end
+
+  # Records each test file's time, for test:parallel to group the files
+  # by. Record it on JRuby (with JRUBY_OPTS=--dev, as CI runs it), whose
+  # runs are the slowest, and where the files' times differ the most.
+  desc "Record each test file's time in test/parallel_runtime.log"
+  task :runtimes do
+    log = "tmp/parallel_runtime_test.log"
+    rm_f log
+    sh({"COVERAGE" => "false", "RECORD_RUNTIME" => "1"}, "parallel_test", "test", "-n", ENV.fetch("PROCESSES", "3"))
+    File.write("test/parallel_runtime.log", File.readlines(log).sort.join)
+  end
+end
+
 desc "Check the RBS signatures (sig/), and lib/ against them with Steep (CRuby)"
 task :typecheck do
   sh "rbs", "-I", "sig", "-I", "steep", "-r", "open3", "-r", "optparse", "-r", "socket", "validate"

@@ -41,14 +41,16 @@ jobs:
           bundler-cache: true
       # A development version's failure is advisory: the step's failure
       # shows, but the job (and its check) passes, with a warning.
+      # The test files in 3 processes at once, given files by the time
+      # they took (test/parallel_runtime.log), so that they finish about
+      # together, with coverage off (the Coverage job checks it).
       - name: Run tests
         id: tests
         continue-on-error: ${{ endsWith(matrix.ruby-version, '-head') }}
         env:
-          COVERAGE: "false"
           # JRuby's --dev starts each process faster, and the tests start many
           JRUBY_OPTS: ${{ startsWith(matrix.ruby-version, 'jruby') && '--dev' || '' }}
-        run: bundle exec rake test
+        run: bundle exec rake test:parallel
       - name: Note an advisory failure
         if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"

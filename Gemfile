@@ -7,6 +7,9 @@ gemspec
 gem "rake"
 gem "minitest"
 gem "minitest-strict"
+# The slow Rubies (JRuby, TruffleRuby) run the test files in several
+# processes at once (see .github/workflows/test.yml).
+gem "parallel_tests"
 gem "standard", ">= 1.57"
 gem "standard-performance"
 gem "rubocop"

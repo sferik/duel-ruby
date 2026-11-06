@@ -81,6 +81,10 @@ require "duel/worker"
 require defined?(Mutant) ? "minitest" : "minitest/autorun"
 # Assertions that take only true and false for true and false.
 require "minitest/strict"
+# Each test file's time, which parallel_tests groups the files by (see
+# .github/workflows/test.yml): RECORD_RUNTIME=1 records them. (After
+# Minitest, which the logger hooks into only if it's loaded.)
+require "parallel_tests/test/runtime_logger" if ENV["RECORD_RUNTIME"]
 
 begin
   # `cover "Duel::Thing*"` tells mutant which tests exercise which code.
