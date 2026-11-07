@@ -145,7 +145,10 @@ pull request's Checks tab). For a push, Duel reads the labels of the
 pull request that merged it, so with
 [`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
 the merged regression becomes the commit that later pushes are compared
-with. By default, there's no such label.
+with. Duel's default is no such label, but the `.duel.rb` that
+`duel init` writes (and duel-rails's generator) names `duel: accept`.
+Create the label in your repository to use it, or set
+`c.accept_label = nil` so that nothing can let a regression through.
 
 ## Compare a push with the last commit that passed
 

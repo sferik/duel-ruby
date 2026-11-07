@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rails generate duel:install` writes the Update the badge job only
   with `--badge`, as `duel init` does, so the workflow it writes by
   default only reads.
+- The `.duel.rb` that `rails generate duel:install` writes sets
+  `c.accept_label = "duel: accept"`, as `duel init`'s does.
 
 ### Fixed
 

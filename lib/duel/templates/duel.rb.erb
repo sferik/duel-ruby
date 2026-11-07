@@ -44,8 +44,9 @@ Duel.configure do |c|
   # from a workflow job written only where this is set: see docs/ci.md).
   # c.fail_on = :every_run
 
-  # A label that accepts a regression in a pull request (nil for none).
-  # c.accept_label = "duel: accept"
+  # A label that accepts a regression in a pull request, for a change
+  # that's slower on purpose (nil for none).
+  c.accept_label = "duel: accept"
 
   # What the workflow compares a push with: :before (the commit before it),
   # or :last_passed (the last commit Duel passed, which a branch,

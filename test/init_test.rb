@@ -36,15 +36,15 @@ class InitTest < DuelTest
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
-  # fails, the label that accepts one, and what a push is compared with,
-  # the defaults shown.
+  # fails, the label that accepts one (set), and what a push is compared
+  # with, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
     "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
-    "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
+    "\n  # A label that accepts a regression in a pull request, for a change\n  # that's slower on purpose (nil for none).\n  c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
     "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \
@@ -76,6 +76,7 @@ class InitTest < DuelTest
         # c.library = "my_gem"
     RUBY
     assert read(".duel.rb").end_with?(%(  # c.library = "my_gem"\n#{ENDING}))
+    assert_equal "duel: accept", Duel.load_config(File.join(root, ".duel.rb")).accept_label
     assert_includes read("duel/my_gem_duel.rb"), "fails if the candidate is slower at any of them. Each version's workers\n" \
       "# load my_gem and every duel/**/*_duel.rb file. See\n"
     assert_includes read("duel/my_gem_duel.rb"), %(\nduel "example: join words" do\n)

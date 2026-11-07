@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repository. The workflow `duel init` writes by default now only reads.
   To keep a badge you already show, add `--badge` when you run
   `duel init` again, or keep the job you have.
+- The `.duel.rb` that `duel init` writes sets
+  `c.accept_label = "duel: accept"`, so a pull request that's slower on
+  purpose can pass with that label. Duel's own default is still no
+  label, so a `.duel.rb` you already have is unchanged.
 - `require "duel/rake_task"` loads only the task, and the task loads
   Duel as it runs, so a Rakefile with Duel's task no longer loads all of
   Duel (and what it requires) for every other task, `rake test` included.
