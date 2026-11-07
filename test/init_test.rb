@@ -157,8 +157,57 @@ class InitTest < DuelTest
     assert_empty said.call("pr=12; rm -rf /\ncomment=post\nstatus=failed\n"), "not a number"
     assert_empty said.call("pr=12\ncomment=post\nstatus=failed -->\n"), "not a status"
     assert_empty said.call("pr=\ncomment=post\nstatus=failed\n"), "no pull request"
-    assert_includes post.fetch("run"), %([ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)" = "$HEAD_SHA" ] || exit 0\n)
+    assert_includes post.fetch("run"), %([ "${head%% *}" = "$HEAD_SHA" ] || exit 0\n)
     assert_equal "${{ github.event.workflow_run.head_sha }}", post.dig("env", "HEAD_SHA")
+  end
+
+  # What the comment step posts, with gh stubbed, on pull request 12 of
+  # me/my_gem, whose head is +head+ and is from +from+ (a repository), for
+  # a run whose report is +report+: the comment, or nil.
+  def posted(report, from:, head: "abc")
+    gem
+    init.run
+    post = YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "comment", "steps", 1)
+    dir = FileUtils.mkdir_p(File.join(tmpdir, "report")).first
+    File.write(File.join(dir, "comment.env"), "pr=12\ncomment=post\nstatus=failed\n")
+    File.write(File.join(dir, "duel.md"), report)
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    body = File.join(tmpdir, "body.md")
+    File.write(File.join(bin, "gh"), <<~SH)
+      #!/bin/bash
+      case "$*" in
+        *"/pulls/12 --jq"*) echo "#{head} #{from}" ;;
+        *"--method POST"*) for arg in "$@"; do case "$arg" in body=@*) cp "${arg#body=@}" #{body} ;; esac; done ;;
+      esac
+    SH
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "HEAD_SHA" => "abc"}
+
+    assert system(env, "bash", "-ec", post.fetch("run"))
+    File.read(body) if File.exist?(body)
+  end
+
+  # A pull request from a branch of the repository gets the report as it
+  # is: its author can push here anyway.
+  def test_a_comment_on_a_branchs_pull_request
+    assert_equal "<!-- duel status=failed -->\n**Slower**, says @someone\n", posted("**Slower**, says @someone\n", from: "me/my_gem")
+  end
+
+  # A fork's run wrote its report, so it's shown as text, in a code block
+  # fenced with more backticks than any run of them in it, where it can't
+  # mention anyone, link anywhere or show an image.
+  def test_a_comment_on_a_forks_pull_request
+    report = "@someone, see ![this](https://example.com/x.png) and ```\n```` too\n"
+
+    assert_equal "<!-- duel status=failed -->\nFrom a fork, so shown as text:\n\n`````\n#{report}\n`````\n", posted(report, from: "them/my_gem")
+    assert_equal "<!-- duel status=failed -->\nFrom a fork, so shown as text:\n\n```\nplain\n\n```\n", posted("plain\n", from: "them/my_gem"),
+      "three backticks at least"
+    assert_operator posted("x" * 70_000, from: "them/my_gem").size, :<, 60_100, "cut short where a comment couldn't hold it"
+  end
+
+  # A pull request whose head has moved on since the run gets nothing.
+  def test_no_comment_on_a_pull_request_that_moved_on
+    assert_nil posted("**Slower**\n", from: "me/my_gem", head: "def")
   end
 
   # Duel gets the labels of a pull request, or of the one that merged a

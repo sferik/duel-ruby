@@ -409,9 +409,12 @@ the pull request's code. The pull request's code ran in the Duel job,
 and could have written anything into the artifact, so the workflow
 trusts only what Duel could have said there: a number that names the
 pull request whose head the run compared, and a `comment` and a
-`status` that Duel uses. The report's Markdown is the comment's body,
-which can only say something on the pull request that the pull request
-could say itself. When the Duel job fails before it compares, there's
+`status` that Duel uses. For a pull request from a branch of your
+repository, whose author can push to it anyway, the report's Markdown
+is the comment's body. For one from a fork, the report is shown as text,
+in a code block, since the fork's code wrote it: there, posted by
+`github-actions[bot]`, it can't mention anyone, link anywhere or show an
+image. A report too long for a comment is cut short. When the Duel job fails before it compares, there's
 no report, and no comment. GitHub runs a `workflow_run` workflow only
 from your default branch, so the pull request that adds the workflow
 gets no comment.
@@ -429,7 +432,8 @@ name: Perf comment
 # the pull request's code, and of what the Duel job kept (where that code
 # ran), it trusts only what that job could have said: the pull request's
 # number, if it names the pull request the run compared, and the comment
-# and the status, if they're ones Duel says. (The workflow must be on the
+# and the status, if they're ones Duel says. A fork's report, which the
+# fork's code wrote, is shown as text. (The workflow must be on the
 # default branch before it runs at all.)
 on:
   workflow_run:
@@ -467,14 +471,29 @@ jobs:
           COMMENT=$(said comment 'post|change')
           STATUS=$(said status 'passed|failed|neutral')
           [ -n "$PR" ] && [ -n "$COMMENT" ] && [ -n "$STATUS" ] || exit 0
-          [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)" = "$HEAD_SHA" ] || exit 0
+          # (The pull request's head commit, and the repository it's from.)
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '"\(.head.sha) \(.head.repo.full_name)"')
+          [ "${head%% *}" = "$HEAD_SHA" ] || exit 0
+          # The report, as Markdown for a branch of this repository (whose
+          # author can push here anyway), but for a fork's, as text: its run
+          # ran the fork's code, which could have written anything in it. In
+          # a code block, fenced with more backticks than any run of them in
+          # the report, it can't mention anyone, link anywhere or show an
+          # image. (And it's cut short where a comment couldn't hold it.)
+          report() {
+            if [ "${head#* }" = "$GITHUB_REPOSITORY" ]; then cat "$RUNNER_TEMP/report/duel.md" && return; fi
+            fence=$(grep -o '``*' "$RUNNER_TEMP/report/duel.md" | awk '{ if (length > n) n = length } END { n = (n < 3) ? 3 : n + 1; while (n-- > 0) printf "`" }')
+            printf 'From a fork, so shown as text:\n\n%s\n' "$fence"
+            head -c 60000 "$RUNNER_TEMP/report/duel.md"
+            printf '\n%s\n' "$fence"
+          }
           marker="<!-- duel"
           # The first line of the last comment Duel posted here: its marker,
           # with its status (none in Duel 0.1.0's, which counts as another).
           last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\") or . == \"$marker -->\")" | tail -n 1)
           if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
-            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
+            { echo "$marker status=$STATUS -->"; report; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
 ```

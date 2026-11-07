@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Perf comment workflow that `rails generate duel:install` writes
+  shows a fork's report as text, in a code block, as the workflow that
+  `duel init` writes does.
 - The Update the badge job, in the workflow that
   `rails generate duel:install` writes, now writes the badge's image
   itself instead of downloading it from Duel's repository.

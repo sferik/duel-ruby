@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Perf comment workflow posted the report that a pull request's run
+  wrote as Markdown, as `github-actions[bot]`. A fork's run runs the
+  fork's code, which could write anything there, mentions, links and
+  images included. A fork's report is now shown as text, in a code
+  block, where it can't do any of that, and cut short where a comment
+  couldn't hold it. A pull request from a branch of the repository, whose
+  author can push to it anyway, still gets the Markdown. Update
+  `.github/workflows/perf-comment.yml` to pick this up.
 - The Update the badge job downloaded the badge's image from Duel's own
   repository, so a change there changed every project's badge, and a
   failed download failed the job. It now writes the image itself, and
