@@ -4,6 +4,9 @@ module Duel
   #   Duel::RakeTask.new(:perf)
   #   Duel::RakeTask.new(:perf_since_release, "--base", "last-release")
   class RakeTask
+    # Loads Duel's command, as the task runs.
+    def self.load_duel: () -> bool
+
     def initialize: (?Symbol | String name, *String args) -> void
   end
 end

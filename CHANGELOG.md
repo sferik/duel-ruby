@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   load (one of its plugins isn't installed, say), writes both, and says
   so. To add a job later, set its setting, remove the workflow, and run
   `duel init` again, or add it from the guide.
+- `require "duel/rake_task"` loads only the task, and the task loads
+  Duel as it runs, so a Rakefile with Duel's task no longer loads all of
+  Duel (and what it requires) for every other task, `rake test` included.
 
 ### Fixed
 

@@ -360,6 +360,33 @@ class RakeTaskTest < DuelTest
 
   require "duel/rake_task"
 
+  # Defining the task loads Rake, and not Duel: a Rakefile's other tasks
+  # (rake test, say) load nothing more for it.
+  # Duel loads as the task runs, in a process that hadn't loaded it.
+  def test_the_task_loads_duel_as_it_runs
+    said = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e",
+      'require "duel/rake_task"; Duel::RakeTask.new(:perf, "--help"); Rake::Task[:perf].invoke'], err: [:child, :out], &:read)
+
+    assert_includes said, "Usage: duel"
+  end
+
+  # The task loads Duel before it runs Duel's command.
+  def test_the_task_loads_duel_first
+    unloaded = Class.new(StandardError)
+    Duel::RakeTask.new(:perf_loads)
+
+    stub(Duel::RakeTask, :load_duel, -> { raise unloaded }) do
+      assert_raises(unloaded) { Rake::Task[:perf_loads].invoke }
+    end
+  end
+
+  def test_defining_the_task_loads_no_more_of_duel
+    loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e",
+      'before = $LOADED_FEATURES.dup; require "duel/rake_task"; Duel::RakeTask.new; puts $LOADED_FEATURES - before'], &:read)
+
+    assert_empty loaded.lines(chomp: true).grep(%r{/duel/(?!rake_task\.rb\z)}), "nothing of Duel's but the task"
+  end
+
   def with_status(status)
     Duel::CLI.alias_method(:original_run, :run)
     Duel::CLI.define_method(:run) { status }
