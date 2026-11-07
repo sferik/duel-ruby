@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Two pushes' runs of the Update the badge job could overlap, as a
+  push's run doesn't wait for the one before it, and an older push's
+  could write its badge over a newer one's after both had checked
+  which push the badge was for. The job now runs one at a time. Update
+  it in `.github/workflows/perf.yml` to pick this up.
+
 ## [0.1.4] - 2026-11-06
 
 ### Fixed

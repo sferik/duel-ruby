@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Two pushes' runs of the Update the badge job, in the workflow that
+  `rails generate duel:install` writes, could overlap, and an older
+  push's could write its badge over a newer one's. The job now runs
+  one at a time, as in the workflow that `duel init` writes.
+
 ## [0.1.4] - 2026-11-06
 
 ### Fixed

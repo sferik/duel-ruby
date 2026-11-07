@@ -324,6 +324,8 @@ class InitTest < DuelTest
       step.fetch("env"))
     refute badge.key?("defaults"), "nothing checked out"
     assert_equal 1, badge.fetch("steps").size
+    assert_equal({"group" => "${{ github.workflow }}-badge", "cancel-in-progress" => false}, badge.fetch("concurrency"),
+      "one at a time, so an older push's run can't write over a newer one's")
   end
 
   # The badge's script, with gh and curl stubbed: [what it fetched, what

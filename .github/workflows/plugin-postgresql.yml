@@ -290,6 +290,14 @@ jobs:
   badge:
     name: Update the badge
     needs: duel
+    # One at a time, so that one run's check of which push the badge
+    # shows can't interleave with another run's write (a push's run
+    # doesn't wait for the one before it). A badge job that's running is
+    # never cancelled, and one that's waiting gives way to a newer push's,
+    # whose result the badge should show anyway.
+    concurrency:
+      group: ${{ github.workflow }}-badge
+      cancel-in-progress: false
     if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
     runs-on: ubuntu-latest
     # (Nothing's checked out, so not in the plugin's directory.)
