@@ -22,6 +22,7 @@ module Duel
     @force: bool?
     @dry_run: bool?
     @gitlab: bool?
+    @badge: bool?
     @settings: Config?
     @stackprof: bool?
 
@@ -116,6 +117,9 @@ module Duel
 
     # The branch that marks the last commit Duel passed in a push.
     def passed_branch: () -> String
+
+    # Whether the workflow keeps a badge for the README (--badge).
+    def badge?: () -> bool?
 
     # The branch that holds the workflow's badge.
     def badge_branch: () -> String

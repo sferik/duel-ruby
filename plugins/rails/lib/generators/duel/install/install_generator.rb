@@ -20,6 +20,8 @@ module Duel
 
       class_option :database, type: :string, enum: %w[sqlite postgresql mysql2 trilogy],
         desc: "Each worker's database (default: as the app's own)"
+      class_option :badge, type: :boolean, default: false,
+        desc: "Write a job that keeps a badge for the README (it needs contents: write)"
 
       # The adapters each worker's database can stand in for, by the
       # database duel-rails calls it.
@@ -72,13 +74,13 @@ module Duel
       # The app's settings, which decide the workflow's jobs, as for
       # `duel init` (see Duel::Init#settings): its .duel.rb's, which
       # create_config has written by now (or kept), or nil where it doesn't
-      # load, and then the workflow has every job, and says so.
+      # load, and then the workflow has both jobs for pushes, and says so.
       def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
 
       def load_settings
         Duel.load_config(File.join(destination_root, ".duel.rb"))
       rescue ScriptError, StandardError => e
-        say_status :warning, ".duel.rb didn't load (#{e.class}: #{e}), so the workflow has every job, as if it asked for them"
+        say_status :warning, ".duel.rb didn't load (#{e.class}: #{e}), so the workflow has both jobs for pushes, as if it asked for them"
         nil
       end
 
@@ -95,6 +97,10 @@ module Duel
         found = settings
         found.nil? || found.push_base == :last_passed
       end
+
+      # Whether the workflow keeps a badge for the README (--badge), as for
+      # `duel init` (see Duel::Init#badge?).
+      def badge? = options.fetch(:badge)
 
       def gemfile = File.read(File.join(destination_root, "Gemfile"))
 

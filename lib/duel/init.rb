@@ -11,7 +11,8 @@ module Duel
   # `duel init`: sets Duel up in a gem or an app that isn't a Rails app
   # (duel-rails's generator sets a Rails app up). It writes .duel.rb, a
   # benchmark to start from, and GitHub Actions workflows (Duel's, and
-  # one that comments on a pull request with its report), or with
+  # one that comments on a pull request with its report, and with --badge
+  # a job that keeps a badge), or with
   # --gitlab, GitLab CI jobs to include, adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
   # of regressions, on CRuby). It overwrites nothing without --force, and
@@ -79,6 +80,7 @@ module Duel
         o.banner = USAGE
         o.on("--force", "Overwrite files that exist") { @force = true }
         o.on("--dry-run", "Say what it would do, and write nothing") { @dry_run = true }
+        o.on("--badge", "Write a job that keeps a badge for the README (it needs contents: write)") { @badge = true }
         o.on("--gitlab", "Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows") { @gitlab = true }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
@@ -183,7 +185,7 @@ module Duel
     # .duel.rb's, or the defaults, where there's none yet or --force
     # replaces it with the one it writes. Nil where it doesn't load (one
     # of its plugins isn't installed, say), and then the workflow has
-    # every job, as if .duel.rb asked for them, and says so.
+    # both jobs for pushes, as if .duel.rb asked for them, and says so.
     def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
 
     def load_settings
@@ -192,7 +194,7 @@ module Duel
 
       Duel.load_config(path)
     rescue ScriptError, StandardError => e
-      @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflow has every job, as if it asked for them"
+      @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflow has both jobs for pushes, as if it asked for them"
     end
 
     # Whether the workflow comments on a pushed commit: where a regression
@@ -209,6 +211,11 @@ module Duel
       found = settings
       found.nil? || found.push_base == :last_passed
     end
+
+    # Whether the workflow keeps a badge for the README (--badge): its job
+    # moves a branch, so it's the workflow's only job, without the jobs
+    # for pushes, that writes to the repository.
+    def badge? = @badge
 
     # The library the gemspec names (see Config#library), or nil.
     def library = config.library

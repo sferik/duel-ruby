@@ -185,8 +185,8 @@ jobs:
           path: ${{ runner.temp }}/duel/
           if-no-files-found: ignore # none when Duel didn't get to compare
           retention-days: 1
-
 <% if comment_on_pushes? -%>
+
   # The report, as a new comment on a pushed commit, which notifies its
   # author, when Duel says to, as for a pull request (see the Perf comment
   # workflow). It does only where a regression in a push passes, with
@@ -222,9 +222,9 @@ jobs:
             { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
-
 <% end -%>
 <% if mark_passed? -%>
+
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
   # the last commit Duel passed, which a branch marks (each branch pushed
   # has its own), so slowdowns too small for any one push to fail add up
@@ -277,8 +277,9 @@ jobs:
             diverged | behind | unrelated) gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null ;;
             *) echo "::error::Couldn't compare $BRANCH with this push: $compared" && exit 1 ;;
           esac
-
 <% end -%>
+<% if badge? -%>
+
   # Duel's badge, for the README: green (perf guarded) or red (perf
   # regressed), as the last push to the default branch that Duel compared
   # left it. It's red where the Duel job failed or found a regression,
@@ -385,3 +386,4 @@ jobs:
           commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null || blocked
+<% end -%>

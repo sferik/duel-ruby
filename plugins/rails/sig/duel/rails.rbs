@@ -242,6 +242,9 @@ module Duel
       # Whether the workflow marks a push passed.
       def mark_passed?: () -> bool
 
+      # Whether the workflow keeps a badge for the README.
+      def badge?: () -> bool
+
       # The app's Gemfile.
       def gemfile: () -> String
 

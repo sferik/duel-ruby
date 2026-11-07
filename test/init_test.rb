@@ -88,7 +88,7 @@ class InitTest < DuelTest
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[duel badge], jobs.keys, "none for pushes, which the defaults don't comment on or mark passed"
+    assert_equal %w[duel], jobs.keys, "none for pushes, which the defaults don't comment on or mark passed, and no badge without --badge"
     assert_equal %w[checkout setup-ruby Find Compare Say Keep], steps.call("duel")
   end
 
@@ -101,7 +101,7 @@ class InitTest < DuelTest
     workflow = read(".github/workflows/perf.yml")
     jobs = YAML.safe_load(workflow).fetch("jobs")
 
-    assert_equal %w[duel commit-comment passed badge], jobs.keys
+    assert_equal %w[duel commit-comment passed], jobs.keys
     assert_equal [%w[Get Comment], %w[Move]], %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step.fetch("name").split.first } }
     assert_equal 2, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "each workflow's"
   end
@@ -112,17 +112,17 @@ class InitTest < DuelTest
     write(".duel.rb", "Duel.configure { |c| c.fail_on = :pull_requests }\n")
     init.run
 
-    assert_equal %w[duel commit-comment badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal %w[duel commit-comment], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
     write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
     init("--force").run
 
-    assert_equal %w[duel badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys,
+    assert_equal %w[duel], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys,
       "--force writes .duel.rb anew, with the defaults"
     write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
     FileUtils.rm(File.join(root, ".github/workflows/perf.yml"))
     init.run
 
-    assert_equal %w[duel passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal %w[duel passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
   end
 
   # A .duel.rb that doesn't load (one of its plugins isn't installed, say)
@@ -132,9 +132,9 @@ class InitTest < DuelTest
     write(".duel.rb", %(Duel.configure { |c| c.use :not_a_plugin }\n))
     init.run
 
-    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal %w[duel commit-comment passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys, "no badge, which isn't .duel.rb's to say"
     assert_equal "duel init: .duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the " \
-      "duel-not_a_plugin gem to the Gemfile), so the workflow has every job, as if it asked for them\n", @err.string
+      "duel-not_a_plugin gem to the Gemfile), so the workflow has both jobs for pushes, as if it asked for them\n", @err.string
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
@@ -410,12 +410,12 @@ class InitTest < DuelTest
     assert_equal "::error::Couldn't compare duel/passed/main with this push: gh: Server Error (HTTP 500)\n", File.read(@said)
   end
 
-  # A push to the default branch that Duel compared updates the badge, by
-  # a job of its own that writes it to a branch, and runs none of the
+  # With --badge, a push to the default branch that Duel compared updates
+  # the badge, by a job of its own that writes it to a branch, and runs none of the
   # code: red where the Duel job failed or found a regression.
   def test_the_badge
     gem
-    init.run
+    init("--badge").run
     badge = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge")
     step = badge.dig("steps", 0)
 
@@ -436,7 +436,7 @@ class InitTest < DuelTest
   # run with +env+.
   def badge_run(env)
     gem
-    init.run
+    init("--badge").run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge", "steps", 0, "run")
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
     log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
@@ -791,7 +791,7 @@ class InitTest < DuelTest
     FileUtils.mkdir_p(File.join(project, "lib"))
     File.write(File.join(project, "lib", "parser.rb"), "")
     push_settings(at: project)
-    init(at: project).run
+    init("--badge", at: project).run
 
     assert_includes @out.string, "  create    ../../.github/workflows/perf-gems-parser.yml\n"
     workflow = File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
@@ -830,11 +830,21 @@ class InitTest < DuelTest
     workflow = init.files.fetch(".github/workflows/perf.yml")
     guide = File.read(File.expand_path("../docs/ci.md", __dir__))
     {"c.fail_on = :pull_requests" => ["  # The report, as a new comment on a pushed commit", "  # With c.push_base = :last_passed"],
-     "c.push_base = :last_passed" => ["  # With c.push_base = :last_passed", "  # Duel's badge, for the README"]}.each do |setting, (from, to)|
+     "c.push_base = :last_passed" => ["  # With c.push_base = :last_passed", nil]}.each do |setting, (from, to)|
       job = guide[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with #{Regexp.escape(setting)}\)\n(.*?)^```$/m, 1]
 
-      assert_equal workflow[workflow.index(from)...workflow.index(to)].rstrip, job.rstrip, setting
+      assert_equal workflow[workflow.index(from)...(workflow.index(to) if to)].rstrip, job.rstrip, setting
     end
+  end
+
+  # And the badge's job, as it writes it with --badge.
+  def test_the_guides_badge_job
+    init = init("--badge")
+    init.send(:parser).parse(["--badge"])
+    workflow = init.files.fetch(".github/workflows/perf.yml")
+    job = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with duel init --badge\)\n(.*?)^```$/m, 1]
+
+    assert_equal workflow[workflow.index("  # Duel's badge")..].rstrip, job.rstrip
   end
 
   # And the GitLab CI jobs.
@@ -961,6 +971,7 @@ class InitTest < DuelTest
 
               --force                      Overwrite files that exist
               --dry-run                    Say what it would do, and write nothing
+              --badge                      Write a job that keeps a badge for the README (it needs contents: write)
               --gitlab                     Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows
           -h, --help                       Print this help
     HELP

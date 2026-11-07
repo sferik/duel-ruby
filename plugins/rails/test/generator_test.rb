@@ -21,10 +21,10 @@ class GeneratorTest < PluginTest
 
   # The workflow, written again where .duel.rb is +config+: by default, one
   # that asks for the jobs for pushes (a comment on a pushed commit, and
-  # the last commit Duel passed marked).
-  def regenerate(root = @dir, config: "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\nend\n", quiet: true)
+  # the last commit Duel passed marked), and with +badge+, the badge's job.
+  def regenerate(root = @dir, config: "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\nend\n", quiet: true, badge: false)
     File.write(File.join(root, ".duel.rb"), config)
-    Duel::Generators::InstallGenerator.new([], {force: true, quiet: quiet}, destination_root: root).create_workflow
+    Duel::Generators::InstallGenerator.new([], {force: true, quiet: quiet, badge: badge}, destination_root: root).create_workflow
   end
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
@@ -67,7 +67,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel badge], YAML.safe_load(workflow).fetch("jobs").keys, "none for pushes, which the defaults don't need"
+    assert_equal %w[duel], YAML.safe_load(workflow).fetch("jobs").keys, "none for pushes, which the defaults don't need, and no badge without --badge"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -97,7 +97,7 @@ class GeneratorTest < PluginTest
   # does.
   def test_the_workflow_comments_as_duel_says
     generate
-    regenerate
+    regenerate(badge: true)
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
 
@@ -114,7 +114,15 @@ class GeneratorTest < PluginTest
     assert_equal "duel/passed/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
     own = File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  # Duel's badge.*\z/m]
 
-    assert_equal own.gsub("<%= badge_branch %>", "duel/badge"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
+    assert_equal own.gsub("<%= badge_branch %>", "duel/badge").delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
+  end
+
+  # With --badge, the workflow keeps a badge for the README, by a job
+  # that's last.
+  def test_the_badge
+    generate("--badge")
+
+    assert_equal %w[duel badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -155,9 +163,9 @@ class GeneratorTest < PluginTest
     generate
     out, = capture_io { regenerate(config: "Duel.configure { |c| c.use :not_a_plugin }\n", quiet: false) }
 
-    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal %w[duel commit-comment passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
     said = ".duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the duel-not_a_plugin gem " \
-      "to the Gemfile), so the workflow has every job, as if it asked for them"
+      "to the Gemfile), so the workflow has both jobs for pushes, as if it asked for them"
 
     assert_equal 1, out.scan(/warning  #{Regexp.escape(said)}$/).size, "said once, as .duel.rb is loaded once"
   end
@@ -166,7 +174,7 @@ class GeneratorTest < PluginTest
     system("git", "init", "--quiet", @dir, exception: true)
     app = File.join(@dir, "apps", "blog")
     generate(root: app)
-    regenerate(app)
+    regenerate(app, badge: true)
     workflow = read(".github/workflows/perf-apps-blog.yml")
 
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"

@@ -126,113 +126,6 @@ jobs:
           path: ${{ runner.temp }}/duel/
           if-no-files-found: ignore # none when Duel didn't get to compare
           retention-days: 1
-
-  # Duel's badge, for the README: green (perf guarded) or red (perf
-  # regressed), as the last push to the default branch that Duel compared
-  # left it. It's red where the Duel job failed or found a regression,
-  # even one that passed (with c.fail_on = :pull_requests in .duel.rb). A
-  # push with nothing to compare leaves it as it was, and so does a run
-  # for an older push than the badge's. This job writes the badge, alone,
-  # to a branch of its own, which the README shows:
-  #
-  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
-  #
-  # It checks nothing out, runs none of the code, and fetches nothing.
-  badge:
-    name: Update the badge
-    needs: duel
-    # One at a time, so that one run's check of which push the badge
-    # shows can't interleave with another run's write (a push's run
-    # doesn't wait for the one before it). A badge job that's running is
-    # never cancelled, and one that's waiting gives way to a newer push's,
-    # whose result the badge should show anyway.
-    concurrency:
-      group: ${{ github.workflow }}-badge
-      cancel-in-progress: false
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # to move the badge's branch
-    steps:
-      - name: Update the badge
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: duel/badge
-          RESULT: ${{ needs.duel.result }}
-          STATUS: ${{ needs.duel.outputs.status }}
-        run: |
-          # (Git can't make a branch where another's name is a folder of its
-          # name: a branch named duel blocks duel/passed/main. If one does,
-          # this names it.)
-          blocked() {
-            prefix=$BRANCH
-            while [ "${prefix%/*}" != "$prefix" ]; do
-              prefix=${prefix%/*}
-              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
-                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
-              fi
-            done
-            exit 1
-          }
-          # (Where the badge is a newer push's, that push's run has the say.
-          # Its commit names the push.)
-          last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
-          if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
-          # (Its image, written here rather than fetched from anywhere: green,
-          # or red where the Duel job failed or found a regression.)
-          state="perf guarded" width=133 top="#34D058" bottom="#28A745" right="76.939C78.629 0 80 1.343 80"
-          if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then
-            state="perf regressed" width=142 top="#EA4A5A" bottom="#D73A49" right="85.939C87.629 0 89 1.343 89"
-          fi
-          cat > "$RUNNER_TEMP/badge.svg" <<SVG
-          <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="20">
-            <title>Duel - $state</title>
-            <defs>
-              <linearGradient id="duel-fill" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop stop-color="#444D56" offset="0%"></stop>
-                <stop stop-color="#24292E" offset="100%"></stop>
-              </linearGradient>
-              <linearGradient id="state-fill" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop stop-color="$top" offset="0%"></stop>
-                <stop stop-color="$bottom" offset="100%"></stop>
-              </linearGradient>
-            </defs>
-            <g fill="none" fill-rule="evenodd">
-              <g font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
-                <path d="M0,3 C0,1.3431 1.3552,0 3.02702703,0 L53,0 L53,20 L3.02702703,20 C1.3552,20 0,18.6569 0,17 L0,3 Z" fill="url(#duel-fill)" fill-rule="nonzero"></path>
-                <text fill="#010101" fill-opacity=".3">
-                  <tspan x="22.1981982" y="15" aria-hidden="true">Duel</tspan>
-                </text>
-                <text fill="#FFFFFF">
-                  <tspan x="22.1981982" y="14">Duel</tspan>
-                </text>
-              </g>
-              <g transform="translate(53)" font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
-                <path d="M0 0h$right 3v14c0 1.657-1.37 3-3.061 3H0V0z" fill="url(#state-fill)" fill-rule="nonzero"></path>
-                <text fill="#010101" fill-opacity=".3" aria-hidden="true">
-                  <tspan x="4" y="15">$state</tspan>
-                </text>
-                <text fill="#FFFFFF">
-                  <tspan x="4" y="14">$state</tspan>
-                </text>
-              </g>
-              <g fill="#959DA5">
-                <path d="M4.6 3.6L6.9 4.5L14.3 11.9L12.9 13.3L5.5 5.9Z M17.4 3.6L15.1 4.5L7.7 11.9L9.1 13.3L16.5 5.9Z"></path>
-                <circle cx="16.6" cy="15.6" r="1.1"></circle>
-                <circle cx="5.4" cy="15.6" r="1.1"></circle>
-              </g>
-              <g stroke="#959DA5" stroke-linecap="round">
-                <path d="M12.1 14.5L15.5 11.1 M9.9 14.5L6.5 11.1" stroke-width="1.6"></path>
-                <path d="M13.8 12.8L16 15 M8.2 12.8L6 15" stroke-width="1.8"></path>
-              </g>
-            </g>
-          </svg>
-          SVG
-          tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
-          commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null || blocked
 ```
 
 A newer push to a pull request cancels the pull request's run, if it's
@@ -591,9 +484,10 @@ yourself:
 
 ## Show whether the last push passed
 
-The Update the badge job keeps a badge that turns red when Duel fails.
-After each push to your default branch, it writes `badge.svg` to a
-branch of its own, `duel/badge`, so your README can show it:
+With `--badge`, `duel init` adds the Update the badge job, which keeps a
+badge that turns red when Duel fails. After each push to your default
+branch, it writes `badge.svg` to a branch of its own, `duel/badge`, so
+your README can show it:
 
 ```markdown
 [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
@@ -612,8 +506,124 @@ that moving a branch takes. For a project in a subdirectory of its
 repository, the branch names the directory, such as
 `duel/badge-gems-parser`.
 
-Until the first push to your default branch after you add the
-workflow, the branch doesn't exist, and the badge doesn't show.
+Until the first push to your default branch after you add the job, the
+branch doesn't exist, and the badge doesn't show.
+
+`duel init` writes the job only with `--badge` (for a Rails app,
+`bin/rails generate duel:install --badge`), as without the jobs for
+pushes, it's the workflow's only job that writes to the repository. To
+add it later, remove the workflow, and run `duel init --badge` again (it
+keeps `.duel.rb`), or add the job yourself:
+
+```yaml
+# .github/workflows/perf.yml, in jobs: (with duel init --badge)
+  # Duel's badge, for the README: green (perf guarded) or red (perf
+  # regressed), as the last push to the default branch that Duel compared
+  # left it. It's red where the Duel job failed or found a regression,
+  # even one that passed (with c.fail_on = :pull_requests in .duel.rb). A
+  # push with nothing to compare leaves it as it was, and so does a run
+  # for an older push than the badge's. This job writes the badge, alone,
+  # to a branch of its own, which the README shows:
+  #
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+  #
+  # It checks nothing out, runs none of the code, and fetches nothing.
+  badge:
+    name: Update the badge
+    needs: duel
+    # One at a time, so that one run's check of which push the badge
+    # shows can't interleave with another run's write (a push's run
+    # doesn't wait for the one before it). A badge job that's running is
+    # never cancelled, and one that's waiting gives way to a newer push's,
+    # whose result the badge should show anyway.
+    concurrency:
+      group: ${{ github.workflow }}-badge
+      cancel-in-progress: false
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to move the badge's branch
+    steps:
+      - name: Update the badge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: duel/badge
+          RESULT: ${{ needs.duel.result }}
+          STATUS: ${{ needs.duel.outputs.status }}
+        run: |
+          # (Git can't make a branch where another's name is a folder of its
+          # name: a branch named duel blocks duel/passed/main. If one does,
+          # this names it.)
+          blocked() {
+            prefix=$BRANCH
+            while [ "${prefix%/*}" != "$prefix" ]; do
+              prefix=${prefix%/*}
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
+                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+              fi
+            done
+            exit 1
+          }
+          # (Where the badge is a newer push's, that push's run has the say.
+          # Its commit names the push.)
+          last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
+          if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
+          # (Its image, written here rather than fetched from anywhere: green,
+          # or red where the Duel job failed or found a regression.)
+          state="perf guarded" width=133 top="#34D058" bottom="#28A745" right="76.939C78.629 0 80 1.343 80"
+          if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then
+            state="perf regressed" width=142 top="#EA4A5A" bottom="#D73A49" right="85.939C87.629 0 89 1.343 89"
+          fi
+          cat > "$RUNNER_TEMP/badge.svg" <<SVG
+          <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="20">
+            <title>Duel - $state</title>
+            <defs>
+              <linearGradient id="duel-fill" x1="50%" y1="0%" x2="50%" y2="100%">
+                <stop stop-color="#444D56" offset="0%"></stop>
+                <stop stop-color="#24292E" offset="100%"></stop>
+              </linearGradient>
+              <linearGradient id="state-fill" x1="50%" y1="0%" x2="50%" y2="100%">
+                <stop stop-color="$top" offset="0%"></stop>
+                <stop stop-color="$bottom" offset="100%"></stop>
+              </linearGradient>
+            </defs>
+            <g fill="none" fill-rule="evenodd">
+              <g font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
+                <path d="M0,3 C0,1.3431 1.3552,0 3.02702703,0 L53,0 L53,20 L3.02702703,20 C1.3552,20 0,18.6569 0,17 L0,3 Z" fill="url(#duel-fill)" fill-rule="nonzero"></path>
+                <text fill="#010101" fill-opacity=".3">
+                  <tspan x="22.1981982" y="15" aria-hidden="true">Duel</tspan>
+                </text>
+                <text fill="#FFFFFF">
+                  <tspan x="22.1981982" y="14">Duel</tspan>
+                </text>
+              </g>
+              <g transform="translate(53)" font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
+                <path d="M0 0h$right 3v14c0 1.657-1.37 3-3.061 3H0V0z" fill="url(#state-fill)" fill-rule="nonzero"></path>
+                <text fill="#010101" fill-opacity=".3" aria-hidden="true">
+                  <tspan x="4" y="15">$state</tspan>
+                </text>
+                <text fill="#FFFFFF">
+                  <tspan x="4" y="14">$state</tspan>
+                </text>
+              </g>
+              <g fill="#959DA5">
+                <path d="M4.6 3.6L6.9 4.5L14.3 11.9L12.9 13.3L5.5 5.9Z M17.4 3.6L15.1 4.5L7.7 11.9L9.1 13.3L16.5 5.9Z"></path>
+                <circle cx="16.6" cy="15.6" r="1.1"></circle>
+                <circle cx="5.4" cy="15.6" r="1.1"></circle>
+              </g>
+              <g stroke="#959DA5" stroke-linecap="round">
+                <path d="M12.1 14.5L15.5 11.1 M9.9 14.5L6.5 11.1" stroke-width="1.6"></path>
+                <path d="M13.8 12.8L16 15 M8.2 12.8L6 15" stroke-width="1.8"></path>
+              </g>
+            </g>
+          </svg>
+          SVG
+          tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
+          commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null || blocked
+```
 
 ## Guard other branches
 

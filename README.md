@@ -83,7 +83,10 @@ out are Duel's.
 
 `duel init` doesn't overwrite a file that exists. To overwrite it, use
 `--force`. To see what `duel init` would do without writing anything,
-use `--dry-run`. When it's done, `duel init` lists the next steps.
+use `--dry-run`. For a badge in your README that turns red when Duel
+fails a push, use `--badge` (see
+[Show that a project is guarded](#show-that-a-project-is-guarded)).
+When it's done, `duel init` lists the next steps.
 
 For a Rails app, use
 [duel-rails](https://github.com/sferik/duel-ruby/tree/main/plugins/rails)
@@ -335,17 +338,17 @@ says.
 ### Show that a project is guarded
 
 To show that Duel guards your project, add its badge to your README,
-next to your other badges. With the workflow that `duel init` writes,
-the badge turns red when Duel fails a push to your default branch.
-Replace `OWNER/REPO` with your repository's:
+next to your other badges. With the job that `duel init --badge` adds to
+its workflow, the badge turns red when Duel fails a push to your default
+branch. Replace `OWNER/REPO` with your repository's:
 
 ```markdown
 [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
 ```
 
 See [Show whether the last push passed](docs/ci.md#show-whether-the-last-push-passed)
-for how the workflow keeps it. Without the workflow, such as on GitLab
-CI, use Duel's own badge, which is always green:
+for how the job keeps it. Without the job, such as on GitLab CI, use
+Duel's own badge, which is always green:
 
 ```markdown
 [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)

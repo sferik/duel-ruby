@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rails generate duel:install` writes the Comment on the commit and
   Mark the commit passed jobs only where `.duel.rb` asks for them, as
   `duel init` does.
+- `rails generate duel:install` writes the Update the badge job only
+  with `--badge`, as `duel init` does, so the workflow it writes by
+  default only reads.
 
 ### Fixed
 
