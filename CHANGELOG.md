@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Update the badge job downloaded the badge's image from Duel's own
+  repository, so a change there changed every project's badge, and a
+  failed download failed the job. It now writes the image itself, and
+  fetches nothing. Update it in `.github/workflows/perf.yml` to pick
+  this up.
 - Two pushes' runs of the Update the badge job could overlap, as a
   push's run doesn't wait for the one before it, and an older push's
   could write its badge over a newer one's after both had checked

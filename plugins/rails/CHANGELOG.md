@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Update the badge job, in the workflow that
+  `rails generate duel:install` writes, now writes the badge's image
+  itself instead of downloading it from Duel's repository.
 - Two pushes' runs of the Update the badge job, in the workflow that
   `rails generate duel:install` writes, could overlap, and an older
   push's could write its badge over a newer one's. The job now runs

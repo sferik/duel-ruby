@@ -320,7 +320,7 @@ class InitTest < DuelTest
     assert_equal "${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && " \
       "(needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}", badge.fetch("if")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/badge", "RESULT" => "${{ needs.duel.result }}",
-                  "STATUS" => "${{ needs.duel.outputs.status }}", "BADGES" => "https://raw.githubusercontent.com/sferik/duel-ruby/main/assets"},
+                  "STATUS" => "${{ needs.duel.outputs.status }}"},
       step.fetch("env"))
     refute badge.key?("defaults"), "nothing checked out"
     assert_equal 1, badge.fetch("steps").size
@@ -328,8 +328,9 @@ class InitTest < DuelTest
       "one at a time, so an older push's run can't write over a newer one's")
   end
 
-  # The badge's script, with gh and curl stubbed: [what it fetched, what
-  # it asked gh, the tree it made] for a run with +env+.
+  # The badge's script, with gh stubbed, and a curl that fails: [what it
+  # ran (gh's calls, and curl's, if any), the tree it made, or nil] for a
+  # run with +env+.
   def badge_run(env)
     gem
     init.run
@@ -348,56 +349,59 @@ class InitTest < DuelTest
         *"--method PATCH"*) [ -z "$NO_BRANCH" ] ;;
       esac
     SH
-    File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl ${@: -3:1}" >> #{log}\ncp "#{File.expand_path("../assets", __dir__)}/${2##*/}" "$4"\n))
+    File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl $*" >> #{log}\nexit 1\n))
     FileUtils.chmod(0o755, Dir[File.join(bin, "*")])
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
-           "GITHUB_SHA" => "abc", "BRANCH" => "duel/badge", "BADGES" => "https://badges", "LAST" => nil, "COMPARED" => nil,
+           "GITHUB_SHA" => "abc", "BRANCH" => "duel/badge", "LAST" => nil, "COMPARED" => nil,
            "NO_BRANCH" => nil}.merge(env)
 
     assert system(env, "bash", "-ec", run)
     calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
-    [calls.grep(/\Acurl /).map { |call| call.delete_prefix("curl ") }, calls.grep(/\Agh /), (JSON.parse(File.read(tree)) if File.exist?(tree))]
+    [calls, (JSON.parse(File.read(tree)) if File.exist?(tree))]
   end
 
-  def test_a_green_badge
-    fetched, calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed")
+  # Each version of the badge's image, as the job writes it.
+  def image(name) = {"tree" => [{"path" => "badge.svg", "mode" => "100644", "type" => "blob",
+                                 "content" => File.read(File.expand_path("../assets/#{name}.svg", __dir__))}]}
 
-    assert_equal ["https://badges/badge.svg"], fetched
-    assert_equal({"tree" => [{"path" => "badge.svg", "mode" => "100644", "type" => "blob",
-                              "content" => File.read(File.expand_path("../assets/badge.svg", __dir__))}]}, tree)
+  def test_a_green_badge
+    calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed")
+
+    assert_equal image("badge"), tree, "written as it is in assets/"
+    assert_empty calls.grep(/\Acurl /), "fetched from nowhere"
     assert_includes calls, %(gh api --method POST repos/me/my_gem/git/commits -f message=Duel's badge, for abc -f tree=tree1 --jq .sha)
     assert_equal ["gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"], calls.grep(/refs/),
       "the branch moved"
   end
 
   def test_a_red_badge_for_a_regression
-    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "failed", "NO_BRANCH" => "1")
+    calls, tree = badge_run("RESULT" => "success", "STATUS" => "failed", "NO_BRANCH" => "1")
 
-    assert_equal ["https://badges/badge-regressed.svg"], fetched, "red, though the job passed (c.fail_on)"
+    assert_equal image("badge-regressed"), tree, "red, though the job passed (c.fail_on)"
     assert_equal "gh api --method POST repos/me/my_gem/git/refs -f ref=refs/heads/duel/badge -f sha=commit1", calls.last, "the branch made"
   end
 
   def test_a_red_badge_for_a_failed_job
-    fetched, = badge_run("RESULT" => "failure", "STATUS" => "")
+    _, tree = badge_run("RESULT" => "failure", "STATUS" => "")
 
-    assert_equal ["https://badges/badge-regressed.svg"], fetched
+    assert_equal image("badge-regressed"), tree
   end
 
   # A newer push's badge replaces an older push's (or the same push's,
   # run again), whatever it says.
   def test_a_badge_for_a_newer_push
-    fetched, calls, = badge_run("RESULT" => "success", "STATUS" => "passed", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "behind")
+    calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "behind")
 
-    assert_equal ["https://badges/badge.svg"], fetched
+    assert_equal image("badge"), tree
     assert_includes calls, "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status", "the badge's push, from its commit"
     assert_includes calls, "gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"
   end
 
   # A run that finishes after a newer push's leaves that push's badge.
   def test_a_badge_for_an_older_push
-    fetched, calls, = badge_run("RESULT" => "failure", "STATUS" => "", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "ahead")
+    calls, tree = badge_run("RESULT" => "failure", "STATUS" => "", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "ahead")
 
-    assert_empty fetched, "the newer push's run has the say"
+    assert_nil tree, "the newer push's run has the say"
     assert_equal ["gh api repos/me/my_gem/commits/duel/badge --jq .commit.message", "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status"],
       calls
   end
