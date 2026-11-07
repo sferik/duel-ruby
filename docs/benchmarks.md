@@ -2,9 +2,9 @@
 
 This page covers what a benchmark can do beyond timing a block: run
 code around its samples and iterations, share code with other
-benchmarks, choose what it's judged on, and benchmark a whole process.
-For a first benchmark, with `once`, `untimed`, and a block that takes
-the number of iterations, see
+benchmarks, give both versions the same work, choose what it's judged
+on, and benchmark a whole process. For a first benchmark, with `once`,
+`untimed`, and a block that takes the number of iterations, see
 [Write a benchmark](../README.md#write-a-benchmark).
 
 ## Run code around a benchmark
@@ -197,6 +197,35 @@ benchmarks: `duel`, `duel_process`, `once`, `untimed`, the hooks
 `after_iterations`), and any that a plugin used in `.duel.rb` adds.
 Duel's method would hide a helper of the same name, so the worker
 fails, and names the helper's file and line.
+
+## Give both versions the same work
+
+Each version's workers load your benchmarks with that version's code,
+so a benchmark compares like with like only where both versions are
+given the same work.
+
+Build a benchmark's inputs without the code it measures. A JSON
+parser's benchmark that builds its document with the library's own
+`dump` parses whatever each version dumps: where a change makes `dump`
+write something else, the two versions parse different documents, and
+the comparison measures that, not the parser. Write the input out, read
+it from a file, or build it with code that both versions share, such as
+Ruby's own.
+
+```ruby
+# duel/parser_duel.rb
+DOCUMENT = File.read(File.join(__dir__, "fixtures", "document.json"))
+
+duel("parse: a document") { MyParser.parse(DOCUMENT) }
+```
+
+Every worker loads every file of benchmarks, so a setting that changes
+the whole process, such as a library's global option or a patch that a
+mode installs, changes every benchmark that runs after it, in every
+file. Turn it on in the benchmark's own hooks, and put it back in
+`teardown`, or benchmark it in a process of its own, with
+`duel_process`. Then the benchmarks that don't ask for it measure the
+code that they name.
 
 ## Choose what a benchmark is judged on
 

@@ -388,8 +388,8 @@ plugin, see [Write a Duel plugin](docs/plugins.md).
 The [Duel guide](docs/README.md) covers the rest:
 
 - [Write benchmarks](docs/benchmarks.md): hooks, undoing each
-  iteration, sharing code, choosing what a benchmark is judged on, and
-  benchmarking a whole process.
+  iteration, sharing code, giving both versions the same work, choosing
+  what a benchmark is judged on, and benchmarking a whole process.
 - [Configure Duel](docs/configuration.md): `.duel.rb`, preparing each
   worker and each version, each version's own Ruby, your own metrics,
   and plugins.
