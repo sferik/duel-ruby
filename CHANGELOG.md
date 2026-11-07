@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `duel init` writes the Comment on the commit job only where `.duel.rb`
+  sets `c.fail_on = :pull_requests`, and the Mark the commit passed job
+  only where it sets `c.push_base = :last_passed`, as with the defaults
+  neither runs, and each asks for `contents: write`. It reads the
+  settings from `.duel.rb` where there is one, and where that doesn't
+  load (one of its plugins isn't installed, say), writes both, and says
+  so. To add a job later, set its setting, remove the workflow, and run
+  `duel init` again, or add it from the guide.
+
 ### Fixed
 
 - The Perf comment workflow posted the report that a pull request's run

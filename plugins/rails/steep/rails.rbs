@@ -26,6 +26,8 @@ module Rails
 
       def template: (String source, String destination) -> void
 
+      def say_status: (Symbol status, String message) -> nil
+
       def gem: (String name, **untyped options) -> void
     end
   end

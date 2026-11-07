@@ -26,6 +26,13 @@ class InitTest < DuelTest
     write("Gemfile", %(source "https://rubygems.org"\ngemspec\ngem "duel"\n))
   end
 
+  # A .duel.rb that asks for the workflow's jobs for pushes: a comment on
+  # a pushed commit (c.fail_on = :pull_requests), and the last commit Duel
+  # passed marked (c.push_base = :last_passed).
+  PUSH_SETTINGS = "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\nend\n"
+
+  def push_settings(at: root) = File.write(File.join(at, ".duel.rb"), PUSH_SETTINGS)
+
   def ruby_version = RUBY_VERSION[/\A\d+\.\d+/]
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
@@ -35,11 +42,13 @@ class InitTest < DuelTest
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
-    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
+    "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
     "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
-    "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n  # c.push_base = :before\nend\n"
+    "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \
+    "  # (A workflow job moves the branch, written only where this is set: see\n  # docs/ci.md.)\n  # c.push_base = :before\nend\n"
 
   def test_a_gem
     gem
@@ -75,14 +84,57 @@ class InitTest < DuelTest
     assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
-    assert_equal 2, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "each workflow's"
+    assert_equal 1, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "the comment workflow's"
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[duel commit-comment passed badge], jobs.keys
+    assert_equal %w[duel badge], jobs.keys, "none for pushes, which the defaults don't comment on or mark passed"
     assert_equal %w[checkout setup-ruby Find Compare Say Keep], steps.call("duel")
-    assert_equal %w[Get Comment], steps.call("commit-comment")
-    assert_equal %w[Move], steps.call("passed")
+  end
+
+  # The jobs for pushes, where .duel.rb asks for them: a comment on a
+  # pushed commit, and the last commit Duel passed marked.
+  def test_the_jobs_for_pushes
+    gem
+    push_settings
+    init.run
+    workflow = read(".github/workflows/perf.yml")
+    jobs = YAML.safe_load(workflow).fetch("jobs")
+
+    assert_equal %w[duel commit-comment passed badge], jobs.keys
+    assert_equal [%w[Get Comment], %w[Move]], %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step.fetch("name").split.first } }
+    assert_equal 2, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "each workflow's"
+  end
+
+  # Each job for pushes, alone, where .duel.rb asks for only it.
+  def test_one_job_for_pushes
+    gem
+    write(".duel.rb", "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+    init.run
+
+    assert_equal %w[duel commit-comment badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
+    init("--force").run
+
+    assert_equal %w[duel badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys,
+      "--force writes .duel.rb anew, with the defaults"
+    write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
+    FileUtils.rm(File.join(root, ".github/workflows/perf.yml"))
+    init.run
+
+    assert_equal %w[duel passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+  end
+
+  # A .duel.rb that doesn't load (one of its plugins isn't installed, say)
+  # leaves the workflow every job, and says so.
+  def test_a_config_that_doesnt_load
+    gem
+    write(".duel.rb", %(Duel.configure { |c| c.use :not_a_plugin }\n))
+    init.run
+
+    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal "duel init: .duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the " \
+      "duel-not_a_plugin gem to the Gemfile), so the workflow has every job, as if it asked for them\n", @err.string
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
@@ -252,6 +304,7 @@ class InitTest < DuelTest
   # own that moves the branch (or makes it), and runs none of the code.
   def test_marking_a_push_passed
     gem
+    push_settings
     init.run
     jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     passed = jobs.fetch("passed")
@@ -273,6 +326,7 @@ class InitTest < DuelTest
   # keeps it from making the branch.
   def passed_run(refused: false, at: nil, compared: nil, compare_error: nil, blocker: nil, success: true)
     gem
+    push_settings
     init.run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
@@ -469,6 +523,7 @@ class InitTest < DuelTest
   # the permission that takes, and running none of the code either.
   def test_the_comment_on_a_pushed_commit
     gem
+    push_settings
     init.run
     jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     duel, comment = jobs.values_at("duel", "commit-comment")
@@ -735,6 +790,7 @@ class InitTest < DuelTest
     project = File.join(tmpdir, "gems", "parser")
     FileUtils.mkdir_p(File.join(project, "lib"))
     File.write(File.join(project, "lib", "parser.rb"), "")
+    push_settings(at: project)
     init(at: project).run
 
     assert_includes @out.string, "  create    ../../.github/workflows/perf-gems-parser.yml\n"
@@ -764,6 +820,21 @@ class InitTest < DuelTest
     workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
 
     assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
+  end
+
+  # And the jobs for pushes, as it writes them where .duel.rb asks for
+  # them.
+  def test_the_guides_jobs_for_pushes
+    gem
+    push_settings
+    workflow = init.files.fetch(".github/workflows/perf.yml")
+    guide = File.read(File.expand_path("../docs/ci.md", __dir__))
+    {"c.fail_on = :pull_requests" => ["  # The report, as a new comment on a pushed commit", "  # With c.push_base = :last_passed"],
+     "c.push_base = :last_passed" => ["  # With c.push_base = :last_passed", "  # Duel's badge, for the README"]}.each do |setting, (from, to)|
+      job = guide[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with #{Regexp.escape(setting)}\)\n(.*?)^```$/m, 1]
+
+      assert_equal workflow[workflow.index(from)...workflow.index(to)].rstrip, job.rstrip, setting
+    end
   end
 
   # And the GitLab CI jobs.

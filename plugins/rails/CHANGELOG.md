@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `rails generate duel:install` writes the Comment on the commit and
+  Mark the commit passed jobs only where `.duel.rb` asks for them, as
+  `duel init` does.
+
 ### Fixed
 
 - The Perf comment workflow that `rails generate duel:install` writes

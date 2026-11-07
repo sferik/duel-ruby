@@ -2,7 +2,7 @@ module Duel
   # Where reports go ($stdout, or a StringIO in its place).
   # @api private
   interface _Output
-    def puts: (*_ToS objects) -> void
+    def puts: (*_ToS objects) -> nil
 
     def print: (*_ToS objects) -> void
   end

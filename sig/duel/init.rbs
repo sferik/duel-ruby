@@ -22,6 +22,7 @@ module Duel
     @force: bool?
     @dry_run: bool?
     @gitlab: bool?
+    @settings: Config?
     @stackprof: bool?
 
     def initialize: (Array[String] argv, ?out: _Output, ?err: _Output, ?root: String) -> void
@@ -66,6 +67,18 @@ module Duel
 
     # The project's configuration, as the conventions have it.
     def config: () -> Config
+
+    # The project's settings, which decide the workflow's jobs (nil where
+    # .duel.rb doesn't load).
+    def settings: () -> Config?
+
+    def load_settings: () -> Config?
+
+    # Whether the workflow comments on a pushed commit.
+    def comment_on_pushes?: () -> bool
+
+    # Whether the workflow marks a push passed.
+    def mark_passed?: () -> bool
 
     # The library the gemspec names, or nil.
     def library: () -> String?

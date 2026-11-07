@@ -69,6 +69,33 @@ module Duel
 
       private
 
+      # The app's settings, which decide the workflow's jobs, as for
+      # `duel init` (see Duel::Init#settings): its .duel.rb's, which
+      # create_config has written by now (or kept), or nil where it doesn't
+      # load, and then the workflow has every job, and says so.
+      def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
+
+      def load_settings
+        Duel.load_config(File.join(destination_root, ".duel.rb"))
+      rescue ScriptError, StandardError => e
+        say_status :warning, ".duel.rb didn't load (#{e.class}: #{e}), so the workflow has every job, as if it asked for them"
+        nil
+      end
+
+      # Whether the workflow comments on a pushed commit: where a regression
+      # in a push passes (c.fail_on = :pull_requests).
+      def comment_on_pushes?
+        found = settings
+        found.nil? || found.fail_on == :pull_requests
+      end
+
+      # Whether the workflow marks a push passed: where a push is compared
+      # with the last commit Duel passed (c.push_base = :last_passed).
+      def mark_passed?
+        found = settings
+        found.nil? || found.push_base == :last_passed
+      end
+
       def gemfile = File.read(File.join(destination_root, "Gemfile"))
 
       # The database each worker gets: as asked, or as the app's own

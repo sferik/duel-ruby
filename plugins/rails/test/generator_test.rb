@@ -19,6 +19,14 @@ class GeneratorTest < PluginTest
 
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
+  # The workflow, written again where .duel.rb is +config+: by default, one
+  # that asks for the jobs for pushes (a comment on a pushed commit, and
+  # the last commit Duel passed marked).
+  def regenerate(root = @dir, config: "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\nend\n", quiet: true)
+    File.write(File.join(root, ".duel.rb"), config)
+    Duel::Generators::InstallGenerator.new([], {force: true, quiet: quiet}, destination_root: root).create_workflow
+  end
+
   # How .duel.rb ends: when the workflow comments, which runs a regression
   # fails, the label that accepts one, and what a push is compared with,
   # the defaults shown.
@@ -26,11 +34,13 @@ class GeneratorTest < PluginTest
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
-    "  # run warns and passes, and a pushed commit gets the comment instead).\n  # c.fail_on = :every_run\n" \
+    "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
+    "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
     "\n  # A label that accepts a regression in a pull request (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
-    "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n  # c.push_base = :before\nend\n"
+    "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \
+    "  # (A workflow job moves the branch, written only where this is set: see\n  # docs/ci.md.)\n  # c.push_base = :before\nend\n"
 
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
@@ -57,7 +67,7 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(workflow).fetch("jobs").keys, "YAML"
+    assert_equal %w[duel badge], YAML.safe_load(workflow).fetch("jobs").keys, "none for pushes, which the defaults don't need"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -87,6 +97,7 @@ class GeneratorTest < PluginTest
   # does.
   def test_the_workflow_comments_as_duel_says
     generate
+    regenerate
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
 
@@ -139,10 +150,23 @@ class GeneratorTest < PluginTest
   # An app in a subdirectory of its repository (a monorepo's): its
   # workflow is at the repository's root, named for the app's directory,
   # and runs there.
+  # A .duel.rb that doesn't load leaves the workflow every job.
+  def test_a_config_that_doesnt_load
+    generate
+    out, = capture_io { regenerate(config: "Duel.configure { |c| c.use :not_a_plugin }\n", quiet: false) }
+
+    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    said = ".duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the duel-not_a_plugin gem " \
+      "to the Gemfile), so the workflow has every job, as if it asked for them"
+
+    assert_equal 1, out.scan(/warning  #{Regexp.escape(said)}$/).size, "said once, as .duel.rb is loaded once"
+  end
+
   def test_an_app_in_a_subdirectory
     system("git", "init", "--quiet", @dir, exception: true)
     app = File.join(@dir, "apps", "blog")
     generate(root: app)
+    regenerate(app)
     workflow = read(".github/workflows/perf-apps-blog.yml")
 
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"

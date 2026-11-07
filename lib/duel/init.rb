@@ -179,6 +179,37 @@ module Duel
     # The project's configuration, as the conventions have it.
     def config = Config.new(@root)
 
+    # The project's settings, which decide the workflow's jobs: its
+    # .duel.rb's, or the defaults, where there's none yet or --force
+    # replaces it with the one it writes. Nil where it doesn't load (one
+    # of its plugins isn't installed, say), and then the workflow has
+    # every job, as if .duel.rb asked for them, and says so.
+    def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
+
+    def load_settings
+      path = File.join(@root, ".duel.rb")
+      return Config.new if @force || !File.exist?(path)
+
+      Duel.load_config(path)
+    rescue ScriptError, StandardError => e
+      @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflow has every job, as if it asked for them"
+    end
+
+    # Whether the workflow comments on a pushed commit: where a regression
+    # in a push passes (c.fail_on = :pull_requests), the only time Duel
+    # says to.
+    def comment_on_pushes?
+      found = settings
+      found.nil? || found.fail_on == :pull_requests
+    end
+
+    # Whether the workflow marks a push passed: where a push is compared
+    # with the last commit Duel passed (c.push_base = :last_passed).
+    def mark_passed?
+      found = settings
+      found.nil? || found.push_base == :last_passed
+    end
+
     # The library the gemspec names (see Config#library), or nil.
     def library = config.library
 

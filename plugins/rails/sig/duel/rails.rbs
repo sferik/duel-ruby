@@ -229,6 +229,19 @@ module Duel
 
       private
 
+      @settings: Config?
+
+      # The app's settings, which decide the workflow's jobs (nil where
+      # .duel.rb doesn't load).
+      def settings: () -> Config?
+      def load_settings: () -> Config?
+
+      # Whether the workflow comments on a pushed commit.
+      def comment_on_pushes?: () -> bool
+
+      # Whether the workflow marks a push passed.
+      def mark_passed?: () -> bool
+
       # The app's Gemfile.
       def gemfile: () -> String
 

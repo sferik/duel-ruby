@@ -127,95 +127,6 @@ jobs:
           if-no-files-found: ignore # none when Duel didn't get to compare
           retention-days: 1
 
-  # The report, as a new comment on a pushed commit, which notifies its
-  # author, when Duel says to, as for a pull request (see the Perf comment
-  # workflow). It does only where a regression in a push passes, with
-  # c.fail_on = :pull_requests in .duel.rb, so the comment says what the
-  # check doesn't. Its last comment is the last one on any commit. This
-  # job checks nothing out and runs none of the code.
-  commit-comment:
-    name: Comment on the commit
-    needs: duel
-    if: ${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # to comment on the commit with the report
-    steps:
-      - name: Get the report
-        id: report
-        continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
-        with:
-          name: duel-report
-          path: ${{ runner.temp }}/report
-      - name: Comment on the commit
-        if: steps.report.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMMENT: ${{ needs.duel.outputs.comment }}
-          STATUS: ${{ needs.duel.outputs.status }}
-        run: |
-          marker="<!-- duel"
-          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\"))" | tail -n 1)
-          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
-            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
-            gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
-          fi
-
-  # With c.push_base = :last_passed in .duel.rb, a push is compared with
-  # the last commit Duel passed, which a branch marks (each branch pushed
-  # has its own), so slowdowns too small for any one push to fail add up
-  # until they fail one. This job moves the branch to a push that passed
-  # (or makes it), but never back: where a newer push's run moved it
-  # first, it stays. It checks nothing out and runs none of the code. To
-  # accept a regression, move the branch yourself (for main, git push
-  # origin main:duel/passed/main).
-  passed:
-    name: Mark the commit passed
-    needs: duel
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # to move the branch
-    steps:
-      - name: Move the branch to the commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: duel/passed/${{ github.ref_name }}
-        run: |
-          # (Git can't make a branch where another's name is a folder of its
-          # name: a branch named duel blocks duel/passed/main. If one does,
-          # this names it.)
-          blocked() {
-            prefix=$BRANCH
-            while [ "${prefix%/*}" != "$prefix" ]; do
-              prefix=${prefix%/*}
-              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
-                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
-              fi
-            done
-            exit 1
-          }
-          # (Forward: GitHub moves it only where it's behind the push.)
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
-          at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
-          if [ -z "$at" ]; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null || blocked
-            exit 0
-          fi
-          compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status 2>&1) || case "$compared" in
-            # (GitHub can't compare commits with no history in common.)
-            *"No common ancestor"*) compared=unrelated ;;
-          esac
-          case "$compared" in
-            # (A newer push's run moved it, or this one's did, run again.)
-            ahead | identical) ;;
-            # (History rewritten, a force push's, say, or replaced: moved anyway.)
-            diverged | behind | unrelated) gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null ;;
-            *) echo "::error::Couldn't compare $BRANCH with this push: $compared" && exit 1 ;;
-          esac
-
   # Duel's badge, for the README: green (perf guarded) or red (perf
   # regressed), as the last push to the default branch that Duel compared
   # left it. It's red where the Duel job failed or found a regression,
@@ -514,6 +425,52 @@ By default, a push gets no comment: Duel sets the `comment` output to
 the commit job checks nothing out either, and it alone gets the
 `contents: write` permission that a commit comment takes.
 
+`duel init` writes the Comment on the commit job only where `.duel.rb`
+sets `c.fail_on = :pull_requests`, as it's the only time Duel says to
+comment on a push, and the job's `contents: write` is otherwise unused.
+To add it later, set `c.fail_on`, remove the workflow, and run
+`duel init` again (it keeps `.duel.rb`), or add the job yourself:
+
+```yaml
+# .github/workflows/perf.yml, in jobs: (with c.fail_on = :pull_requests)
+  # The report, as a new comment on a pushed commit, which notifies its
+  # author, when Duel says to, as for a pull request (see the Perf comment
+  # workflow). It does only where a regression in a push passes, with
+  # c.fail_on = :pull_requests in .duel.rb, so the comment says what the
+  # check doesn't. Its last comment is the last one on any commit. This
+  # job checks nothing out and runs none of the code.
+  commit-comment:
+    name: Comment on the commit
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to comment on the commit with the report
+    steps:
+      - name: Get the report
+        id: report
+        continue-on-error: true # there's none when the Duel job failed before comparing
+        uses: actions/download-artifact@v8
+        with:
+          name: duel-report
+          path: ${{ runner.temp }}/report
+      - name: Comment on the commit
+        if: steps.report.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ needs.duel.outputs.comment }}
+          STATUS: ${{ needs.duel.outputs.status }}
+        run: |
+          marker="<!-- duel"
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\"))" | tail -n 1)
+          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
+            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
+          fi
+
+```
+
 ## Accept a regression with a label
 
 With [`c.accept_label`](configuration.md#accept-a-regression-with-a-label),
@@ -568,6 +525,69 @@ git push origin main:duel/passed/main
 If you set `c.push_base` back to `:before`, delete the branches too
 (`git push origin --delete duel/passed/main`), because the step that
 finds the baseline's Ruby uses one whenever it exists.
+
+`duel init` writes the Mark the commit passed job only where `.duel.rb`
+sets `c.push_base = :last_passed`, as the job's `contents: write` is
+otherwise unused. To add it later, set `c.push_base`, remove the
+workflow, and run `duel init` again (it keeps `.duel.rb`), or add the job
+yourself:
+
+```yaml
+# .github/workflows/perf.yml, in jobs: (with c.push_base = :last_passed)
+  # With c.push_base = :last_passed in .duel.rb, a push is compared with
+  # the last commit Duel passed, which a branch marks (each branch pushed
+  # has its own), so slowdowns too small for any one push to fail add up
+  # until they fail one. This job moves the branch to a push that passed
+  # (or makes it), but never back: where a newer push's run moved it
+  # first, it stays. It checks nothing out and runs none of the code. To
+  # accept a regression, move the branch yourself (for main, git push
+  # origin main:duel/passed/main).
+  passed:
+    name: Mark the commit passed
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to move the branch
+    steps:
+      - name: Move the branch to the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: duel/passed/${{ github.ref_name }}
+        run: |
+          # (Git can't make a branch where another's name is a folder of its
+          # name: a branch named duel blocks duel/passed/main. If one does,
+          # this names it.)
+          blocked() {
+            prefix=$BRANCH
+            while [ "${prefix%/*}" != "$prefix" ]; do
+              prefix=${prefix%/*}
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
+                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
+              fi
+            done
+            exit 1
+          }
+          # (Forward: GitHub moves it only where it's behind the push.)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
+          at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
+          if [ -z "$at" ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null || blocked
+            exit 0
+          fi
+          compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status 2>&1) || case "$compared" in
+            # (GitHub can't compare commits with no history in common.)
+            *"No common ancestor"*) compared=unrelated ;;
+          esac
+          case "$compared" in
+            # (A newer push's run moved it, or this one's did, run again.)
+            ahead | identical) ;;
+            # (History rewritten, a force push's, say, or replaced: moved anyway.)
+            diverged | behind | unrelated) gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null ;;
+            *) echo "::error::Couldn't compare $BRANCH with this push: $compared" && exit 1 ;;
+          esac
+
+```
 
 ## Show whether the last push passed
 
