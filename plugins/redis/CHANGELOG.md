@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-08
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.4] - 2026-11-06
 
 No changes of its own: released in step with the other Duel gems.
@@ -61,7 +65,8 @@ license. It needs Ruby 3.4 or later, Duel 0.1, and `redis-server`
   read the next reply out of step.
 
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.4...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.5...HEAD
+[0.1.5]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.4...duel-redis-v0.1.5
 [0.1.4]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.3...duel-redis-v0.1.4
 [0.1.3]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.2...duel-redis-v0.1.3
 [0.1.2]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.1...duel-redis-v0.1.2
