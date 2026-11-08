@@ -17,10 +17,11 @@ at the API.
    development group (unless the Gemfile has it already), and run
    `bundle install`. Then, unless the project is a Rails app (see step
    4), run `bundle exec duel init`, and read what it wrote: `.duel.rb`,
-   an example benchmark in `duel/`, the GitHub Actions workflow
-   (`.github/workflows/perf.yml`), Duel's Rake task, if there's a
-   Rakefile, and `gem "stackprof", platforms: :mri` in the Gemfile, for
-   profiles of regressions. It lists what it did and what's next: run
+   an example benchmark in `duel/`, two GitHub Actions workflows
+   (`.github/workflows/perf.yml`, and `perf-comment.yml`, which comments
+   on pull requests), Duel's Rake task, if there's a Rakefile, and
+   `gem "stackprof", platforms: :mri` in the Gemfile, for profiles of
+   regressions. It lists what it did and what's next: run
    `bundle install` again for StackProf.
 
 2. **Find what's worth guarding.** Read the code and its tests to find
@@ -58,6 +59,22 @@ at the API.
      includes what differs between the two versions' workers, like a
      server's socket path or a worker's directory: don't time work on
      it.
+   - Build inputs without the code you're measuring. Each version's
+     workers run the benchmarks with that version's code, so an input
+     made with the project's own encoder (its `dump`, `to_json` or
+     `serialize`) differs wherever the two versions' output does, and
+     the benchmark then compares different work. Write the input out as
+     a fixture, or build it from literals or Ruby's standard library.
+     See "Give both versions the same work" in Duel's
+     `docs/benchmarks.md`.
+   - Leave process-wide settings alone. Every worker loads every
+     benchmark file, so a mode, patch or global option that changes the
+     whole process (an `optimize` call, a changed default) changes every
+     benchmark that runs after it, and the default path goes unmeasured.
+     Never turn one on in `duel_helper.rb` or at a file's top level.
+     Turn it on only in the benchmarks that are about it, and put it
+     back in `teardown`, or measure it in a process of its own with
+     `duel_process`.
    - Use the sizes the code really sees. Read it for limits and
      constants (a cap on how many items it ever handles, say) rather
      than guessing.
@@ -135,9 +152,12 @@ at the API.
    there. Run `duel init` there too: it puts the workflow at the
    repository's root, and runs it in the subdirectory.
 
-   Make sure the linter checks `.duel.rb`. It's a dotfile, so RuboCop
-   leaves it out unless its config includes it (`AllCops: Include`,
-   merged with the defaults by `inherit_mode`).
+   Don't change the project's own configuration beyond what `duel init`
+   did: its linter's config, its README (but for step 7), its other CI
+   workflows. Those are the maintainers' choices. If the linter flags
+   the benchmarks, fix the benchmarks. If it can't be satisfied without
+   a config change (it leaves `.duel.rb` out, say, as RuboCop does with
+   dotfiles), say so in your report instead.
 
 5. **Check that the guards hold.** While you're still writing
    benchmarks, run a few at a time (`bundle exec duel --force --filter
@@ -171,29 +191,39 @@ at the API.
      your names can be picked out. Without `--force`, a tree with
      nothing changed since the main branch has nothing to compare.
 
-6. **Check CI.** `duel init` wrote Duel's GitHub Actions
-   workflow (`.github/workflows/perf.yml`). Keep `fetch-depth: 0`:
-   Duel's baseline comes from git history. Keep its check for a push
-   with no commit before it in the history (a branch's first push, or a
-   force push), which would otherwise fail the job. Keep its Comment
-   job, which comments on a pull request with Duel's report when a
-   benchmark fails (Duel also adds the report to the job's summary, and
-   `c.comment` in `.duel.rb` chooses when it comments), and keep
-   `pull-requests: write` on that job alone: the Duel job runs the
-   branch's code, so it only reads. Check that `ruby-version` is one the project supports, unless
-   it has a `.ruby-version`. With `c.ruby = :version_file` and another
-   version file than `.ruby-version`, add the steps in Duel's
-   `docs/ci.md` that install the baseline's Ruby, reading that file
-   instead. If `.duel.rb` sets `c.main_branch` or `c.release_tags`, set
-   those steps' `MAIN_BRANCH` or `RELEASE_TAGS` to match. Add the
-   project's other CI setup that its tests need (system packages,
-   services) to the Duel job as well. Keep the scheduled `last-release`
-   run only if the project tags its releases (`v*` by default, or else
-   set `c.release_tags`), or leave the schedule out. Until the first release is tagged, that run says
-   there's nothing to compare against, and passes. Once it's pushed,
-   run the workflow by hand: it compares the code with itself there,
-   which shows that the benchmarks run on CI's machines (with their
-   packages and services).
+6. **Check CI.** `duel init` wrote two GitHub Actions workflows.
+   - `.github/workflows/perf.yml` runs Duel. Keep `fetch-depth: 0`:
+     Duel's baseline comes from git history. Keep its check for a push
+     with no commit before it in the history (a branch's first push, or
+     a force push), which would otherwise fail the job. The Duel job
+     runs the branch's code, so it only reads: don't give it, or the
+     workflow, any write permission.
+   - `.github/workflows/perf-comment.yml` comments on a pull request
+     with Duel's report once the first has run (`c.comment` in
+     `.duel.rb` chooses when, and Duel also adds the report to the
+     job's summary). It runs none of the pull request's code, and shows
+     a fork's report as text. Keep it as it is.
+   - `duel init` writes the jobs for pushes (a comment on a pushed
+     commit, and a `duel/passed/` branch that marks the last commit
+     Duel passed) only where `.duel.rb` sets `c.fail_on =
+     :pull_requests` or `c.push_base = :last_passed`, and the badge's
+     job only with `--badge`. Each needs `contents: write`, so don't
+     set those settings, or add those jobs, unless I ask.
+
+   Check that `ruby-version` is one the project supports, unless it has
+   a `.ruby-version`. With `c.ruby = :version_file` and another version
+   file than `.ruby-version`, add the steps in Duel's `docs/ci.md` that
+   install the baseline's Ruby, reading that file instead. If
+   `.duel.rb` sets `c.main_branch` or `c.release_tags`, set those
+   steps' `MAIN_BRANCH` or `RELEASE_TAGS` to match. Add the project's
+   other CI setup that its tests need (system packages, services) to
+   the Duel job as well. Keep the scheduled `last-release` run only if
+   the project tags its releases (`v*` by default, or else set
+   `c.release_tags`), or leave the schedule out. Until the first
+   release is tagged, that run says there's nothing to compare against,
+   and passes. Once it's pushed, run the workflow by hand: it compares
+   the code with itself there, which shows that the benchmarks run on
+   CI's machines (with their packages and services).
 
 7. **Show the badge.** If the project's README already shows badges (CI
    status, gem version), add Duel's to that row, with exactly this
@@ -203,7 +233,10 @@ at the API.
    [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
    ```
 
-   If the README has no badges, don't add a row just for Duel's.
+   If the README has no badges, don't add a row just for Duel's. This
+   badge is always green: one that turns red when Duel fails a push
+   needs the badge's job (`duel init --badge`), so add that only if I
+   ask.
 
 8. **Report back** with:
    - The benchmarks you wrote and what each one guards.
@@ -211,5 +244,9 @@ at the API.
    - The output of the self-comparison and of the deliberate-regression
      check.
    - Anything you couldn't guard reliably.
+   - Every file you changed outside `duel/` and `.duel.rb`, and why.
+   - The label that lets a pull request that's slower on purpose pass
+     (`c.accept_label`, `duel: accept` in the `.duel.rb` that
+     `duel init` writes), which the repository needs to have.
 
 Don't commit. Leave the changes for me to review.
