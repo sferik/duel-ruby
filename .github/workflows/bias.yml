@@ -1,13 +1,24 @@
 name: Bias
 
-# Nightly, Duel compares identical code: the main branch with itself,
-# several times over (tasks/bias_check.rb). Duel is only worth trusting
-# if identical code compares even, so a run that finds a regression
-# fails the check, and the summary of every benchmark's ratio across the
-# runs shows a lean (one side faster every time) that no one run calls.
-# Duel's own benchmarks, and duel-redis's, whose workers each start a
-# server.
+# Nightly, and on a pull request that changes how Duel measures or
+# judges, Duel compares identical code: the main branch (or the pull
+# request) with itself, several times over (tasks/bias_check.rb). Duel
+# is only worth trusting if identical code compares even, so a run that
+# finds a regression fails the check, as do intervals that leave out 1
+# (the ratio of identical code) more often than their confidence allows,
+# and the summary of every benchmark's ratio across the runs shows a
+# lean (one side faster every time) that no one run calls. Duel's own
+# benchmarks, on CRuby and on JRuby (whose JIT makes each worker
+# different), and duel-redis's, whose workers each start a server.
 on:
+  pull_request:
+    paths:
+      - lib/duel/across.rb
+      - lib/duel/runner.rb
+      - lib/duel/stats.rb
+      - lib/duel/worker.rb
+      - tasks/bias_check.rb
+      - .github/workflows/bias.yml
   schedule:
     - cron: "0 5 * * *"
   workflow_dispatch:
@@ -29,6 +40,10 @@ jobs:
             directory: "."
             ruby-version: "4.0"
             runs: 10
+          - name: Duel on JRuby
+            directory: "."
+            ruby-version: jruby-10.0
+            runs: 3
           - name: duel-redis
             directory: plugins/redis
             ruby-version: "3.4"

@@ -7,8 +7,11 @@ require "tmpdir"
 # RUNS times over (default 5), and summarizes every benchmark's ratios
 # across the runs (from each run's JSON report: see docs/json.md), so a lean (one side faster every time, which no one
 # run is enough to call) shows. Identical code must compare even: it
-# fails if any run found a regression (or couldn't compare), and warns
-# if a metric's ratios lean one way more than chance would have them.
+# fails if any run found a regression (or couldn't compare), or if more
+# of a metric's intervals left out 1 (the ratio of identical code) than
+# their confidence allows (they're too narrow: see #calibration), and
+# warns if a metric's ratios lean one way more than chance would have
+# them.
 #
 #   ruby tasks/bias_check.rb [RUNS]                       # Duel's own benchmarks
 #   cd plugins/redis && ruby ../../tasks/bias_check.rb 3  # a plugin's
@@ -26,9 +29,17 @@ module BiasCheck
   ACROSS_NAME = "(across the board)"
   # A two-sided sign test's p-value below which a lean is called.
   LEAN_P = 0.01
+  # The p-value below which a metric's intervals that left out 1 are
+  # more than their confidence allows. The intervals of one run share
+  # its workers, so they're not quite independent: it's low, so that
+  # only intervals far too narrow fail.
+  CALIBRATION_P = 0.001
 
   def run(runs)
     statuses = []
+    # {metric => [intervals that left out 1, intervals]}
+    @missed = Hash.new { |hash, metric| hash[metric] = [0, 0] }
+    @confidence = nil
     # {metric => {benchmark => [ratio of each run, or nil]}}
     ratios = Hash.new { |hash, metric| hash[metric] = Hash.new { |by_name, name| by_name[name] = Array.new(runs) } }
     Dir.mktmpdir("bias") do |dir|
@@ -38,16 +49,58 @@ module BiasCheck
         $stdout.flush
         system(*COMMAND, json)
         statuses << $?.exitstatus
-        parse(read(json)).each { |metric, name, median| ratios[metric][name][run] = median }
+        report = read(json)
+        parse(report).each { |metric, name, median| ratios[metric][name][run] = median }
+        tally(report)
       end
     end
     summarize(ratios, runs)
+    narrow = calibration
     failed = statuses.each_index.reject { |run| statuses[run].zero? }
-    return 0 if failed.empty?
+    return (narrow.empty? ? 0 : 1) if failed.empty?
 
     puts "::error::Identical code didn't compare even: run #{failed.map { |run| run + 1 }.join(", ")} of #{runs} failed (exit #{failed.map { |run| statuses[run] }.join(", ")})"
     1
   end
+
+  # Counts each metric's intervals in +report+ (every benchmark's, and
+  # across the board), and those that left out 1.
+  def tally(report)
+    return unless report
+
+    @confidence = report.fetch("settings").fetch("confidence")
+    intervals = report.fetch("benchmarks").flat_map { |benchmark| benchmark.fetch("timed").map { |metric, t| [metric, t.fetch("interval")] } } +
+      report.fetch("across").map { |metric, v| [metric, v.fetch("interval")] }
+    intervals.each do |metric, interval|
+      next unless interval
+
+      low, high = interval
+      @missed[metric][0] += 1 if low > 1 || high < 1
+      @missed[metric][1] += 1
+    end
+  end
+
+  # The metrics whose intervals left out 1 more often than their
+  # confidence allows (at most 1 - confidence of them, as each covers
+  # the ratio that often at least), with an error for each: a binomial
+  # test, one-sided, at CALIBRATION_P.
+  def calibration
+    puts
+    @missed.filter_map do |metric, (missed, total)|
+      allowed = 1 - @confidence
+      p = upper_tail(missed, total, allowed)
+      puts format("%s: %d of %d intervals left out 1 (%.1f%%, at most %.1f%% expected), p=%.3g", metric, missed, total,
+        100.0 * missed / total, 100 * allowed, p)
+      next unless p < CALIBRATION_P
+
+      puts "::error title=Calibration (#{metric})::#{missed} of #{total} intervals of identical code left out 1, where " \
+        "#{(100 * @confidence).round(1)}% intervals would leave out #{format("%.1f", total * allowed)} (p=#{format("%.3g", p)}): too narrow"
+      metric
+    end
+  end
+
+  # P(X >= +k+) for X ~ Binomial(+n+, +p+).
+  def upper_tail(k, n, p) = (k..n).sum { |i| binomial(n, i) * (p**i) * ((1 - p)**(n - i)) }
 
   # The JSON report at +path+, or nil where the run wrote none (it
   # crashed, say: its exit status fails the check).

@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The JSON report says, for each timing and across the board, how many
   worker processes of each version the interval is over (`processes`),
   or `null` where it's over pairs or benchmarks.
+- The nightly bias check (`tasks/bias_check.rb`) also fails where more
+  of a metric's intervals of identical code leave out 1 than their
+  confidence allows, and runs on JRuby too, and on a pull request that
+  changes how Duel measures or judges.
 
 ### Changed
 
