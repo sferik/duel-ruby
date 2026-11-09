@@ -19,6 +19,13 @@ class RunnerTest < DuelTest
 
   def line(name, n, measures, mark: " ") = format("%s %-48s %5.1fs n=%-6d %s", mark, name, 0.0, n, measures)
 
+  # A count an iteration: to four figures, or from 9999.5 (where those
+  # would be 1e+04) a whole number, not 2.574e+04.
+  def test_number
+    assert_equal %w[0.5 12 999.5 1000 9999 10000 10000 25736 -25000],
+      [0.5, 12, 999.5, 1000.4, 9999.4, 9999.5, 10_000.0, 25_735.6, -25_000.4].map { |v| Duel::Runner.number(v) }
+  end
+
   def test_a_run
     with_fake_workers do |workers|
       workers.benchmark("a")
@@ -208,7 +215,7 @@ class RunnerTest < DuelTest
     assert_equal ["2.5µs", "1ms", "999.9µs", "1.5s", "250ns", "0.5ns"],
       [amount[2_500_000, "ns", 1000], amount[1_000_000, "ns"], amount[999_900, "ns"], amount[1_500, "ms"], amount[250, "ns"],
         amount[1, "ns", 2]]
-    assert_equal ["5e+06", "2.5 B", "3 queries"], [amount[5_000_000, nil, 0], amount[5, "B", 2], amount[3, %w[query queries]]],
+    assert_equal ["5000000", "2.5 B", "3 queries"], [amount[5_000_000, nil, 0], amount[5, "B", 2], amount[3, %w[query queries]]],
       "as of one, of none; in a unit that isn't time"
     assert_equal ["1 row", "1.5 rows", "0 rows", "1 query", "1 B"],
       [amount[2, %w[row rows], 2], amount[3, %w[row rows], 2], amount[0, %w[row rows]], amount[1, %w[query queries]], amount[1, "B"]]

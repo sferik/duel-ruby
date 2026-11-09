@@ -424,11 +424,21 @@ module Duel
 
       def self.process = java.lang.management.ManagementFactory.getOperatingSystemMXBean.getProcessCpuTime
     end
+
+    # Bytes allocated (JRuby: the JVM's count, as it has none of objects):
+    # by the benchmark thread, or by every thread.
+    # @api private
+    module Allocated
+      def self.thread = java.lang.management.ManagementFactory.getThreadMXBean.getCurrentThreadAllocatedBytes
+
+      def self.process = java.lang.management.ManagementFactory.getThreadMXBean.getTotalThreadAllocatedBytes
+    end
   end
   # simplecov:enable
 
   # The built-in metrics: their measures are named ("cpu",
-  # "instructions", "allocations"), as Config#measure takes them.
+  # "instructions", "allocations", "allocated_bytes"), as Config#measure
+  # takes them.
   # @api private
   module Metrics
     # CPU time (see Definition#cpu), in nanoseconds: what other
@@ -475,6 +485,27 @@ module Duel
       end
 
       def stop_sample = (@counter.read - @started if @counting)
+    end
+
+    # Bytes allocated (JRuby, which counts no objects): the benchmark
+    # thread's, or for a benchmark with threads of its own, every
+    # thread's (see Definition#cpu), as the JVM counts them. It's the same
+    # in every worker, once the JIT has compiled the code (it can do away
+    # with an allocation, so the count falls as it warms up), but for a
+    # sample here and there some 31 bytes an iteration apart: so more by
+    # 32 bytes an iteration, about a small object's, isn't more yet.
+    class AllocatedBytes < Metric
+      def self.measures = {"allocated_bytes" => {tolerance: 32, unit: %w[byte bytes]}}
+
+      # mutant:disable -- mutant runs on CRuby, where this is always false
+      def self.available? = RUBY_ENGINE == "jruby"
+
+      def start_sample(sample)
+        @scope = sample.benchmark.cpu
+        @started = Allocated.public_send(@scope)
+      end
+
+      def stop_sample = Allocated.public_send(@scope) - @started
     end
 
     # Ruby objects allocated (CRuby). The same code's count can differ by

@@ -50,7 +50,7 @@ class JSONReportTest < DuelTest
     end
   end
 
-  def settings_json = {"confidence" => 0.99, "limit" => 1.02, "filter" => "", "jobs" => 1, "processes" => 3, "timeout" => 60.0,
+  def settings_json = {"confidence" => 0.99, "limit" => 1.02, "filter" => "", "jobs" => 1, "processes" => 3, "timeout" => Duel::TIMEOUT,
                        "time_limit" => 1800.0, "warm" => 0.0, "force" => false}
 
   # A run that passed, with every key, and a benchmark's every key.

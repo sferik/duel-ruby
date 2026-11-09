@@ -93,6 +93,7 @@ Duel judges every benchmark on the following metrics:
 | `cpu` | The benchmark thread's CPU time (or the process's) | More than 2% slower, with 99% confidence |
 | `instructions` | Instructions retired, from the CPU's own counters | More than 1% more, with 99% confidence |
 | `allocations` | Ruby objects allocated (on CRuby) | One more per two iterations |
+| `allocated_bytes` | Bytes allocated (on JRuby), by the JVM's count | More than 32 bytes more per iteration |
 | `peak_memory` | The most resident memory (on JRuby, the JVM's heap in use), above the start, that measured work reached (not `once` or `untimed`), with garbage collection running as usual (when asked for) | More than 10% and 1 MB more |
 | Yours | See [Add your own metrics](configuration.md#add-your-own-metrics) | |
 
@@ -280,7 +281,18 @@ measures one benchmark at a time for every four CPUs (`--jobs`), not
 every two. More at once is no faster there, and takes more memory: some
 500 MB a worker.
 
-Neither has an allocation count, an instruction count, or profiles.
+JRuby counts no objects allocated, but the JVM counts the bytes each
+thread allocates, and Duel judges those instead (`allocated_bytes`).
+Once the code is warm, the count is the same in every worker, to a
+tenth of a byte an iteration, so Duel finds one more small object an
+iteration. A sample now and then is some 31 bytes an iteration more
+than the rest, so Duel takes the fewest of 10 samples for each
+version, not 3, and fails a benchmark that allocates more than 32
+bytes more an iteration: a change that makes objects bigger counts
+too. The count falls as the JIT compiles the code, since it can do
+away with an allocation that never leaves a method, so it's taken
+after the warm-up. TruffleRuby has no allocation count. Neither has
+an instruction count or profiles.
 TruffleRuby has peak memory only on Linux. JRuby measures peak memory in
 the JVM's heap in use, on any operating system, because the JVM takes
 memory for its heap ahead of time, so resident memory barely moves as

@@ -11,7 +11,8 @@ class LaneTest < DuelTest
   def config = @config ||= Duel::Config.new(File.join(tmpdir, "candidate"))
 
   # Each version, unprepared (see Duel::Side), the baseline at +base+.
-  def sides(run, base = File.join(tmpdir, "base")) = Duel::Side.unprepared(config, run, base)
+  # (On CRuby, whatever the tests run on: see #test_counts_on_jruby.)
+  def sides(run, base = File.join(tmpdir, "base")) = Duel::Side.unprepared(config, run, base).each_value { |side| side.engine = "ruby" }
 
   # A lane of fake workers, whose clock (for warming up and timing) ticks
   # once a look.
@@ -62,7 +63,7 @@ class LaneTest < DuelTest
       assert(given.all? { |resource_dir, _| File.dirname(resource_dir) == dir })
       assert_equal ["base-1", File.join(tmpdir, "base"), File.join(tmpdir, "candidate"), dir,
         {config_path: "/c/.duel.rb", env: {"A" => "base-1", "B" => "1", "C" => "2"}, timeout: 7.0, ruby: RbConfig.ruby,
-         engine: RUBY_ENGINE}], workers.made.assoc("base-1")
+         engine: "ruby"}], workers.made.assoc("base-1")
       assert_equal File.join(tmpdir, "candidate"), workers.made.assoc("head-2")[1]
       assert_equal labels, given.map(&:last).uniq.sort
       assert Dir.exist?(dir)
@@ -797,6 +798,23 @@ class LaneTest < DuelTest
 
       assert_equal({"some" => {"baseline" => 3, "candidate" => 7, "n" => 12, "tolerance" => 0.5, "allowance" => 0, "unit" => nil, "plural" => nil}}, compare(workers).first.counted)
     end
+  end
+
+  # Where a version is on JRuby, a count is the fewest of JRUBY_COUNTS
+  # samples (its bytes allocated take one of two values), not COUNTS.
+  def test_counts_on_jruby
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+      run = settings
+      on = sides(run)
+      on.fetch("candidate").engine = "jruby"
+      l = Duel::Lane.new(config, run, on)
+      l.compare("b")
+      l.stop
+
+      assert_equal 2 * 10, samples(workers).count { |*, count| count }
+    end
+    assert_equal [3, 10], [Duel::Lane::COUNTS, Duel::Lane::JRUBY_COUNTS]
   end
 
   def test_counts_only

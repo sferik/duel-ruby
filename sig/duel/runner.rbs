@@ -20,6 +20,10 @@ module Duel
   # @api private
   TIME_LIMIT: Float
 
+  # The seconds a worker may take to load, or to answer, by default.
+  # @api private
+  TIMEOUT: Float
+
   # The CPUs for each lane of workers, by default.
   # @api private
   CPUS_PER_LANE: Integer
@@ -209,6 +213,7 @@ module Duel
     MIN_ROUNDS: Integer
     PROCESS_PAIRS: Integer
     COUNTS: Integer
+    JRUBY_COUNTS: Integer
     MEMORY_SAMPLES: Integer
     PROFILE_SAMPLES: Integer
     # A process benchmark's pairs before any are measured, and its runs a
@@ -374,6 +379,9 @@ module Duel
     def sampled: (String name, Integer n, WorkerProcess base, WorkerProcess candidate, base_first: bool, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
 
     def count: (String name, Integer n, Result result) -> void
+
+    # The samples a count takes.
+    def counts: () -> Integer
 
     def peak_memory: (String name, Integer n, Result result) -> void
 
@@ -548,6 +556,12 @@ module Duel
   # Measures every benchmark, confirms what looks worse, and reports.
   # @api private
   class Runner
+    # A count to four figures, or a whole number from NUMBER.
+    def self.number: (Metric::value value) -> String
+
+    # The least count #number shows as a whole number.
+    NUMBER: Float
+
     CONFIRM: Integer
 
     # +number+ of +noun+, in its plural for any number but one.

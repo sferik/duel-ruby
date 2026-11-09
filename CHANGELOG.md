@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confidence allows, and runs on JRuby too, and on a pull request that
   changes how Duel measures or judges.
 
+- On JRuby, Duel counts the bytes each benchmark allocates
+  (`allocated_bytes`), as the JVM counts them for each thread (or every
+  thread, for a benchmark with threads of its own), and fails one that
+  allocates more than 32 bytes more an iteration. Before, JRuby had no
+  allocation count. Once the code is warm, the count is the same in
+  every worker, to a tenth of a byte an iteration, but for a sample now
+  and then some 31 bytes more, so a count on JRuby is the fewest of 10
+  samples a version, not 3.
+- On JRuby and TruffleRuby, a worker may take 5 minutes to load or to
+  answer (`--timeout`), not 1: with `-Xbatch`, 16 JVMs starting at once
+  could take longer than a minute.
+- Counts of 9999.5 or more an iteration show as whole numbers (25736, not
+  2.574e+04).
+
 ### Changed
 
 - A timing's interval is over worker processes, not pairs of samples.

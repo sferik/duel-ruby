@@ -218,6 +218,10 @@ class DuelTest < Minitest::Test
   # Whether this machine counts instructions (see Duel::Metrics::Instructions).
   INSTRUCTIONS = Duel::Metrics::Instructions.available?
 
+  # What counts a benchmark's allocations here: objects on CRuby, bytes
+  # on JRuby, and nothing elsewhere.
+  ALLOCATION_COUNTS = [Duel::Metrics::Allocations, Duel::Metrics::AllocatedBytes].select(&:available?).flat_map { |m| m.measures.keys }
+
   # The timed metrics a benchmark of +cpu+ gets here, as reported.
   def timed_metrics(cpu: :thread)
     counter = Duel::Metrics::Instructions.counter

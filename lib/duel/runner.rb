@@ -45,6 +45,13 @@ module Duel
   # @api private
   CPUS_PER_LANE = {"jruby" => 4, "truffleruby" => 4}.fetch(RUBY_ENGINE, 2)
 
+  # The seconds a worker may take to load, or to answer a request, by
+  # default (see Settings#timeout). JRuby's and TruffleRuby's JVMs take a
+  # while to start, and with -Xbatch (see Rubies::JRUBY_WORKER), they
+  # compile as they load too: 16 at once can take over a minute.
+  # @api private
+  TIMEOUT = {"jruby" => 300.0, "truffleruby" => 300.0}.fetch(RUBY_ENGINE, 60.0)
+
   # The seconds a run measures for, at most, by default (see
   # Settings#time_limit and Runner#out_of_time?): two hours, as on JRuby,
   # a benchmark can take half a minute to warm up.
@@ -56,7 +63,7 @@ module Duel
     :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit, :accepted) do
     # @type self: singleton(Settings)
     def self.defaults = new(filter: //, jobs: 1, processes: PROCESSES, limit: 1.02, confidence: 0.99, warm: nil, force: false,
-      timeout: 60.0, time_limit: TIME_LIMIT)
+      timeout: TIMEOUT, time_limit: TIME_LIMIT)
   end
 
   # One version as a run has it (see Runner#prepare), +name+d "baseline"
@@ -266,8 +273,12 @@ module Duel
     # each takes, and up to PROCESS_PAIRS pairs.
     MIN_ROUNDS = 4
     PROCESS_PAIRS = 120
-    # Counts are each version's fewest in COUNTS samples.
+    # Counts are each version's fewest in COUNTS samples, or where a
+    # version is on JRuby, JRUBY_COUNTS: its count of bytes allocated
+    # takes one of two values, some 31 bytes an iteration apart, sample by
+    # sample, and the fewest of more are the lower one.
     COUNTS = 3
+    JRUBY_COUNTS = 10
     # Peak memory is each version's least in MEMORY_SAMPLES fresh workers.
     MEMORY_SAMPLES = 3
     # A profile: PROFILE_SAMPLES samples of the benchmark (some 5,000 of
@@ -834,7 +845,7 @@ module Duel
     # Each counted measure's fewest, on each version, over COUNTS pairs of
     # samples, and what its metric said of those samples.
     def count(name, n, result)
-      samples = Array.new(COUNTS) { |i| pair(name, n, i, runs: 1, count: true) }
+      samples = Array.new(counts) { |i| pair(name, n, i, runs: 1, count: true) }
       metrics.each do |spec|
         metric = spec.fetch("name")
         base, candidate = samples.transpose.map do |side|
@@ -848,6 +859,10 @@ module Duel
         result.note(base, candidate, metric)
       end
     end
+
+    # The samples a count takes: JRUBY_COUNTS where a version is on JRuby,
+    # or else COUNTS.
+    def counts = (@sides.each_value.any? { |side| side.engine == "jruby" }) ? JRUBY_COUNTS : COUNTS
 
     # Each version's least peak memory over MEMORY_SAMPLES fresh workers
     # (a long-lived one has room left over from earlier work), turn about.
@@ -1055,6 +1070,14 @@ module Duel
     # +number+ of +noun+, in its plural for any number but one ("1
     # benchmark", "2 benchmarks").
     def self.count(number, noun, plural = "#{noun}s") = "#{number} #{(number == 1) ? noun : plural}"
+
+    # A count, an iteration's (a Float, often): to four figures, or one of
+    # NUMBER or more (where four figures would be 1e+04) as a whole number
+    # (25736 bytes, not 2.574e+04).
+    def self.number(value) = (value.abs >= NUMBER) ? value.round.to_s : format("%.4g", value)
+
+    # The least count #number shows as a whole number.
+    NUMBER = 9_999.5
 
     # Across the board (see Across): {metric => verdict}, "confirmed" in
     # those slower in a second measurement too. Set by #run.
@@ -1353,7 +1376,7 @@ module Duel
         candidate = c.fetch("candidate").fdiv(n)
         # (No unit its name ends in: "retained_objects 2", not "2 objects".)
         named = c.fetch("plural")&.then { |plural| metric.end_with?(plural.tr(" ", "_")) }
-        [format("%s %.4g%s", metric, base, (format("→%.4g", candidate) unless base == candidate)),
+        [format("%s %s%s", metric, Runner.number(base), ("→#{Runner.number(candidate)}" unless base == candidate)),
           (unit(candidate, c) unless named)].compact.join(" ")
       end
       memory = result.memory&.then { |m| ["peak_memory #{mb(m.fetch("baseline"))}→#{mb(m.fetch("candidate"))}"] }
@@ -1397,7 +1420,7 @@ module Duel
     def amount(value, n, measured)
       each = value.fdiv([n, 1].max)
       ns = Metric::TIME_UNITS[measured.fetch("unit")]
-      return [format("%.4g", each), unit(each, measured)].compact.join(" ") unless ns
+      return [Runner.number(each), unit(each, measured)].compact.join(" ") unless ns
 
       time = each * ns
       shown, size = Metric::TIME_UNITS.reverse_each.find { |_, unit_ns| time >= unit_ns } || ["ns", 1]

@@ -461,7 +461,7 @@ module Duel
         o.on("--filter REGEXP", "Only benchmarks whose names match") { |v| settings.filter = CLI.regexp(v) }
         o.on("--jobs N", Integer, "Benchmarks measured at once (default: one for every #{CPUS_PER_LANE} CPUs)") { |v| settings.jobs = v }
         o.on("--processes N", Integer, "Worker processes per version (default: #{PROCESSES})") { |v| settings.processes = v }
-        o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: 60)") { |v| settings.timeout = v }
+        o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: #{TIMEOUT.round})") { |v| settings.timeout = v }
         o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)") do |v|
           settings.time_limit = v
         end

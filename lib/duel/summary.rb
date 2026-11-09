@@ -168,7 +168,7 @@ module Duel
         if timed then format("%s %+.1f%%", metric, (timed.fetch("median") - 1) * 100)
         elsif counted
           n = counted.fetch("n")
-          format("%s %.4g → %.4g", metric, counted.fetch("baseline").fdiv(n), counted.fetch("candidate").fdiv(n))
+          "#{metric} #{Runner.number(counted.fetch("baseline").fdiv(n))} → #{Runner.number(counted.fetch("candidate").fdiv(n))}"
         else
           # (Peak memory, which grew too much.)
           memory = result.memory #: Hash[String, Integer]
@@ -247,7 +247,7 @@ module Duel
     # that grew too much.
     def counts(result)
       counted = Summary.changed_counts(result).map do |metric, (base, candidate)|
-        format("%s %.4g → %.4g", metric, base, candidate)
+        "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
       end
       if result.more_memory?
         memory = result.memory #: Hash[String, Integer]

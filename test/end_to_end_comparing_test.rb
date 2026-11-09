@@ -46,10 +46,14 @@ class EndToEndComparingTest < DuelTest
     results, out = compare(base, candidate)
     result = results.first
 
+    # (On JRuby, an Integer past a small few is an object, so more work
+    # allocates more bytes too.)
+    worse = timed_metrics + ((RUBY_ENGINE == "jruby") ? %w[allocated_bytes] : [])
+
     refute_predicate result, :passed?
-    assert_equal timed_metrics, result.regressed, "and instructions, where they're counted"
+    assert_equal worse, result.regressed, "and instructions, where they're counted"
     assert_equal Duel::Runner::CONFIRM, result.confirmations.size
-    assert_includes out, "REGRESSION work: worse #{timed_metrics.join(", ")} in every measurement"
+    assert_includes out, "REGRESSION work: worse #{worse.join(", ")} in every measurement"
     if RUBY_ENGINE == "ruby"
       assert_includes out, "where the extra CPU went"
       grew = result.profile.fetch("grew")
@@ -105,6 +109,6 @@ class EndToEndComparingTest < DuelTest
     assert_equal timed_metrics(cpu: :process), process.timed.keys
     assert_equal Duel::COUNTS_ONLY, counts.n
     assert_empty counts.timed
-    assert_equal (RUBY_ENGINE == "ruby") ? %w[allocations] : [], counts.counted.keys
+    assert_equal ALLOCATION_COUNTS, counts.counted.keys
   end
 end

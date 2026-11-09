@@ -42,11 +42,11 @@ that crashes leaves nothing behind that blocks the next run.
 
 ## A benchmark is reported as an error after a minute
 
-If a worker takes more than a minute to load or to answer, such as for a
-benchmark that hangs or that waits on a server that died, Duel stops the
-worker and reports the benchmark as an error. To change the limit, use
-`--timeout`. If a benchmark's iterations are slow, split it into
-smaller benchmarks.
+If a worker takes more than a minute (five on JRuby and TruffleRuby) to
+load or to answer, such as for a benchmark that hangs or that waits on a
+server that died, Duel stops the worker and reports the benchmark as an
+error. To change the limit, use `--timeout`. If a benchmark's iterations
+are slow, split it into smaller benchmarks.
 
 ## The run reached its time limit
 

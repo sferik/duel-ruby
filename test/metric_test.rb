@@ -460,6 +460,40 @@ class MetricTest < DuelTest
     assert_includes 100..105, counted.call { 100.times { Object.new } } - overhead, "100, and the block's own"
   end
 
+  # JRuby's bytes allocated (it counts no objects): the benchmark
+  # thread's, or for a benchmark with threads of its own, every thread's,
+  # as the JVM counts them, with 32 bytes an iteration of tolerance.
+  def test_allocated_bytes_counts_bytes
+    assert_equal([{"name" => "allocated_bytes", "kind" => "counted", "unit" => "byte", "plural" => "bytes", "floor" => 0, "unit_ns" => 1,
+                   "limit" => nil, "tolerance" => 32, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
+      Duel::Metrics::AllocatedBytes.specs)
+    assert_equal RUBY_ENGINE == "jruby", Duel::Metrics::AllocatedBytes.available?
+    assert_equal [Duel::Metrics::Instructions, Duel::Metrics::Allocations, Duel::Metrics::AllocatedBytes, Duel::Metrics::CPU],
+      Duel::Worker::BUILT_IN, "allocations (either) inside instructions, CPU time innermost"
+    bytes = Duel::Metrics::AllocatedBytes.new
+    if RUBY_ENGINE == "jruby"
+      bytes.start_sample(sample(:thread))
+      100.times { "x" * 1000 }
+
+      assert_operator bytes.stop_sample, :>=, 100 * 1000
+    else
+      readings = {thread: [100, 350], process: [1000, 1900]}
+      counter = Module.new
+      readings.each_key { |scope| counter.define_singleton_method(scope) { readings.fetch(scope).shift } }
+      Duel.const_set(:Allocated, counter)
+      begin
+        bytes.start_sample(sample(:thread))
+
+        assert_equal 250, bytes.stop_sample, "the thread's"
+        bytes.start_sample(sample(:process))
+
+        assert_equal 900, bytes.stop_sample, "every thread's"
+      ensure
+        Duel.send(:remove_const, :Allocated)
+      end
+    end
+  end
+
   def test_clocks_advance
     thread = Duel::Clock.thread
     process = Duel::Clock.process

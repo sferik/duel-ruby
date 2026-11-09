@@ -307,8 +307,16 @@ module Duel
     def self.process: () -> Integer
   end
 
+  # Bytes allocated, by the benchmark thread or by every thread (JRuby).
+  module Allocated
+    def self.thread: () -> Integer
+
+    def self.process: () -> Integer
+  end
+
   # The built-in metrics: their measures are named ("cpu",
-  # "instructions", "allocations"), as Config#measure takes them.
+  # "instructions", "allocations", "allocated_bytes"), as Config#measure
+  # takes them.
   # @api private
   module Metrics
     # CPU time, in nanoseconds.
@@ -344,6 +352,16 @@ module Duel
       @started: Integer
 
       def start_sample: (Sample _sample) -> void
+
+      def stop_sample: () -> Integer
+    end
+
+    # Bytes allocated (JRuby).
+    class AllocatedBytes < Metric
+      @scope: :thread | :process
+      @started: Integer
+
+      def start_sample: (Sample sample) -> void
 
       def stop_sample: () -> Integer
     end

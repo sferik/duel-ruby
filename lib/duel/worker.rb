@@ -18,10 +18,11 @@ module Duel
   # closed.)
   # @api private
   class Worker
-    # The built-in metrics, outermost first: allocations inside
-    # instructions, whose counter allocates as it's read (a sample's own
-    # allocations are none but the benchmark's), and CPU time innermost.
-    BUILT_IN = [Metrics::Instructions, Metrics::Allocations, Metrics::CPU].freeze
+    # The built-in metrics, outermost first: allocations (CRuby's objects,
+    # or JRuby's bytes) inside instructions, whose counter allocates as
+    # it's read (a sample's own allocations are none but the benchmark's),
+    # and CPU time innermost.
+    BUILT_IN = [Metrics::Instructions, Metrics::Allocations, Metrics::AllocatedBytes, Metrics::CPU].freeze
 
     def self.main(version_root, candidate_root, control, config_path = nil)
       config = config_path ? Duel.load_config(config_path) : (Duel.config = Config.new(candidate_root))

@@ -34,7 +34,7 @@ class WorkerTest < DuelTest
     hello = Duel::Worker.new([Calls, Unavailable]).hello
 
     assert_equal [{"name" => "a", "only" => "count", "peak_memory" => false, "process" => nil}], hello.fetch("benchmarks")
-    names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + ((RUBY_ENGINE == "ruby") ? %w[allocations] : []) + %w[cpu]
+    names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + ALLOCATION_COUNTS + %w[cpu]
 
     assert_equal names, hello.fetch("metrics").map { |m| m.fetch("name") }, "plugins outermost, CPU innermost"
     assert_equal RUBY_DESCRIPTION, hello.fetch("ruby")

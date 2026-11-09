@@ -193,9 +193,9 @@ and how it compares a project in a subdirectory of its repository, see
 ### Timeouts and exit status
 
 A benchmark that hangs, or that waits on a server that died, doesn't
-hang the run. If a worker takes more than a minute to load or to answer,
-Duel stops the worker and reports the benchmark as an error. To change
-the limit, use `--timeout`.
+hang the run. If a worker takes more than a minute (five on JRuby and
+TruffleRuby) to load or to answer, Duel stops the worker and reports the
+benchmark as an error. To change the limit, use `--timeout`.
 
 A run measures for two hours at most, not counting the builds. Past
 that, Duel starts no more measurements. A benchmark that it hasn't
