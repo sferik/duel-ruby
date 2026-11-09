@@ -462,11 +462,11 @@ module Duel
         o.on("--jobs N", Integer, "Benchmarks measured at once (default: one for every #{CPUS_PER_LANE} CPUs)") { |v| settings.jobs = v }
         o.on("--processes N", Integer, "Worker processes per version (default: #{PROCESSES})") { |v| settings.processes = v }
         o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: 60)") { |v| settings.timeout = v }
-        o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)") do |v|
+        o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)") do |v|
           settings.time_limit = v
         end
         o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: 1.02)") { |v| settings.limit = v }
-        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: until steady, up to 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)") { |v| settings.warm = v }
+        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)") { |v| settings.warm = v }
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",
           "path (default: c.ruby, or this one)") { |v| settings.ruby = (v == "version-file") ? :version_file : v }
         o.on("--force", "Compare even if nothing watched changed") { settings.force = true }

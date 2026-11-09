@@ -63,9 +63,9 @@ class CLITest < DuelTest
               --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs)
               --processes N                Worker processes per version (default: #{Duel::PROCESSES})
               --timeout SECONDS            Most a worker may take to load or answer (default: 60)
-              --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)
+              --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)
               --limit RATIO                Ratio above which a timing is slower (default: 1.02)
-              --warm SECONDS               Warm-up per benchmark, in seconds (default: until steady, up to 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)
+              --warm SECONDS               Warm-up per benchmark, in seconds (default: until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)
               --ruby version-file|PATH     Each version's Ruby: the one its version file names (.ruby-version, say), or a
                                            path (default: c.ruby, or this one)
               --force                      Compare even if nothing watched changed
@@ -196,9 +196,9 @@ class CLITest < DuelTest
   def test_defaults
     s = Dir.chdir(tmpdir) { cli.parse }
 
-    assert_equal [nil, nil, nil, //, [Etc.nprocessors / Duel::CPUS_PER_LANE, 1].max, 1.02, 0.99, false, nil, 60.0, 1800.0],
+    assert_equal [nil, nil, nil, //, [Etc.nprocessors / Duel::CPUS_PER_LANE, 1].max, 1.02, 0.99, false, nil, 60.0, 7200.0],
       [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.confidence, s.force, s.config_path, s.timeout, s.time_limit]
-    assert_equal({"jruby" => 6, "truffleruby" => 6}.fetch(RUBY_ENGINE, 8), s.processes, "fewer of a JVM's")
+    assert_equal({"jruby" => 8, "truffleruby" => 8}.fetch(RUBY_ENGINE, 12), s.processes, "fewer of a JVM's")
   end
 
   def test_finds_dot_duel_rb

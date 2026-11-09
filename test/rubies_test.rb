@@ -201,6 +201,59 @@ class RubiesTest < DuelTest
     assert_nil Duel::Rubies.command("duel-no-such-program")
   end
 
+  # A Ruby's engine: the runner's own, or what the Ruby says (without the
+  # runner's RUBYOPT, which may load its bundle), or "ruby" where it can't
+  # say.
+  def test_engine
+    assert_equal RUBY_ENGINE, stub(IO, :popen, ->(*) { flunk "asked the runner's" }) { Duel::Rubies.engine(RbConfig.ruby) }, "its own"
+    jruby = File.join(tmpdir, "jruby")
+    File.write(jruby, %(#!/bin/sh\necho noise >&2\n[ -z "$RUBYOPT" ] && [ "$*" = "--disable-gems -e print RUBY_ENGINE" ] && printf jruby\n))
+    FileUtils.chmod(0o755, jruby)
+
+    found = nil
+    _, err = capture_subprocess_io do
+      found = stub(ENV, :[], ->(name) { (name == "RUBYOPT") ? "-rbundler/setup" : nil }) { Duel::Rubies.engine(jruby) }
+    end
+
+    assert_equal "jruby", found
+    assert_empty err, "what it says on stderr isn't shown"
+    failing = File.join(tmpdir, "failing")
+    File.write(failing, "#!/bin/sh\nprintf jruby\nexit 1\n")
+    FileUtils.chmod(0o755, failing)
+
+    assert_equal "ruby", Duel::Rubies.engine(failing), "it failed"
+    assert_equal "ruby", Duel::Rubies.engine(File.join(tmpdir, "missing")), "it isn't there"
+  end
+
+  # On JRuby, a worker's JVM compiles in the foreground, with the serial
+  # collector, after whatever JRUBY_OPTS has (the environment's, or else
+  # the runner's), but without a second collector, or the same option
+  # twice. On any other Ruby, the environment is as it is.
+  def test_worker_environment
+    env = {"E" => "1"}
+
+    assert_same env, Duel::Rubies.worker_environment(env, "ruby", "--dev")
+    assert_equal({"E" => "1", "JRUBY_OPTS" => "-J-Xbatch -J-XX:+UseSerialGC"}, Duel::Rubies.worker_environment(env, "jruby", nil))
+    assert_equal "--dev -J-Xbatch -J-XX:+UseSerialGC", Duel::Rubies.worker_environment(env, "jruby", "--dev").fetch("JRUBY_OPTS")
+    assert_equal "-J-Xmx2g -J-Xbatch -J-XX:+UseSerialGC",
+      Duel::Rubies.worker_environment({"JRUBY_OPTS" => "-J-Xmx2g"}, "jruby", "--dev").fetch("JRUBY_OPTS"), "the environment's, over the runner's"
+    assert_equal "-J-Xbatch -J-XX:+UseSerialGC", Duel::Rubies.worker_environment({"JRUBY_OPTS" => nil}, "jruby", "--dev").fetch("JRUBY_OPTS"),
+      "unset"
+    assert_equal "-J-XX:+UseG1GC -J-Xbatch", Duel::Rubies.worker_environment(env, "jruby", "-J-XX:+UseG1GC").fetch("JRUBY_OPTS"), "one collector"
+    assert_equal "-J-Xbatch -J-XX:+UseSerialGC", Duel::Rubies.worker_environment(env, "jruby", "-J-Xbatch").fetch("JRUBY_OPTS"), "once each"
+    assert_equal "-J-XX:+UseSerialGC -J-Xbatch", Duel::Rubies.worker_environment(env, "jruby", "-J-XX:+UseSerialGC").fetch("JRUBY_OPTS")
+    assert_equal({"E" => "1"}, env, "unchanged")
+    saved = ENV.fetch("JRUBY_OPTS", nil)
+    ENV["JRUBY_OPTS"] = "--dev"
+
+    assert_equal "--dev -J-Xbatch -J-XX:+UseSerialGC", Duel::Rubies.worker_environment(env, "jruby").fetch("JRUBY_OPTS"), "the runner's"
+    ENV.delete("JRUBY_OPTS")
+
+    assert_equal "-J-Xbatch -J-XX:+UseSerialGC", Duel::Rubies.worker_environment(env, "jruby").fetch("JRUBY_OPTS"), "none"
+  ensure
+    ENV["JRUBY_OPTS"] = saved
+  end
+
   # A version's processes on another Ruby than the runner's get its
   # directory first on PATH, and none of the runner's Ruby's variables.
   def test_environment

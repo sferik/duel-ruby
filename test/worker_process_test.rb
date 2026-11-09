@@ -43,7 +43,8 @@ class WorkerProcessTest < DuelTest
   # A WorkerProcess whose spawn runs +command+ instead, answering what
   # the block answers each request with (nil: it closes the connection),
   # after +hello+ (nil: nothing, ever).
-  def worker_process(command = %w[sleep 30], hello: HELLO, config_path: nil, timeout: 5.0, delay: 0, ruby: RbConfig.ruby, &serve)
+  def worker_process(command = %w[sleep 30], hello: HELLO, config_path: nil, timeout: 5.0, delay: 0, ruby: RbConfig.ruby, engine: "ruby",
+    &serve)
     @spawned = []
     real = Process.method(:spawn)
     spawned = @spawned
@@ -64,7 +65,7 @@ class WorkerProcessTest < DuelTest
     end
     stub(Process, :spawn, fake) do
       Duel::WorkerProcess.new("head-1", "/base", "/candidate", @dir, config_path: config_path, env: {"E" => "1"},
-        timeout: timeout, ruby: ruby)
+        timeout: timeout, ruby: ruby, engine: engine)
     end.tap { |worker| @workers << worker }
   end
 
@@ -126,10 +127,11 @@ class WorkerProcessTest < DuelTest
   def test_a_ruby_of_its_own_and_its_processes
     ruby = File.join(tmpdir, "ruby").tap { |path| File.write(path, "") }
     worker = stub(Duel::WorkerProcess, :load_path, ->(given) { ["/lib-for-#{File.basename(given)}"] }) do
-      worker_process(%w[sleep 0.2], ruby: ruby)
+      worker_process(%w[sleep 0.2], ruby: ruby, engine: "jruby")
     end
 
     assert_equal [ruby, "-I", "/lib-for-ruby", "-r"], @spawned.first.first[1, 4]
+    assert_equal Duel::Rubies.worker_environment({"E" => "1"}, "jruby"), @spawned.first.first.first, "on JRuby, the JVM's options"
     made = []
     runs = Struct.new(:log) do
       def run(command) = (log << command) && {"timed" => {}}

@@ -17,6 +17,19 @@ module Duel
     # The Ruby that +choice+ gives the version +name+d at +root+.
     def self.find: (Config::ruby choice, String root, String name) -> String
 
+    # The JVM's options for a JRuby worker.
+    JRUBY_WORKER: Array[String]
+
+    # A JVM option that chooses its garbage collector.
+    GARBAGE_COLLECTOR: Regexp
+
+    # The engine of +ruby+ (RUBY_ENGINE).
+    def self.engine: (String ruby) -> String
+
+    # What a worker on +engine+ starts with: +env+, and on JRuby, the
+    # JVM's options for a worker.
+    def self.worker_environment: (Hash[String, String?] env, String engine, ?String? inherited) -> Hash[String, String?]
+
     # Whether +ruby+ is the runner's own.
     def self.runner?: (String ruby) -> bool
 

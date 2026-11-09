@@ -17,8 +17,8 @@ never on noise, so that it can gate every pull request:
   only ever adds time. Garbage collection is kept out of samples, and
   its cost shows in the allocation count instead, which is exact.
 - **Side by side, many times over.** The two versions run in worker
-  processes of their own, at the same time on the same machine: eight
-  of each by default, or six on JRuby and TruffleRuby, whose workers
+  processes of their own, at the same time on the same machine: twelve
+  of each by default, or eight on JRuby and TruffleRuby, whose workers
   are JVMs. They take turns, one sample from each in alternating order,
   in rounds. Each round takes a sample from every worker, and pairs
   each baseline worker with a different candidate worker than the
@@ -40,7 +40,7 @@ never on noise, so that it can gate every pull request:
   An interval over the pairs would be as narrow as if every pair had
   processes of its own, and with identical code on both sides, it
   would often leave out 1. Duel takes rounds until the interval
-  settles the question, from the second round on, and up to some 60
+  settles the question, from the fourth round on, and up to some 120
   pairs. Duel reports a timing that's still too close to the limit to
   call, and doesn't fail on it.
 
@@ -237,7 +237,7 @@ when the gems are installed in the project's directory, as
 ## JIT compilers
 
 If YJIT is on in a worker, Duel runs each benchmark until it's steady
-before it measures it, for up to two seconds. A small library's methods
+before it measures it, for up to ten seconds. A small library's methods
 are compiled within Duel's first samples, but in a big app, YJIT
 compiles a method only after 120 calls. YJIT can be on because you
 turned it on (`RUBY_YJIT_ENABLE=1`, for example), or because your code
@@ -253,20 +253,29 @@ a set time instead, use `--warm`.
 ### JRuby and TruffleRuby
 
 JRuby's and TruffleRuby's JIT compilers keep compiling for seconds, so
-Duel runs each benchmark until it's steady, for up to five seconds,
-before it measures it (`--warm`). Code that a JIT compiles quickly is
-steady in a few seconds, but some code is still several times faster
-after five seconds than it was. Each worker's JIT also compiles the same
-code a little differently, so one worker can run a benchmark 10% faster
-or slower than another for its whole life, however long it warms up.
-Duel's interval over workers is as wide as that makes it, so on JRuby
-and TruffleRuby, a CPU-time interval is often 10% wide or more, and Duel
-leaves all but large timing regressions unsettled there. It doesn't fail
-identical code on that noise. An interval over the pairs would be
-narrower, but it would often leave out 1 for identical code.
+Duel runs each benchmark until it's steady, for up to a minute, before
+it measures it (`--warm`). Code that a JIT compiles quickly is steady
+in a few seconds, but some code is still several times faster after
+five seconds than it was, and steady only after 10 or 20.
+
+Each JVM's JIT also compiles the same code a little differently, so one
+worker can run a benchmark faster or slower than another for its whole
+life, however long it warms up. On JRuby, Duel starts each worker's JVM
+with `-Xbatch`, which compiles in the foreground, so what it compiles is
+less a matter of timing, and with the serial garbage collector, which
+runs no threads of its own beside the code. That makes the workers about
+twice as alike, but a CPU-time interval on JRuby is still some 5% to 8%
+wide, as wide as the workers make it, so Duel leaves a timing regression
+of a few percent unsettled there, where it would find it on CRuby. It
+doesn't fail identical code on that noise: an interval over the pairs
+would be narrower, but it would often leave out 1 for identical code.
+The options come after any in `JRUBY_OPTS`, and Duel doesn't add the
+serial collector where `JRUBY_OPTS` chooses another. The processes a
+process benchmark starts don't get them, as their boot is what's
+measured.
 
 Their workers are big JVMs, and their compilers keep other CPUs busy,
-so Duel starts six workers of each version rather than eight, and
+so Duel starts eight workers of each version rather than twelve, and
 measures one benchmark at a time for every four CPUs (`--jobs`), not
 every two. More at once is no faster there, and takes more memory: some
 500 MB a worker.

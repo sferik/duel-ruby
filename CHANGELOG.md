@@ -38,16 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left out 1 several times as often as 99% intervals should. Each
   worker's median is now a sample, and the interval is the Mann-Whitney
   interval for the ratio of the candidate's workers to the baseline's.
-  Duel takes rounds of a sample from every worker, and starts 8 workers
-  of each version by default (6 on JRuby and TruffleRuby). On CRuby,
-  CPU-time intervals are about as wide as before, and instruction
-  counts' (which a process repeats almost exactly) a little wider. On
-  JRuby, they're some three times as wide, as wide as each JVM's JIT
-  makes them, so Duel leaves more timings there unsettled. With fewer
-  than 5 workers of each version (`--processes`, and
-  `Duel::Testing.compare`'s 2), and for a process benchmark, the
-  interval is over the pairs, as before, and the first line of the
-  output says which.
+  Duel takes rounds of a sample from every worker, up to some 120
+  pairs, and starts 12 workers of each version by default (8 on JRuby
+  and TruffleRuby). CPU-time intervals are about as wide as before, or
+  narrower, and instruction counts' (which a process repeats almost
+  exactly) a little wider. On JRuby, they're some 5% to 8% wide, as
+  wide as each JVM's JIT makes them, so Duel leaves smaller timing
+  regressions there unsettled. With fewer than 5 workers of each version
+  (`--processes`, and `Duel::Testing.compare`'s 2), and for a process
+  benchmark, the interval is over the pairs, as before, and the first
+  line of the output says which.
 - Across the board, the interval is over the workers too: each worker's
   score is how much faster or slower it was than its lane's other
   workers, at the median of the benchmarks it measured. A worker whose
@@ -56,9 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Without `--warm`, each worker warms a benchmark up until it's steady
   (the median of its samples over each of three half seconds in a row
   is no more than 1% faster than over the last half second that was),
-  for up to the 5 seconds on JRuby and TruffleRuby, or 2 with YJIT on,
-  that it took every time before. `--warm` still warms up for the time
+  for up to a minute on JRuby and TruffleRuby, or 10 seconds with YJIT
+  on. Before, it warmed up for 5 seconds, or 2, every time, and on
+  JRuby, some code was still several times faster after that, so it
+  was measured while it got faster. `--warm` still warms up for the time
   it says.
+- On JRuby, each worker's JVM compiles in the foreground (`-Xbatch`) and
+  collects garbage with the serial collector, after any options in
+  `JRUBY_OPTS` (and without the serial collector where they choose
+  another). Each JVM's JIT compiles the same code a little differently,
+  and that made JRuby's intervals over workers twice as wide.
+- A run measures for two hours at most by default (`--time-limit`), not
+  half an hour, as on JRuby a benchmark can take half a minute to warm
+  up.
 - On JRuby and TruffleRuby, Duel measures one benchmark at a time for
   every four CPUs (`--jobs`), not every two: their JIT compilers keep the
   other CPUs busy, so more were no faster, and each worker is a JVM of

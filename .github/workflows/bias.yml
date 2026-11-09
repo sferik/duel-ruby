@@ -30,7 +30,7 @@ jobs:
   aa:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120 # (JRuby's warm-ups take a while)
     strategy:
       fail-fast: false
       matrix:

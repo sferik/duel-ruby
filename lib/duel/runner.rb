@@ -15,26 +15,27 @@ require_relative "process_sample"
 
 module Duel
   # The most seconds each benchmark runs before it's measured, unless
-  # --warm says: until each worker is steady (see Lane#steady), for up to
-  # this long. JRuby's and TruffleRuby's JITs keep compiling for seconds.
+  # --warm says: until each worker is steady (see Lane#steady), as long
+  # as that takes. JRuby's and TruffleRuby's JITs keep compiling for
+  # seconds, and some code is still several times faster at 5 than it
+  # was, so they get up to a minute.
   # @api private
-  JIT_WARM = {"jruby" => 5.0, "truffleruby" => 5.0}.fetch(RUBY_ENGINE, 0.0)
+  JIT_WARM = {"jruby" => 60.0, "truffleruby" => 60.0}.fetch(RUBY_ENGINE, 0.0)
 
   # The most seconds each benchmark runs before it's measured where a
   # worker has YJIT on (an app may turn it on as it boots, as Rails
-  # does), unless --warm says. A small library's methods are compiled within the
-  # warm-up samples, but a big app's only after 120 calls each, more than
-  # a slow benchmark's warm-up samples make.
+  # does), unless --warm says. A small library's methods are compiled
+  # within the warm-up samples, but a big app's only after 120 calls
+  # each, more than a slow benchmark's warm-up samples make.
   # @api private
-  YJIT_WARM = 2.0
+  YJIT_WARM = 10.0
 
   # Worker processes of each version, by default: enough for an interval
   # over processes (see Lane#judge_processes), which takes 5 at 99%, and
   # more, as it narrows with each. JRuby's and TruffleRuby's are JVMs,
-  # slow to start and big, and each warms up on every benchmark, so
-  # they get fewer.
+  # slow to start and big (some 500 MB), so they get fewer.
   # @api private
-  PROCESSES = {"jruby" => 6, "truffleruby" => 6}.fetch(RUBY_ENGINE, 8)
+  PROCESSES = {"jruby" => 8, "truffleruby" => 8}.fetch(RUBY_ENGINE, 12)
 
   # The CPUs for each lane of workers, by default (see CLI#parse): half
   # the CPUs make lanes, so that each lane's pair of workers has a CPU of
@@ -45,8 +46,9 @@ module Duel
   CPUS_PER_LANE = {"jruby" => 4, "truffleruby" => 4}.fetch(RUBY_ENGINE, 2)
 
   # The seconds a run measures for, at most, by default (see
-  # Settings#time_limit and Runner#out_of_time?).
-  TIME_LIMIT = 1800.0
+  # Settings#time_limit and Runner#out_of_time?): two hours, as on JRuby,
+  # a benchmark can take half a minute to warm up.
+  TIME_LIMIT = 7200.0
 
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
@@ -62,13 +64,13 @@ module Duel
   # (Config#ruby), and what they get in their environment (that Ruby's,
   # and what its Config#prepare(:version) blocks gave it).
   # @api private
-  Side = Struct.new(:name, :root, :ruby, :env) do
+  Side = Struct.new(:name, :root, :ruby, :env, :engine) do
     # @type self: singleton(Side)
 
     # Each version with nothing prepared: its tree, on the runner's Ruby.
     def self.unprepared(config, settings, base_root)
-      {"baseline" => new("baseline", File.expand_path(base_root), RbConfig.ruby, {}),
-       "candidate" => new("candidate", File.expand_path(settings.candidate_dir || config.root), RbConfig.ruby, {})}
+      {"baseline" => new("baseline", File.expand_path(base_root), RbConfig.ruby, {}, RUBY_ENGINE),
+       "candidate" => new("candidate", File.expand_path(settings.candidate_dir || config.root), RbConfig.ruby, {}, RUBY_ENGINE)}
     end
   end
 
@@ -121,9 +123,12 @@ module Duel
     end
 
     # +timeout+: the seconds it may take to load, or to answer a request,
-    # before it's taken for hung (and killed). It runs on +ruby+, with
-    # +env+.
-    def initialize(label, root, candidate_root, dir, config_path:, env:, timeout:, ruby:)
+    # before it's taken for hung (and killed). It runs on +ruby+ (whose
+    # engine is +engine+), with +env+, and on JRuby, the JVM's options for
+    # a worker (see Rubies.worker_environment), not given to the processes
+    # it starts for a process benchmark (see #run): their boot is measured
+    # as it is.
+    def initialize(label, root, candidate_root, dir, config_path:, env:, timeout:, ruby:, engine:)
       @label = label
       @timeout = timeout
       @root = root
@@ -135,7 +140,7 @@ module Duel
       # (A nil config_path is left out. And the worker gets no other
       # worker's connection: TruffleRuby's sockets aren't close-on-exec,
       # and one left open in another worker would keep it from ending.)
-      @pid = Process.spawn(env, ruby, *WorkerProcess.load_path(ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/worker",
+      @pid = Process.spawn(Rubies.worker_environment(env, engine), ruby, *WorkerProcess.load_path(ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/worker",
         "-e", "Duel::Worker.main(*ARGV)", root, candidate_root, control, *[config_path].compact, in: File::NULL, close_others: true)
       @socket = accept(server, control)
       hello = read
@@ -257,8 +262,10 @@ module Duel
     STEP = 10
     MAX_PAIRS = 60
     # A benchmark judged by process (see #judge_processes) is decided from
-    # its MIN_ROUNDS-th round of a sample from every worker.
-    MIN_ROUNDS = 2
+    # its MIN_ROUNDS-th round of a sample from every worker, a sample
+    # each takes, and up to PROCESS_PAIRS pairs.
+    MIN_ROUNDS = 4
+    PROCESS_PAIRS = 120
     # Counts are each version's fewest in COUNTS samples.
     COUNTS = 3
     # Peak memory is each version's least in MEMORY_SAMPLES fresh workers.
@@ -389,7 +396,7 @@ module Duel
         env = Resource.environment(label, env, block.call(resource))
       end
       worker = WorkerProcess.new(label, version.root, @sides.fetch("candidate").root, @dir,
-        config_path: @settings.config_path, env: env, timeout: @settings.timeout, ruby: version.ruby)
+        config_path: @settings.config_path, env: env, timeout: @settings.timeout, ruby: version.ruby, engine: version.engine)
       keep(@workers, worker)
       worker
     end
@@ -708,9 +715,9 @@ module Duel
       end
     end
 
-    # The most rounds of +k+ workers' pairs: as many as make MAX_PAIRS
-    # pairs, and MIN_ROUNDS at least.
-    def rounds(k) = [MAX_PAIRS / k, MIN_ROUNDS].max
+    # The most rounds of +k+ workers' pairs: as many as make
+    # PROCESS_PAIRS pairs, and MIN_ROUNDS at least.
+    def rounds(k) = [PROCESS_PAIRS / k, MIN_ROUNDS].max
 
     # Each worker's median, by version, of +values+ (each worker's
     # measures, by version).
@@ -1179,6 +1186,7 @@ module Duel
       Side.unprepared(@config, @settings, @base_root).transform_values do |side|
         side.ruby = Rubies.find(choice, side.root, side.name)
         side.env = Rubies.environment(side.ruby)
+        side.engine = Rubies.engine(side.ruby)
         @config.prepares.fetch(:version).each_with_index do |block, i|
           resource = Resource.new(File.join(@dir, "#{side.label}-#{i + 1}"), side.label, side.root, timeout: @settings.timeout,
             cache: File.join(@config.state, "cache"), ruby: side.ruby, env: side.env)

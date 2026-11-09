@@ -10,7 +10,7 @@ them query the database, render views, or allocate more.
 
 ```sh
 $ bin/rake duel
-Comparing 3 benchmarks, 2 at a time: baseline /src/.8e2f1c4 against candidate /src/my_app (slower: a 99.0% interval above 1.02, over 8 worker processes of each version)
+Comparing 3 benchmarks, 2 at a time: baseline /src/.8e2f1c4 against candidate /src/my_app (slower: a 99.0% interval above 1.02, over 12 worker processes of each version)
   posts: index        2.7s n=4   cpu 1.004 [0.991, 1.018] same  active_record_queries 1→2  rails_views 4→7  allocations 988→1530
 ...
 REGRESSION posts: index: worse active_record_queries, rails_views, allocations in every measurement
@@ -451,7 +451,7 @@ and the bundle, in the app's directory (`working-directory`).
 ## YJIT
 
 Rails 7.2 and later turn YJIT on as the app boots. When YJIT is on,
-Duel warms each benchmark up until it's steady, for up to two seconds,
+Duel warms each benchmark up until it's steady, for up to ten seconds,
 before it measures it, so that YJIT has compiled your app's code first.
 
 ## Requirements

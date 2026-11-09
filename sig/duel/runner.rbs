@@ -85,12 +85,14 @@ module Duel
     attr_accessor root: String
     attr_accessor ruby: String
     attr_accessor env: Hash[String, String?]
+    # Its Ruby's engine (RUBY_ENGINE).
+    attr_accessor engine: String
 
     # What each version's workers are named for: "base" and "head", as
     # long as each other.
     LABELS: Hash[String, String]
 
-    def self.new: (String name, String root, String ruby, Hash[String, String?] env) -> instance
+    def self.new: (String name, String root, String ruby, Hash[String, String?] env, String engine) -> instance
 
     # Each version with nothing prepared: its tree, on the runner's Ruby.
     def self.unprepared: (Config config, Settings settings, String base_root) -> Hash[String, Side]
@@ -158,7 +160,7 @@ module Duel
     def self.load_path: (String ruby, ?specs: Hash[String, Gem::BasicSpecification]) -> Array[String]
 
     def initialize: (String label, String root, String candidate_root, String dir, config_path: String?,
-                     env: Hash[String, String?], timeout: Float, ruby: String) -> void
+                     env: Hash[String, String?], timeout: Float, ruby: String, engine: String) -> void
 
     # Sends a request, and returns the reply, or raises Failed with its
     # error.
@@ -205,6 +207,7 @@ module Duel
     # The round of a sample from every worker from which a benchmark
     # judged by process is decided.
     MIN_ROUNDS: Integer
+    PROCESS_PAIRS: Integer
     COUNTS: Integer
     MEMORY_SAMPLES: Integer
     PROFILE_SAMPLES: Integer

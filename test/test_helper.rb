@@ -231,13 +231,15 @@ class DuelTest < Minitest::Test
     duel("work") { Sample.work }
   RUBY
 
-  # The defaults, but one lane, no warming up, and three workers of each
+  # The defaults, but one lane, no warming up, three workers of each
   # version (so pairs, too few for an interval over processes: see
-  # Lane#judge_processes), unless +overrides+ say.
+  # Lane#judge_processes), and half an hour at most, unless +overrides+
+  # say.
   def settings(**overrides)
     Duel::Settings.defaults.tap do |s|
       s.jobs = 1
       s.processes = 3
+      s.time_limit = 1800.0
       s.warm = 0.0
       overrides.each { |key, value| s[key] = value }
     end

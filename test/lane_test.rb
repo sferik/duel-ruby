@@ -61,7 +61,8 @@ class LaneTest < DuelTest
         "a directory of each resource's own"
       assert(given.all? { |resource_dir, _| File.dirname(resource_dir) == dir })
       assert_equal ["base-1", File.join(tmpdir, "base"), File.join(tmpdir, "candidate"), dir,
-        {config_path: "/c/.duel.rb", env: {"A" => "base-1", "B" => "1", "C" => "2"}, timeout: 7.0, ruby: RbConfig.ruby}], workers.made.assoc("base-1")
+        {config_path: "/c/.duel.rb", env: {"A" => "base-1", "B" => "1", "C" => "2"}, timeout: 7.0, ruby: RbConfig.ruby,
+         engine: RUBY_ENGINE}], workers.made.assoc("base-1")
       assert_equal File.join(tmpdir, "candidate"), workers.made.assoc("head-2")[1]
       assert_equal labels, given.map(&:last).uniq.sort
       assert Dir.exist?(dir)
@@ -332,9 +333,9 @@ class LaneTest < DuelTest
       result, l = compare(workers, processes: 5)
       cpu = result.timed.fetch("cpu")
 
-      assert_equal({"median" => 1.0, "limit" => 1.02, "across" => true, "interval" => [1.0, 1.0], "pairs" => 10, "processes" => 5,
-                    "verdict" => "same", "baseline" => 1_200_000, "candidate" => 1_200_000, "unit" => "ns", "plural" => "ns"}, cpu)
-      rounds = (0...2).flat_map do |round|
+      assert_equal({"median" => 1.0, "limit" => 1.02, "across" => true, "interval" => [1.0, 1.0], "pairs" => 20, "processes" => 5,
+                    "verdict" => "same", "baseline" => 1_200_000.0, "candidate" => 1_200_000.0, "unit" => "ns", "plural" => "ns"}, cpu)
+      rounds = (0...4).flat_map do |round|
         (0...5).map do |i|
           pair = ["base-#{i + 1}", "head-#{((i + round) % 5) + 1}"]
           (i + round).even? ? pair : pair.reverse
@@ -343,7 +344,7 @@ class LaneTest < DuelTest
 
       assert_equal rounds, samples(workers).select { |_, _, runs| runs == 5 }.drop(10).map(&:first).each_slice(2).to_a
       assert(samples(workers).select { |_, _, runs| runs == 5 }.none? { |*, count| count }, "timed, not counted")
-      assert_equal({"cpu" => {"lane" => l.instance_variable_get(:@id), "baseline" => [1_200_000] * 5, "candidate" => [1_200_000] * 5}},
+      assert_equal({"cpu" => {"lane" => l.instance_variable_get(:@id), "baseline" => [1_200_000.0] * 5, "candidate" => [1_200_000.0] * 5}},
         result.processes)
     end
   end
@@ -354,7 +355,7 @@ class LaneTest < DuelTest
       workers.per_iteration["candidate"] = 110_000
       cpu = compare(workers, processes: 5).first.timed.fetch("cpu")
 
-      assert_equal ["slower", 10, [1.1, 1.1]], cpu.values_at("verdict", "pairs", "interval")
+      assert_equal ["slower", 20, [1.1, 1.1]], cpu.values_at("verdict", "pairs", "interval")
       assert_in_delta 1.1, cpu.fetch("median"), 1e-12
     end
   end
@@ -374,7 +375,7 @@ class LaneTest < DuelTest
       result, = compare(workers, processes: 5)
       cpu = result.timed.fetch("cpu")
 
-      assert_equal ["undecided", 60], cpu.values_at("verdict", "pairs")
+      assert_equal ["undecided", 120], cpu.values_at("verdict", "pairs")
       low, high = cpu.fetch("interval")
 
       assert_operator low, :<, 0.95
@@ -412,7 +413,7 @@ class LaneTest < DuelTest
       nothing = result.timed.fetch("nothing")
 
       assert_equal [1.0, [1.0, 1.0], "same", false], nothing.values_at("median", "interval", "verdict", "across")
-      assert_equal({"baseline" => "said by base-5", "candidate" => "said by head-1"}, result.details.fetch("cpu"))
+      assert_equal({"baseline" => "said by base-5", "candidate" => "said by head-3"}, result.details.fetch("cpu"))
     end
   end
 
@@ -434,7 +435,7 @@ class LaneTest < DuelTest
     with_fake_workers do |workers|
       l = lane(workers, processes: 1)
 
-      assert_equal [12, 10, 7, 2, 2], [5, 6, 8, 30, 31].map { |k| l.send(:rounds, k) }
+      assert_equal [24, 20, 15, 4, 4], [5, 6, 8, 30, 31].map { |k| l.send(:rounds, k) }
     ensure
       l&.stop
     end
@@ -685,7 +686,7 @@ class LaneTest < DuelTest
 
       assert_in_delta 0.0, warm.call(0.0)
     end
-    assert_in_delta 2.0, Duel::YJIT_WARM
+    assert_in_delta 10.0, Duel::YJIT_WARM
   end
 
   # Without --warm, each worker warms up until the median of its samples
@@ -925,14 +926,16 @@ class LaneVersionsTest < DuelTest
       given << [r.name, r.root, r.ruby]
       {"R" => r.name}
     end
-    sides = {"baseline" => Duel::Side.new("baseline", "/b", "/ruby-b", {"V" => "b"}),
-             "candidate" => Duel::Side.new("candidate", "/c", "/ruby-c", {"V" => "c"})}
+    sides = {"baseline" => Duel::Side.new("baseline", "/b", "/ruby-b", {"V" => "b"}, "jruby"),
+             "candidate" => Duel::Side.new("candidate", "/c", "/ruby-c", {"V" => "c"}, "ruby")}
     with_fake_workers do |workers|
       Duel::Lane.open(config, settings(processes: 1), sides) { nil }
 
       assert_equal ["base-1", "/b", "/c"], workers.made.assoc("base-1").first(3)
-      assert_equal({env: {"V" => "b", "R" => "base-1"}, ruby: "/ruby-b"}, workers.made.assoc("base-1").last.slice(:env, :ruby))
-      assert_equal({env: {"V" => "c", "R" => "head-1"}, ruby: "/ruby-c"}, workers.made.assoc("head-1").last.slice(:env, :ruby))
+      assert_equal({env: {"V" => "b", "R" => "base-1"}, ruby: "/ruby-b", engine: "jruby"},
+        workers.made.assoc("base-1").last.slice(:env, :ruby, :engine))
+      assert_equal({env: {"V" => "c", "R" => "head-1"}, ruby: "/ruby-c", engine: "ruby"},
+        workers.made.assoc("head-1").last.slice(:env, :ruby, :engine))
       assert_equal [["base-1", "/b", "/ruby-b"], ["head-1", "/c", "/ruby-c"]], given.sort
       assert_equal ["b\n", "c\n"], %w[base-1 head-1].map { |name| File.read(File.join(tmpdir, name)) }
     end
@@ -942,8 +945,8 @@ class LaneVersionsTest < DuelTest
   def test_the_versions_unprepared
     sides = Duel::Side.unprepared(config, settings(candidate_dir: File.join(tmpdir, "x", "..", "other")), File.join(tmpdir, "y", "..", "b"))
 
-    assert_equal({"baseline" => Duel::Side.new("baseline", File.join(tmpdir, "b"), RbConfig.ruby, {}),
-                  "candidate" => Duel::Side.new("candidate", File.join(tmpdir, "other"), RbConfig.ruby, {})}, sides)
+    assert_equal({"baseline" => Duel::Side.new("baseline", File.join(tmpdir, "b"), RbConfig.ruby, {}, RUBY_ENGINE),
+                  "candidate" => Duel::Side.new("candidate", File.join(tmpdir, "other"), RbConfig.ruby, {}, RUBY_ENGINE)}, sides)
     assert_equal File.join(tmpdir, "candidate"), Duel::Side.unprepared(config, settings, base).fetch("candidate").root
   end
 

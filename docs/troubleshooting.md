@@ -50,7 +50,7 @@ smaller benchmarks.
 
 ## The run reached its time limit
 
-A run measures for 30 minutes at most (`--time-limit`). Past that, Duel
+A run measures for two hours at most (`--time-limit`). Past that, Duel
 starts no more measurements: it fails the benchmarks it hasn't measured,
 and judges each benchmark that looked worse on the measurements it has.
 The report starts the list of what it left undone with `TIME LIMIT`.

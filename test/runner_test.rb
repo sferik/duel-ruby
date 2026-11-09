@@ -291,6 +291,22 @@ class RunnerTest < DuelTest
 
   # --ruby over c.ruby. A Ruby that isn't there fails before any worker
   # starts.
+  # Each version's Ruby's engine, as the Ruby says (for a JRuby worker's
+  # JVM options: see Rubies.worker_environment).
+  def test_each_versions_engine
+    jruby = File.join(tmpdir, "jruby")
+    File.write(jruby, "#!/bin/sh\nprintf jruby\n")
+    FileUtils.chmod(0o755, jruby)
+    config = Duel::Config.new(candidate)
+    runner = Duel::Runner.new(config, settings, "base", out: StringIO.new)
+    runner.instance_variable_set(:@dir, tmpdir)
+
+    assert_equal [RUBY_ENGINE] * 2, runner.send(:prepare).values.map(&:engine)
+    config.ruby = jruby
+
+    assert_equal %w[jruby jruby], runner.send(:prepare).values.map(&:engine)
+  end
+
   def test_each_versions_ruby_as_the_settings_say
     config = Duel::Config.new(candidate)
     config.ruby = "/nope/a"

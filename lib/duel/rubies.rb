@@ -35,6 +35,21 @@ module Duel
     VARIABLES = %w[GEM_HOME GEM_PATH GEM_ROOT RUBY_ROOT RUBY_ENGINE RUBY_VERSION RUBY_PATCHLEVEL RBENV_VERSION
       MISE_RUBY_VERSION ASDF_RUBY_VERSION].freeze
 
+    # The JVM's options for a JRuby worker. Each JVM's JIT compiles the
+    # same code a little differently, as its compiling in the background
+    # races its running, so one worker can be some 10% faster or slower
+    # than another for its whole life. -Xbatch compiles in the
+    # foreground, so what's compiled is less a matter of timing, and the
+    # serial collector runs no threads of its own beside the code:
+    # together they make JRuby's intervals over workers some half as
+    # wide.
+    JRUBY_WORKER = %w[-J-Xbatch -J-XX:+UseSerialGC].freeze
+
+    # A JVM option that chooses its garbage collector: the JVM won't start
+    # with two, so where JRUBY_OPTS chooses one, the serial one isn't
+    # added.
+    GARBAGE_COLLECTOR = /\A-J-XX:\+Use\w+GC\z/
+
     class << self
       # The Ruby (its executable) that +choice+ gives the version +name+d
       # ("baseline") at +root+: one that isn't there fails.
@@ -48,6 +63,30 @@ module Duel
         raise Error, "the #{name}'s Ruby (#{ruby}) isn't there" unless File.file?(ruby) && File.executable?(ruby)
 
         ruby
+      end
+
+      # The engine of +ruby+ (RUBY_ENGINE): the runner's, or what +ruby+
+      # says, without the runner's gems (or "ruby", where it can't say).
+      def engine(ruby)
+        return RUBY_ENGINE if runner?(ruby)
+
+        out = IO.popen(environment(ruby).merge("RUBYOPT" => nil), [ruby, "--disable-gems", "-e", "print RUBY_ENGINE"], err: File::NULL, &:read)
+        status = $? #: Process::Status
+        status.success? ? out : "ruby"
+      rescue SystemCallError
+        "ruby"
+      end
+
+      # What a worker on +engine+ starts with: +env+, and on JRuby, the
+      # JVM's options in JRUBY_WORKER (+env+'s JRUBY_OPTS, or else
+      # +inherited+, the runner's, before them).
+      def worker_environment(env, engine, inherited = ENV["JRUBY_OPTS"])
+        return env unless engine == "jruby"
+
+        options = env.fetch("JRUBY_OPTS") { inherited }.to_s.split
+        collector = options.any? { |option| option.match?(GARBAGE_COLLECTOR) }
+        added = JRUBY_WORKER.reject { |option| options.include?(option) || (collector && option.match?(GARBAGE_COLLECTOR)) }
+        env.merge("JRUBY_OPTS" => (options + added).join(" "))
       end
 
       # Whether +ruby+ is the runner's own.
