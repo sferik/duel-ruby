@@ -31,6 +31,10 @@ module Duel
     # The median of the cross ratios.
     def self.shift: (Array[Metric::value] bases, Array[Metric::value] candidates) -> Float
 
+    # [low, high] bounds of the +confidence+ interval for how much more
+    # +candidates+ are than +bases+, or nil.
+    def self.difference_interval: (Array[Metric::value] bases, Array[Metric::value] candidates, Float confidence) -> [Metric::value, Metric::value]?
+
     # Each of +candidates+ over each of +bases+, sorted.
     def self.cross_ratios: (Array[Metric::value] bases, Array[Metric::value] candidates) -> Array[Float]
 

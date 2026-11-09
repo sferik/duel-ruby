@@ -817,6 +817,78 @@ class LaneTest < DuelTest
     assert_equal [3, 10], [Duel::Lane::COUNTS, Duel::Lane::JRUBY_COUNTS]
   end
 
+  # With workers enough for an interval over them, each worker's count is
+  # its fewest in three rounds of a sample from every worker (each
+  # baseline worker with a candidate worker in turn), each version's is
+  # the median of its workers', and what's judged is how much more the
+  # candidate's are at least: none, where one worker's luck (a JVM's JIT
+  # doing away with an allocation) is on one side.
+  def count_by_process(counts)
+    with_fake_workers do |workers|
+      # (Each version's own first: neither ends the rest.)
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS.merge("name" => "newer"), FakeWorkers::ALLOCATIONS.merge("name" => "older"),
+        FakeWorkers::ALLOCATIONS.merge("unit" => "byte", "plural" => "bytes")]
+      taken = Hash.new(0)
+      workers.benchmark("b") do |_, n, label|
+        value = counts.fetch(label).fetch(taken[label] % counts.fetch(label).size)
+        taken[label] += 1
+        counted = {"allocations" => value}.compact
+        counted[label.start_with?("head") ? "newer" : "older"] = 1 # (one version's only)
+        {"timed" => {"cpu" => n * 100_000}, "counted" => counted, "heap" => 0, "details" => {"allocations" => "by #{label}"}}
+      end
+      result, = compare(workers, processes: 5)
+      counting = samples(workers).select { |*, count| count }
+
+      assert_equal [[12, 1]], counting.map { |_, n, runs| [n, runs] }.uniq, "a run each"
+      assert_equal %w[allocations], result.counted.keys, "not one version's only"
+      [result.counted.fetch("allocations"), counting.map(&:first).each_slice(2).to_a, result]
+    end
+  end
+
+  def test_counts_by_process
+    same = (1..5).flat_map { |i| [["base-#{i}", [110, 100, 105]], ["head-#{i}", [100, 120, 101]]] }.to_h
+    counted, pairs, = count_by_process(same)
+
+    assert_equal({"baseline" => 100, "candidate" => 100, "more" => 0, "n" => 12, "tolerance" => 0.5, "allowance" => 0, "unit" => "byte",
+                  "plural" => "bytes"}, counted, "each worker's fewest")
+    rounds = (0...3).flat_map do |round|
+      (0...5).map do |i|
+        pair = ["base-#{i + 1}", "head-#{((i + round) % 5) + 1}"]
+        (i.even? == round.even?) ? pair : pair.reverse
+      end
+    end
+
+    assert_equal rounds, pairs
+    lucky = same.merge("base-3" => [20])
+    counted, _, result = count_by_process(lucky)
+
+    assert_equal [100, 100, 0], counted.values_at("baseline", "candidate", "more"), "one baseline worker's luck"
+    assert_empty result.worse
+    more = same.to_h { |label, values| [label, label.start_with?("head") ? values.map { |v| v + 12 } : values] }
+    counted, _, result = count_by_process(more)
+
+    assert_equal [100, 112, 12], counted.values_at("baseline", "candidate", "more")
+    assert_equal %w[allocations], result.worse, "one more an iteration (twelve a sample), in every worker"
+    counted, = count_by_process(same.merge("base-1" => [nil], "base-2" => [nil]))
+
+    assert_equal [100, 100, nil], counted.values_at("baseline", "candidate", "more"), "too few workers counted for an interval"
+  end
+
+  # A benchmark only counted, by process, keeps what its metric said of
+  # its last pair of counted samples.
+  def test_counts_only_by_process
+    with_fake_workers do |workers|
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS]
+      workers.benchmark("b", only: "count") do |_, n, label|
+        {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => 2}, "heap" => 0, "details" => {"allocations" => "by #{label}"}}
+      end
+      result, = compare(workers, processes: 5)
+
+      assert_equal({"baseline" => "by base-5", "candidate" => "by head-2"}, result.details.fetch("allocations"))
+      assert_equal 0, result.counted.fetch("allocations").fetch("more")
+    end
+  end
+
   def test_counts_only
     with_fake_workers do |workers|
       workers.benchmark("b", only: "count")

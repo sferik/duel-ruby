@@ -27,6 +27,21 @@ class ResultTest < DuelTest
       "undecided and fewer aren't worse"
   end
 
+  # Counted by process, what's judged is how much more the candidate's
+  # are at least (the low end of an interval over the workers), not its
+  # median over the baseline's.
+  def test_a_count_by_process
+    r = result(counted: {"allocated_bytes" => [100, 2000]})
+
+    assert_equal %w[allocated_bytes], r.worse
+    r.counted.fetch("allocated_bytes")["more"] = 0
+
+    assert_empty r.worse, "the workers can't tell"
+    r.counted.fetch("allocated_bytes")["more"] = 1
+
+    assert_equal %w[allocated_bytes], r.worse, "one more at least"
+  end
+
   def test_a_counted_metric_may_rise_by_its_tolerance_per_iteration
     assert_empty result(counted: {"allocations" => [3647, 3670, 46, 0.5]}).worse, "half per iteration"
     assert_equal %w[allocations], result(counted: {"allocations" => [3647, 3671, 46, 0.5]}).worse

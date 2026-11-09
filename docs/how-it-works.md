@@ -69,7 +69,14 @@ never on noise, so that it can gate every pull request:
   than it otherwise would.
 - **Exact counts.** Allocations (on CRuby), and any counted metric of
   your own, fail on any increase: one more allocation per two
-  iterations.
+  iterations. Each worker's count is its fewest in three rounds of a
+  sample from every worker, and a count fails when an interval over the
+  workers, for how many more the candidate's are, lies above the
+  tolerance. Where every worker counts the same, as CRuby's workers
+  do, that's exactly how many more. Where workers differ, it's as few
+  as they can tell apart, so one worker's luck can't fail a benchmark.
+  With fewer than five workers of each version, a count is each
+  version's fewest in three samples instead.
 - **Across the board, too.** A slowdown that's too small for any one
   benchmark to settle, such as 1% everywhere, still shows in all of the
   benchmarks together. The same workers measure every benchmark, so a
@@ -282,17 +289,22 @@ every two. More at once is no faster there, and takes more memory: some
 500 MB a worker.
 
 JRuby counts no objects allocated, but the JVM counts the bytes each
-thread allocates, and Duel judges those instead (`allocated_bytes`).
-Once the code is warm, the count is the same in every worker, to a
-tenth of a byte an iteration, so Duel finds one more small object an
-iteration. A sample now and then is some 31 bytes an iteration more
-than the rest, so Duel takes the fewest of 10 samples for each
-version, not 3, and fails a benchmark that allocates more than 32
-bytes more an iteration: a change that makes objects bigger counts
-too. The count falls as the JIT compiles the code, since it can do
-away with an allocation that never leaves a method, so it's taken
-after the warm-up. TruffleRuby has no allocation count. Neither has
-an instruction count or profiles.
+thread allocates, and Duel judges those instead (`allocated_bytes`):
+more than 32 bytes more an iteration fails, about a small object's, and
+a change that makes objects bigger counts too. Where every worker counts
+the same, Duel finds one more small object an iteration. But the JIT can
+do away with an allocation that never leaves a method (escape analysis),
+and each JVM's JIT does away with different ones, so on some code,
+workers' counts differ by thousands of bytes, and an interval over the
+workers (see How Duel tells a regression from noise) is too wide to find
+a few more. And an allocation the JIT does away with in every worker
+isn't counted at all, as it isn't made. Turning escape analysis off
+would count every allocation, but makes CPU time some three times
+noisier, so Duel leaves it on. The count falls as the JIT compiles the
+code, so it's taken after the warm-up. With fewer than five workers of
+each version, it's each version's fewest in 10 samples, as a sample now
+and then is some 31 bytes an iteration more than the rest. TruffleRuby
+has no allocation count. Neither has an instruction count or profiles.
 TruffleRuby has peak memory only on Linux. JRuby measures peak memory in
 the JVM's heap in use, on any operating system, because the JVM takes
 memory for its heap ahead of time, so resident memory barely moves as

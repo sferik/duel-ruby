@@ -214,6 +214,8 @@ module Duel
     PROCESS_PAIRS: Integer
     COUNTS: Integer
     JRUBY_COUNTS: Integer
+    # The rounds of a sample from every worker a count by process takes.
+    COUNT_ROUNDS: Integer
     MEMORY_SAMPLES: Integer
     PROFILE_SAMPLES: Integer
     # A process benchmark's pairs before any are measured, and its runs a
@@ -383,6 +385,14 @@ module Duel
     # The samples a count takes.
     def counts: () -> Integer
 
+    # Each counted measure, by each worker's fewest, and how much more
+    # the candidate's are at least.
+    def count_by_process: (String name, Integer n, Result result) -> void
+
+    # Keeps each count of a worker's sample where it's that worker's
+    # fewest so far.
+    def fewest!: (Hash[String, Hash[String, Hash[Integer, Metric::value]]] fewest, String side, Integer worker, WorkerProcess::reply sample) -> void
+
     def peak_memory: (String name, Integer n, Result result) -> void
 
     def fresh: [T] (String side) { (WorkerProcess worker) -> T } -> T
@@ -403,7 +413,7 @@ module Duel
     type processes = { "lane" => Integer, "baseline" => Array[Metric::value], "candidate" => Array[Metric::value] }
 
     # A counted metric's fewest, on each version, in +n+ iterations.
-    type counted = { "baseline" => Metric::value, "candidate" => Metric::value, "n" => Integer,
+    type counted = { "baseline" => Metric::value, "candidate" => Metric::value, ?"more" => Metric::value?, "n" => Integer,
                      "tolerance" => Metric::value, "allowance" => Metric::value, "unit" => String?, "plural" => String? }
 
     # Where a regression's time went (see Profile#to_h), or why there's no

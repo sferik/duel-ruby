@@ -32,10 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`allocated_bytes`), as the JVM counts them for each thread (or every
   thread, for a benchmark with threads of its own), and fails one that
   allocates more than 32 bytes more an iteration. Before, JRuby had no
-  allocation count. Once the code is warm, the count is the same in
-  every worker, to a tenth of a byte an iteration, but for a sample now
-  and then some 31 bytes more, so a count on JRuby is the fewest of 10
-  samples a version, not 3.
+  allocation count. Where each JVM's JIT does away with different
+  allocations (escape analysis), workers' counts differ, and Duel finds
+  only as many more as they can tell apart.
+- A count is over workers too: each worker's fewest in three rounds of
+  a sample from every worker, and it fails when an interval for how many
+  more the candidate's workers count than the baseline's lies above the
+  tolerance. Before, it was each version's fewest of 3 samples, and on
+  JRuby, where one worker's JIT can do away with an allocation another's
+  doesn't, one worker's luck could fail identical code. Where every
+  worker counts the same, as on CRuby, it's as exact as before. With
+  fewer than 5 workers of each version, it's the fewest of 3 samples (10
+  on JRuby), as before.
 - On JRuby and TruffleRuby, a worker may take 5 minutes to load or to
   answer (`--timeout`), not 1: with `-Xbatch`, 16 JVMs starting at once
   could take longer than a minute.

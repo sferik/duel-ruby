@@ -279,6 +279,9 @@ module Duel
     # sample, and the fewest of more are the lower one.
     COUNTS = 3
     JRUBY_COUNTS = 10
+    # A count by process (see #count_by_process) is each worker's fewest
+    # in COUNT_ROUNDS rounds of a sample from every worker.
+    COUNT_ROUNDS = 3
     # Peak memory is each version's least in MEMORY_SAMPLES fresh workers.
     MEMORY_SAMPLES = 3
     # A profile: PROFILE_SAMPLES samples of the benchmark (some 5,000 of
@@ -845,6 +848,8 @@ module Duel
     # Each counted measure's fewest, on each version, over COUNTS pairs of
     # samples, and what its metric said of those samples.
     def count(name, n, result)
+      return count_by_process(name, n, result) if Lane.by_process?(@bases.size, @settings.confidence)
+
       samples = Array.new(counts) { |i| pair(name, n, i, runs: 1, count: true) }
       metrics.each do |spec|
         metric = spec.fetch("name")
@@ -857,6 +862,57 @@ module Duel
                                   "n" => n, "tolerance" => spec.fetch("tolerance"), "allowance" => spec.fetch("allowance"),
                                   "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural")}
         result.note(base, candidate, metric)
+      end
+    end
+
+    # Each counted measure, with workers enough for an interval over them
+    # (see #judge_processes): each worker's fewest in COUNT_ROUNDS rounds
+    # of a sample from every worker, and how much more the candidate's
+    # are than the baseline's, at least (the low end of an interval for
+    # it, Stats.difference_interval), which is what's judged (see
+    # Result#worse). Where every worker's is the same, as CRuby's counts
+    # of objects are, that's exactly how many more. Where they differ, as
+    # JRuby's bytes do where one JVM's JIT does away with an allocation
+    # and another's doesn't, it's as little as the workers can tell.
+    # Each version's own is the median of its workers'.
+    def count_by_process(name, n, result)
+      k = @bases.size
+      # @type var fewest: Hash[String, Hash[String, Hash[Integer, Metric::value]]]
+      fewest = Hash.new do |h, metric|
+        none = {} #: Hash[Integer, Metric::value]
+        h[metric] = {"baseline" => none, "candidate" => none.dup}
+      end
+      COUNT_ROUNDS.times do |round|
+        k.times do |i|
+          j = (i + round) % k
+          base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?, runs: 1, count: true)
+          fewest!(fewest, "baseline", i, base)
+          fewest!(fewest, "candidate", j, candidate)
+          result.note(base, candidate)
+        end
+      end
+      metrics.each do |spec|
+        metric = spec.fetch("name")
+        next unless fewest.key?(metric)
+
+        found = fewest.fetch(metric)
+        bases = found.fetch("baseline").values
+        candidates = found.fetch("candidate").values
+        next if bases.empty? || candidates.empty?
+
+        result.counted[metric] = {"baseline" => Stats.median(bases), "candidate" => Stats.median(candidates),
+                                  "more" => Stats.difference_interval(bases, candidates, @settings.confidence)&.first,
+                                  "n" => n, "tolerance" => spec.fetch("tolerance"), "allowance" => spec.fetch("allowance"),
+                                  "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural")}
+      end
+    end
+
+    # Keeps each count of +sample+ (from +side+'s +worker+th worker) in
+    # +fewest+, where it's that worker's fewest so far.
+    def fewest!(fewest, side, worker, sample)
+      sample.fetch("counted").each do |metric, value|
+        least = fewest[metric].fetch(side)
+        least[worker] = [least[worker], value].compact.min
       end
     end
 
@@ -973,11 +1029,12 @@ module Duel
 
     # The metrics on which the candidate did worse: a timed one slower, or
     # a counted one up by more than its tolerance per iteration and its
-    # allowance per sample.
+    # allowance per sample (counted by process, up by that much at least:
+    # see Lane#count_by_process).
     # @api private
     def worse
       more = @counted.select do |_, c|
-        !Metric.within?(c.fetch("candidate") - c.fetch("baseline"), c.fetch("n"), tolerance: c.fetch("tolerance"),
+        !Metric.within?(c["more"] || (c.fetch("candidate") - c.fetch("baseline")), c.fetch("n"), tolerance: c.fetch("tolerance"),
           allowance: c.fetch("allowance"))
       end
       slower + more.keys + (more_memory? ? ["peak_memory"] : [])

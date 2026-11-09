@@ -105,6 +105,17 @@ module Duel
       # median of the cross ratios (the Hodges-Lehmann estimate).
       def shift(bases, candidates) = median(cross_ratios(bases, candidates))
 
+      # [low, high] bounds of the +confidence+ interval for how much more
+      # +candidates+ (a version's samples) are than +bases+ (the other's),
+      # as #shift_interval's are for how many times as much, or nil.
+      def difference_interval(bases, candidates, confidence)
+        r = shift_rank(bases.size, candidates.size, confidence)
+        return unless r
+
+        differences = candidates.flat_map { |c| bases.map { |b| c - b } }.sort
+        [differences.fetch(r - 1), differences.fetch(-r)]
+      end
+
       # Each of +candidates+ over each of +bases+, sorted.
       def cross_ratios(bases, candidates) = candidates.flat_map { |c| bases.map { |b| c.fdiv(b) } }.sort
 

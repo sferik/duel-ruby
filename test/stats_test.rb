@@ -154,6 +154,14 @@ class StatsTest < DuelTest
 
   # The interval is over every cross ratio (each candidate's over each
   # baseline's), and its middle is their median.
+  # How much more, as the shift's interval is for how many times as much:
+  # over every cross difference.
+  def test_difference_interval
+    assert_equal [6, 14], Stats.difference_interval([100, 101, 102, 103, 104], [110, 111, 112, 113, 114], 0.99)
+    assert_equal [0, 0], Stats.difference_interval([7] * 5, [7] * 5, 0.99), "the same, exactly"
+    assert_nil Stats.difference_interval([1] * 4, [1] * 4, 0.99), "too few"
+  end
+
   def test_shift_interval
     bases = [100, 101, 102, 103, 104]
     candidates = [110, 111, 112, 113, 114]
