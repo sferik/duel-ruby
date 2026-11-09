@@ -56,12 +56,16 @@ jobs:
           # ran the fork's code, which could have written anything in it. In
           # a code block, fenced with more backticks than any run of them in
           # the report, it can't mention anyone, link anywhere or show an
-          # image. (And it's cut short where a comment couldn't hold it.)
+          # image. It's cut short where a comment couldn't hold it, and loses
+          # any NUL bytes, which GitHub wouldn't take, and grep reads it as
+          # text whatever's in it, so it finds every run of backticks.
           report() {
             if [ "${head#* }" = "$GITHUB_REPOSITORY" ]; then cat "$RUNNER_TEMP/report/duel.md" && return; fi
-            fence=$(grep -o '``*' "$RUNNER_TEMP/report/duel.md" | awk '{ if (length > n) n = length } END { n = (n < 3) ? 3 : n + 1; while (n-- > 0) printf "`" }')
+            text="$RUNNER_TEMP/report.txt"
+            LC_ALL=C tr -d '\000' < "$RUNNER_TEMP/report/duel.md" | head -c 60000 > "$text"
+            fence=$(LC_ALL=C grep -ao '``*' "$text" | awk '{ if (length > n) n = length } END { n = (n < 3) ? 3 : n + 1; while (n-- > 0) printf "`" }')
             printf 'From a fork, so shown as text:\n\n%s\n' "$fence"
-            head -c 60000 "$RUNNER_TEMP/report/duel.md"
+            cat "$text"
             printf '\n%s\n' "$fence"
           }
           marker="<!-- <%= marker %>"

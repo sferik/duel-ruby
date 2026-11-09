@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The comment workflow fences a fork's report with more backticks than
+  any run of them in it even when the report has a NUL byte. GNU grep
+  took such a report for binary and found no backticks, so the fence
+  was three, and a line of three backticks in the report closed it. The
+  workflow now drops NUL bytes, which GitHub doesn't take in a comment,
+  and reads the report as text whatever's in it.
+
 ## [0.1.5] - 2026-11-08
 
 ### Changed

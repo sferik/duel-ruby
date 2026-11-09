@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The comment workflow fences a fork's report that has a NUL byte as it
+  does any other (see Duel's changelog).
+
 ## [0.1.5] - 2026-11-08
 
 ### Changed

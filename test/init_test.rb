@@ -258,6 +258,15 @@ class InitTest < DuelTest
     assert_operator posted("x" * 70_000, from: "them/my_gem").size, :<, 60_100, "cut short where a comment couldn't hold it"
   end
 
+  # A fork's report with a NUL byte, or bytes that aren't UTF-8, is still
+  # fenced with more backticks than any run of them in it (grep, reading
+  # it as binary, would find none), and loses its NUL bytes, which GitHub
+  # wouldn't take.
+  def test_a_comment_on_a_forks_pull_request_with_bytes_that_arent_text
+    assert_equal "<!-- duel status=failed -->\nFrom a fork, so shown as text:\n\n````\n\xFF@someone\n```\n\n````\n".b,
+      posted("\0\xFF@someone\n```\n".b, from: "them/my_gem").b
+  end
+
   # A pull request whose head has moved on since the run gets nothing.
   def test_no_comment_on_a_pull_request_that_moved_on
     assert_nil posted("**Slower**\n", from: "me/my_gem", head: "def")
