@@ -140,12 +140,16 @@ On GitHub Actions, the [workflow](ci.md#accept-a-regression-with-a-label)
 that `duel init` writes passes Duel the pull request's labels. With
 that label, a regression passes, with a warning, and the report says
 that the label accepted it. The labels are read when the workflow runs,
-so after you add the label, run the workflow again (Re-run jobs, on the
-pull request's Checks tab). For a push, Duel reads the labels of the
-pull request that merged it, so with
+so the comment workflow runs the Duel job again when you add the label
+to a pull request whose run failed, or take it off one whose run
+passed. For a push, Duel reads the labels of the pull request that
+merged it, so with
 [`c.push_base = :last_passed`](#compare-a-push-with-the-last-commit-that-passed),
 the merged regression becomes the commit that later pushes are compared
-with. Duel's default is no such label, but the `.duel.rb` that
+with. On a schedule, Duel compares with the last commit since your last
+release that merged a pull request with the label, instead of the
+release, so a slowdown you accepted doesn't fail every night until
+your next release. Duel's default is no such label, but the `.duel.rb` that
 `duel init` writes (and duel-rails's generator) names `duel: accept`.
 Create the label in your repository to use it, or set
 `c.accept_label = nil` so that nothing can let a regression through.

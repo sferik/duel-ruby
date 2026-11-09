@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The generator's workflows do what `duel init`'s do with the label that
+  accepts a regression: the comment workflow runs the Duel job again
+  when the label is added or taken off, and on a schedule, the Duel job
+  compares with the last change merged with the label since the last
+  release.
+
 ### Fixed
 
 - The comment workflow fences a fork's report that has a NUL byte as it

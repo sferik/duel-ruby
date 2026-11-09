@@ -2,6 +2,7 @@
 
 require "erb"
 require "fileutils"
+require "tmpdir"
 require "open3"
 require "optparse"
 require "pathname"
@@ -182,20 +183,35 @@ module Duel
     def config = Config.new(@root)
 
     # The project's settings, which decide the workflow's jobs: its
-    # .duel.rb's, or the defaults, where there's none yet or --force
-    # replaces it with the one it writes. Nil where it doesn't load (one
+    # .duel.rb's, or where there's none yet or --force replaces it, those
+    # of the one it writes. Nil where it doesn't load (one
     # of its plugins isn't installed, say), and then the workflow has
     # both jobs for pushes, as if .duel.rb asked for them, and says so.
     def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
 
     def load_settings
       path = File.join(@root, ".duel.rb")
-      return Config.new if @force || !File.exist?(path)
+      return written_settings if @force || !File.exist?(path)
 
       Duel.load_config(path)
     rescue ScriptError, StandardError => e
       @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflow has both jobs for pushes, as if it asked for them"
     end
+
+    # The settings of the .duel.rb it writes.
+    def written_settings
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, ".duel.rb")
+        File.write(path, render("duel.rb"))
+        Duel.load_config(path)
+      end
+    end
+
+    # The label that accepts a regression (Config#accept_label), for the
+    # workflows: the Duel job's, to find what was accepted since the last
+    # release, and the comment's, to run the Duel job again when it's
+    # added or taken off. Nil without one, or where .duel.rb doesn't load.
+    def accept_label = settings&.accept_label
 
     # Whether the workflow comments on a pushed commit: where a regression
     # in a push passes (c.fail_on = :pull_requests), the only time Duel

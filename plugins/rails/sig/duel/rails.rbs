@@ -242,6 +242,9 @@ module Duel
       # Whether the workflow marks a push passed.
       def mark_passed?: () -> bool
 
+      # The label that accepts a regression, for the workflows, or nil.
+      def accept_label: () -> String?
+
       # Whether the workflow keeps a badge for the README.
       def badge?: () -> bool
 

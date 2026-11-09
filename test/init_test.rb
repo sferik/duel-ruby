@@ -90,7 +90,7 @@ class InitTest < DuelTest
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
     assert_equal %w[duel], jobs.keys, "none for pushes, which the defaults don't comment on or mark passed, and no badge without --badge"
-    assert_equal %w[checkout setup-ruby Find Compare Say Keep], steps.call("duel")
+    assert_equal %w[checkout Find setup-ruby Compare Say Keep], steps.call("duel")
   end
 
   # The jobs for pushes, where .duel.rb asks for them: a comment on a
@@ -281,12 +281,129 @@ class InitTest < DuelTest
     labels = steps.find { |step| step["id"] == "labels" }
 
     assert_equal "${{ steps.labels.outputs.labels }}", steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_LABELS")
-    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'", true],
+    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' || " \
+                  "github.event_name == 'schedule'", true],
       labels.values_at("if", "continue-on-error")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "PR" => "${{ github.event.pull_request.number }}",
-                  "QUEUED" => "${{ github.event.merge_group.head_ref }}"}, labels.fetch("env"))
+                  "QUEUED" => "${{ github.event.merge_group.head_ref }}", "ACCEPT_LABEL" => "duel: accept", "RELEASE_TAGS" => "v*"},
+      labels.fetch("env"))
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
+  end
+
+  # On a schedule, the labels step finds the last commit since the last
+  # release that merged a pull request with the label, with gh stubbed to
+  # list the commits that merged one (+merged+), in a repository where
+  # v1 is the release, and +accepted+ and HEAD came after it: the commit,
+  # for the Compare step, or nothing.
+  def accepted_since_the_release(merged)
+    @root = FileUtils.mkdir_p(File.join(tmpdir, "my_gem", "run#{@runs = (@runs || 0) + 1}")).first
+    gem
+    init.run
+    step = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |s| s["id"] == "labels" }
+    git = ->(*args) { IO.popen(["git", "-C", root, *args], &:read).chomp }
+    git.call("init", "-q", "-b", "main")
+    commit = ->(message) { git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", message) }
+    commit.call("one")
+    git.call("tag", "v1")
+    commit.call("accepted")
+    accepted = git.call("rev-parse", "HEAD")
+    commit.call("three")
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    File.write(File.join(bin, "gh"), %(#!/bin/bash\necho "$*" > #{tmpdir}/gh-args\nprintf '%s\\n' #{merged.call(accepted).join(" ")}\n))
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    output = File.join(tmpdir, "output")
+    File.write(output, "")
+    env = step.fetch("env").merge("PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_EVENT_NAME" => "schedule", "GITHUB_OUTPUT" => output,
+      "GITHUB_REPOSITORY" => "me/my_gem")
+
+    assert system(env, "bash", "-ec", step.fetch("run"), chdir: root)
+    [File.read(output), accepted, File.read(File.join(tmpdir, "gh-args"))]
+  end
+
+  def test_what_was_accepted_since_the_last_release
+    found, accepted, args = accepted_since_the_release(->(commit) { ["0" * 40, commit] })
+
+    assert_equal "accepted=#{accepted}\n", found
+    assert_match(/\Apr list --repo me\/my_gem --state merged --label duel: accept --search merged:>=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ /, args)
+    assert_equal "accepted=\n", accepted_since_the_release(->(_) { ["0" * 40] }).first, "none merged since the release"
+    assert_equal "accepted=\n", accepted_since_the_release(->(_) { [] }).first, "none at all"
+  end
+
+  # Without a label that accepts a regression, the workflows look for
+  # none: no schedule's accepted change, and no second run for the label.
+  def test_no_label_that_accepts_a_regression
+    gem
+    write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
+    init.run
+    perf = read(".github/workflows/perf.yml")
+    comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
+
+    refute_includes perf, "outputs.accepted"
+    refute_includes perf, "ACCEPT_LABEL"
+    assert_equal %w[workflow_run], comment.fetch(true).keys
+    assert_equal %w[comment], comment.fetch("jobs").keys
+  end
+
+  # Whether the comment workflow runs the Duel job again, and how, when
+  # the label is +action+ (labeled or unlabeled) on a pull request whose
+  # head's Perf run (7, or none with +run+ nil) ended as +conclusion+:
+  # the gh run rerun it asks for, or nil.
+  def again(action, conclusion, run: "7")
+    gem
+    init.run
+    job = YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "again")
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    File.write(File.join(bin, "gh"), <<~SH)
+      #!/bin/bash
+      case "$1 $2" in
+        "run list") echo "$*" > #{tmpdir}/list; echo "#{run}" ;;
+        "run watch") ;;
+        "run view") echo "#{conclusion}" ;;
+        "run rerun") echo "$*" > #{tmpdir}/rerun ;;
+      esac
+    SH
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    step = job.dig("steps", 0)
+    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "HEAD_SHA" => "abc", "ACTION" => action}
+
+    assert system(env, "bash", "-ec", step.fetch("run"))
+    rerun = File.join(tmpdir, "rerun")
+    File.read(rerun).chomp.tap { File.delete(rerun) } if File.exist?(rerun)
+  end
+
+  # Adding the label runs the Duel job again where it failed, and taking
+  # it off does where it passed (maybe only for the label), as the job
+  # reads the labels as it runs. The comment workflow does it, as it runs
+  # none of the pull request's code: a pull request's own workflow can't
+  # run one again from a fork.
+  def test_running_duel_again_for_the_label
+    gem
+    init.run
+    workflow = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
+    job = workflow.dig("jobs", "again")
+
+    assert_equal({"types" => %w[labeled unlabeled]}, workflow.dig(true, "pull_request_target"))
+    assert_equal "github.event_name == 'pull_request_target' && github.event.label.name == 'duel: accept'", job.fetch("if")
+    assert_equal({"actions" => "write"}, job.fetch("permissions"))
+    refute(job.fetch("steps").any? { |step| step.key?("uses") }, "it checks nothing out")
+    assert_equal "run rerun 7 --failed", again("labeled", "failure")
+    assert_includes File.read(File.join(tmpdir, "list")), %(--workflow Perf --event pull_request --commit abc --limit 1)
+    assert_nil again("labeled", "success")
+    assert_equal "run rerun 7", again("unlabeled", "success")
+    assert_nil again("unlabeled", "failure")
+    assert_nil again("labeled", "failure", run: ""), "no run yet"
+  end
+
+  # A label with a quote in it is quoted in each workflow.
+  def test_a_label_with_a_quote
+    gem
+    write(".duel.rb", %(Duel.configure { |c| c.accept_label = "it's fine" }\n))
+    init.run
+    labels = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |step| step["id"] == "labels" }
+
+    assert_equal "it's fine", labels.dig("env", "ACCEPT_LABEL")
+    assert_includes YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "again", "if"), "== 'it''s fine'"
   end
 
   # A merge queue's run is compared with its base, as a pull request
@@ -610,9 +727,7 @@ class InitTest < DuelTest
     write(".ruby-version", "3.4.1\n")
     steps = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n      # \(Before the step that sets up the candidate's Ruby\.\)\n(.*?)^```$/m, 1]
 
-    assert_includes init.files.fetch(".github/workflows/perf.yml"), "    steps:\n      - uses: actions/checkout@v7\n" \
-      "        with:\n          fetch-depth: 0 # the baseline comes from history, tags included\n          persist-credentials: false\n" \
-      "      # (And whatever else your tests need set up: packages, services.)\n#{steps}      - uses: ruby/setup-ruby@v1\n"
+    assert_includes init.files.fetch(".github/workflows/perf.yml"), "      # (And whatever else your tests need set up: packages, services.)\n#{steps}      - uses: ruby/setup-ruby@v1\n"
   end
 
   # Without a gemspec: lib/'s only file is the library, or there's none
@@ -790,7 +905,7 @@ class InitTest < DuelTest
 
     assert_equal({"working-directory" => "gems/parser", "ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true},
       baseline.fetch("with"))
-    assert_equal "origin/duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "duel", "steps", 1, "env", "PASSED")
+    assert_equal "origin/duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline" }.dig("env", "PASSED")
   end
 
   # A project in a subdirectory of its repository: the workflow is at the

@@ -9,6 +9,7 @@ module Duel
     @config: Config
     @settings: Settings
     @ref: String?
+    @release: String?
     @prefix: String?
 
     def initialize: (Config config, Settings settings) -> void
@@ -16,6 +17,17 @@ module Duel
     # The commit, or nil for "last-release" with no release yet, and for
     # a push with no commit before it here.
     def ref: () -> String?
+
+    # The newest release tag before HEAD, or nil.
+    def release: () -> String?
+
+    # The last release, or the commit since then that merged the last
+    # pull request accepted with Config#accept_label (Settings#accepted),
+    # or nil with no release.
+    def last_release: () -> String?
+
+    # Whether +commit+ is +of+ or an ancestor of it.
+    def ancestor?: (String commit, String of) -> bool
 
     # The branch that marks the last commit Duel passed in a push to the
     # branch pushed.

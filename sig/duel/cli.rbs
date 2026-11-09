@@ -153,6 +153,10 @@ module Duel
     # The candidate, in Markdown.
     def described_candidate: (Config config, Settings settings) -> String
 
+    # What chose a baseline of the last release: the release, or a change
+    # since it accepted with the label.
+    def last_release: (Config config, Baseline baseline) -> String
+
     # The baseline, for JSON: the ref that named it, its commit, and its
     # tree.
     def baseline_json: (Config config, Settings settings, Baseline baseline, String root) -> Hash[String, String?]

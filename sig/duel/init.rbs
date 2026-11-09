@@ -75,6 +75,12 @@ module Duel
 
     def load_settings: () -> Config?
 
+    # The settings of the .duel.rb it writes.
+    def written_settings: () -> Config
+
+    # The label that accepts a regression, for the workflows, or nil.
+    def accept_label: () -> String?
+
     # Whether the workflow comments on a pushed commit.
     def comment_on_pushes?: () -> bool
 

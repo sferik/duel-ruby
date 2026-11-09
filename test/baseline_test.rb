@@ -123,6 +123,50 @@ class BaselineTest < DuelTest
     assert_nil baseline(base: "last-release").ref, "none"
   end
 
+  # On a schedule, the last release, or the commit since then that merged
+  # the last pull request accepted with the label (DUEL_ACCEPTED), which
+  # is compared with instead: what it slowed down was accepted.
+  def test_the_last_release_or_what_was_accepted_since
+    git("checkout", "-q", "main")
+    File.write(File.join(@repo, "lib", "sample.rb"), "module Sample; def self.work = 3; end\n")
+    accepted = commit("accepted")
+    File.write(File.join(@repo, "lib", "sample.rb"), "module Sample; def self.work = 4; end\n")
+    commit("after")
+    @config.accept_label = "duel: accept"
+
+    assert_equal accepted, baseline(base: "last-release", accepted: accepted).ref
+    assert_equal "v1.0", baseline(base: "last-release", accepted: accepted).release
+    assert_equal "v1.0", baseline(base: "last-release").ref, "none accepted"
+    assert_equal "v1.0", baseline(base: "last-release", accepted: @first).ref, "the release itself"
+    git("checkout", "-q", "feature")
+
+    assert_equal "v1.0", baseline(base: "last-release", accepted: accepted).ref, "not one HEAD has"
+    git("checkout", "-q", "main")
+    @config.accept_label = nil
+
+    assert_equal "v1.0", baseline(base: "last-release", accepted: accepted).ref, "no label accepts a regression"
+    @config.accept_label = "duel: accept"
+    @config.release_tags = "release-*"
+
+    assert_nil baseline(base: "last-release", accepted: accepted).ref, "no release"
+  end
+
+  # A commit accepted on a line that never had the release (merged since)
+  # isn't since the release, so the release is compared with.
+  def test_what_was_accepted_on_another_line
+    git("checkout", "-q", "main")
+    git("tag", "r1")
+    git("checkout", "-qb", "side", @first)
+    File.write(File.join(@repo, "side"), "side\n")
+    accepted = commit("accepted on the side")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-edit", "side")
+    @config.accept_label = "duel: accept"
+    @config.release_tags = "r*"
+
+    assert_equal "r1", baseline(base: "last-release", accepted: accepted).ref
+  end
+
   # A push's baseline: the commit before it, or where c.push_base says,
   # the last commit Duel passed (origin/duel/passed/main, for main), if
   # HEAD has it.
@@ -166,11 +210,17 @@ class BaselineTest < DuelTest
 
   # The ref is found once (none, too).
   def test_the_ref_is_found_once
-    found = baseline(base: "last-release")
+    found = baseline
     found.ref
+    git("branch", "-f", "main", @first)
+
+    assert_equal @second, found.ref
+    assert_equal @first, baseline.ref, "where HEAD left main now"
+    found = baseline(base: "last-release")
+    found.release
     git("tag", "v1.5", "HEAD^")
 
-    assert_equal "v1.0", found.ref
+    assert_equal "v1.0", found.ref, "and the release"
     @config.release_tags = "release-*"
     none = baseline(base: "last-release")
     none.ref

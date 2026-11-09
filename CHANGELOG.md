@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The comment workflow that `duel init` writes runs the Duel job again
+  when the label that accepts a regression (`c.accept_label`) is added
+  to a pull request whose run failed, or taken off one whose run
+  passed. Before, the label did nothing until someone ran the job again
+  by hand. The job runs on `pull_request_target`, checks nothing out,
+  and has only `actions: write`.
+- On a schedule, the workflow compares with the last commit since the
+  last release that merged a pull request with the label, instead of
+  the release, so a slowdown accepted in its pull request doesn't fail
+  every nightly run until the next release. Duel reads that commit from
+  `DUEL_ACCEPTED`, and the report says what it compared with.
+
 ### Fixed
 
 - The comment workflow fences a fork's report with more backticks than

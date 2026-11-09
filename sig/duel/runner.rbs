@@ -50,17 +50,21 @@ module Duel
     # The branch a pull request targets, on GitHub Actions
     # (GITHUB_BASE_REF), on origin: see Baseline#main_branch.
     attr_accessor target: String?
+    # On a schedule, the last commit since the last release that merged
+    # a pull request with Config#accept_label (DUEL_ACCEPTED): see
+    # Baseline#last_release.
+    attr_accessor accepted: String?
 
     def self.new: (?String? base, ?String? base_dir, ?String? candidate_dir, ?Regexp filter, ?Integer jobs,
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
                    ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment,
                    ?Config::fail_on? fail_on, ?String? pushed,
-                   ?String? target, ?Float time_limit) -> instance
+                   ?String? target, ?Float time_limit, ?String? accepted) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
                    ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?,
                    ?fail_on: Config::fail_on?, ?pushed: String?,
-                   ?target: String?, ?time_limit: Float) -> instance
+                   ?target: String?, ?time_limit: Float, ?accepted: String?) -> instance
 
     def self.defaults: () -> Settings
   end

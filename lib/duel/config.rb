@@ -134,7 +134,10 @@ module Duel
     # warning, and the report says it was accepted. For a push, it's the
     # labels of the pull request that merged it, so where #push_base is
     # :last_passed, the push is marked passed too. The labels are read
-    # when the workflow runs, so after adding the label, run it again.
+    # when the workflow runs, so the comment workflow runs the Duel job
+    # again when the label is added or taken off. On a schedule, the
+    # workflow compares with the last commit since the last release that
+    # merged a pull request with the label (see Baseline#last_release).
     #
     #   c.accept_label = "duel: accept"
     attr_reader :accept_label

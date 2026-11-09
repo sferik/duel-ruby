@@ -82,13 +82,13 @@ class GeneratorTest < PluginTest
     generate
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
-    own = File.read(File.expand_path("../../../lib/duel/templates/perf-comment.yml.erb", __dir__))
+    own = ERB.new(File.read(File.expand_path("../../../lib/duel/templates/perf-comment.yml.erb", __dir__)), trim_mode: "-")
 
     assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"\n)
     assert_equal({"contents" => "read", "pull-requests" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
-    assert_equal own.gsub(%(<%= " (\#{working_directory})" if working_directory %>), "").sub("<%= marker %>", "duel"),
+    assert_equal own.result_with_hash(working_directory: nil, marker: "duel", accept_label: "duel: accept"),
       read(".github/workflows/perf-comment.yml"), "Duel's own"
   end
 

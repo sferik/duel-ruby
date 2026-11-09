@@ -98,6 +98,10 @@ module Duel
         found.nil? || found.push_base == :last_passed
       end
 
+      # The label that accepts a regression, for the workflows, as for
+      # `duel init` (see Duel::Init#accept_label).
+      def accept_label = settings&.accept_label
+
       # Whether the workflow keeps a badge for the README (--badge), as for
       # `duel init` (see Duel::Init#badge?).
       def badge? = options.fetch(:badge)

@@ -130,6 +130,7 @@ module Duel
       settings.pushed = branch if pushed? && !base.nil? && settings.base == base
       target = variable("GITHUB_BASE_REF", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
       settings.target = "origin/#{target}" if target && pull_request?
+      settings.accepted = variable("DUEL_ACCEPTED")
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
       settings
@@ -360,7 +361,7 @@ module Duel
       commit = git(config.root, "rev-parse", "--short", "#{ref}^{commit}").first.chomp
       chosen = case settings.base
       when nil then "where HEAD left #{Summary.code(baseline.main_branch)}"
-      when Baseline::LAST_RELEASE then "the last release, #{Summary.code(ref)}"
+      when Baseline::LAST_RELEASE then last_release(config, baseline)
       else
         if settings.pushed then (ref == baseline.passed) ? "the last commit Duel passed" : "the commit before the push"
         elsif queued?(settings) then "the merge queue's base"
@@ -369,6 +370,16 @@ module Duel
         end
       end
       "#{commit} (#{chosen})"
+    end
+
+    # What chose a baseline of the last release: the release, or a change
+    # since it that was accepted with the label (Settings#accepted).
+    def last_release(config, baseline)
+      release = baseline.release #: String
+      return "the last release, #{Summary.code(release)}" if baseline.ref == release
+
+      label = config.accept_label #: String
+      "the last change accepted with the #{Summary.code(label)} label, since the last release, #{Summary.code(release)}"
     end
 
     # The candidate, in Markdown: its directory, or its commit, bare (see

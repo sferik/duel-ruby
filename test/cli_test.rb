@@ -149,6 +149,14 @@ class CLITest < DuelTest
     assert_nil cli(env: pr.slice("GITHUB_BASE_REF")).parse.target, "not on GitHub Actions"
   end
 
+  # On a schedule, the commit since the last release that merged the last
+  # pull request accepted with the label, as the workflow found it.
+  def test_accepted
+    assert_equal "abc123", cli(env: {"DUEL_ACCEPTED" => "abc123"}).parse.accepted
+    assert_nil cli(env: {"DUEL_ACCEPTED" => ""}).parse.accepted, "none"
+    assert_nil cli.parse.accepted, "unset"
+  end
+
   # On GitLab CI: a push's branch (CI_COMMIT_BRANCH), and a merge
   # request's target (CI_MERGE_REQUEST_TARGET_BRANCH_NAME).
   def test_on_gitlab

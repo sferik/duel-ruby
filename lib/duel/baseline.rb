@@ -17,7 +17,8 @@ module Duel
   #   origin/master, or (a repository without a remote) main, or master
   # - "last-release": the newest release tag (Config#release_tags) before
   #   HEAD, to catch slowdowns too small for any one change to fail but
-  #   that add up between releases
+  #   that add up between releases, or a commit since then that merged a
+  #   pull request with Config#accept_label (see #last_release)
   # - a push's (Settings#pushed, the branch pushed): the commit before it, or where
   #   Config#push_base says, the last commit Duel passed (#passed)
   # - anything else: a git ref
@@ -39,10 +40,33 @@ module Duel
 
       @ref = case @settings.base
       when nil then merge_base
-      when LAST_RELEASE then git("describe", "--tags", "--abbrev=0", "--match", @config.release_tags, "HEAD^", allow_failure: true)
+      when LAST_RELEASE then last_release
       else @settings.pushed ? pushed : @settings.base
       end
     end
+
+    # The newest release tag (Config#release_tags) before HEAD, or nil.
+    def release
+      return @release if instance_variable_defined?(:@release)
+
+      @release = git("describe", "--tags", "--abbrev=0", "--match", @config.release_tags, "HEAD^", allow_failure: true)
+    end
+
+    # The last release, or where a pull request merged since then was
+    # accepted with Config#accept_label, the commit that merged the last
+    # one (Settings#accepted, which the workflow finds): what it slowed
+    # down was accepted, so it's compared with instead. Nil with no
+    # release.
+    def last_release
+      found = release or return
+      accepted = @settings.accepted
+      return found unless accepted && !@config.accept_label.nil?
+      return found unless ancestor?(found, accepted) && !ancestor?(accepted, found) && ancestor?(accepted, "HEAD")
+
+      accepted
+    end
+
+    def ancestor?(commit, of) = !git("merge-base", "--is-ancestor", commit, of, allow_failure: true).nil?
 
     # The branch that marks the last commit Duel passed in a push to the
     # branch pushed (Settings#pushed), for Config#push_base:

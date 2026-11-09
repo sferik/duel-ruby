@@ -350,6 +350,14 @@ class CLISummaryTest < DuelTest
     assert_equal "`#{tmpdir}`", described.call(nil, base_dir: tmpdir)
     assert_equal "#{short(repo)} (where HEAD left `main`)", described.call(nil), "bare, so GitHub links it"
     assert_equal "#{first} (the last release, `v1`)", described.call("last-release")
+    second = short(repo)
+    config.accept_label = "duel: accept"
+    s = settings(base: "last-release", accepted: IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp)
+
+    assert_equal "#{second} (the last change accepted with the `duel: accept` label, since the last release, `v1`)",
+      cli.send(:described_baseline, config, s, Duel::Baseline.new(config, s))
+    config.accept_label = nil
+
     assert_equal "#{first} (`HEAD^`)", described.call("HEAD^")
     sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD^"], &:read).chomp
 

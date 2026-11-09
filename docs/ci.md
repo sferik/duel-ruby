@@ -61,23 +61,33 @@ jobs:
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
           persist-credentials: false
-      # (And whatever else your tests need set up: packages, services.)
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.4" # (or none, with a .ruby-version)
-          bundler-cache: true
       # The labels of the pull request (or for a push, of the one that
       # merged it), for c.accept_label in .duel.rb, as a JSON array. They're
-      # read as the job runs, so after adding the label, run it again.
+      # read as the job runs, and adding the label (or taking it off) runs
+      # the job again: see the Perf comment workflow.
+      # On a schedule, the last commit since the last release that merged a
+      # pull request with the label (ACCEPT_LABEL, as .duel.rb names it):
+      # what that slowed down was accepted, so it's compared with instead.
       - name: Find the pull request's labels
         id: labels
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' || github.event_name == 'schedule'
         continue-on-error: true # (without them, nothing's accepted)
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           QUEUED: ${{ github.event.merge_group.head_ref }}
+          ACCEPT_LABEL: 'duel: accept'
+          RELEASE_TAGS: "v*"
         run: |
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            tag=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || exit 0
+            since=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd "$tag")
+            merged=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label "$ACCEPT_LABEL" --search "merged:>=$since" --limit 1000 \
+              --json mergeCommit --jq '.[].mergeCommit.oid')
+            accepted=$(git rev-list "$tag..HEAD" | grep -Fx -m 1 -f <(echo "$merged")) || accepted=
+            echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # (In a merge queue, the last pull request queued, which the queue's
           # branch names: gh-readonly-queue/main/pr-123-<sha>.)
           if [ -n "$QUEUED" ]; then
@@ -90,6 +100,11 @@ jobs:
             labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
           fi
           echo "labels=$labels" >> "$GITHUB_OUTPUT"
+      # (And whatever else your tests need set up: packages, services.)
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4" # (or none, with a .ruby-version)
+          bundler-cache: true
       # Against the branch it targets for a pull request, the queue's base
       # for a merge queue, what was there before for a push (or as
       # c.push_base in .duel.rb says, the last commit Duel passed), and the
@@ -105,6 +120,7 @@ jobs:
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           DUEL_LABELS: ${{ steps.labels.outputs.labels }}
+          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
         run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"
       # For a pull request, what Duel said, for the Perf comment workflow,
       # which can't see this job's outputs.
@@ -149,8 +165,11 @@ The workflow compares the following:
   the last commit that Duel passed. If that commit isn't in the history,
   such as after a force push or for a branch's first push, Duel reports
   that there's nothing to compare against, and passes.
-- On a schedule, the last release. Until you tag your first release,
-  Duel reports that there's nothing to compare against, and passes.
+- On a schedule, the last release, or with
+  [`c.accept_label`](#accept-a-regression-with-a-label), the last commit
+  since then that merged a pull request with the label. Until you tag
+  your first release, Duel reports that there's nothing to compare
+  against, and passes.
 - When you run the workflow manually, your code against itself. This
   checks that the benchmarks run on the CI machines.
 
@@ -237,12 +256,23 @@ name: Perf comment
 # ran), it trusts only what that job could have said: the pull request's
 # number, if it names the pull request the run compared, and the comment
 # and the status, if they're ones Duel says. A fork's report, which the
-# fork's code wrote, is shown as text. (The workflow must be on the
-# default branch before it runs at all.)
+# fork's code wrote, is shown as text.
+#
+# And when the label that accepts a regression (c.accept_label in
+# .duel.rb) is added to a pull request, or taken off, it runs the Duel
+# job again, which reads the labels as it runs: a run that failed, once
+# the label's added, or one that passed, once it's taken off.
+#
+# (The workflow must be on the default branch before it runs at all.)
 on:
   workflow_run:
     workflows: ["Perf"]
     types: [completed]
+  # (This repository's own workflow, as for the comment, with a token
+  # that can run a workflow again: it checks nothing out, and runs none
+  # of the pull request's code.)
+  pull_request_target:
+    types: [labeled, unlabeled]
 
 permissions: {}
 
@@ -304,6 +334,33 @@ jobs:
             { echo "$marker status=$STATUS -->"; report; } > "$RUNNER_TEMP/comment.md"
             gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
           fi
+
+  again:
+    name: Run Duel again
+    if: >-
+      github.event_name == 'pull_request_target' && github.event.label.name == 'duel: accept'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # to run the Perf workflow's jobs again
+    steps:
+      - name: Run Duel again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          # The newest Perf run of the pull request's head commit, once it's
+          # done (one that's running may have read the labels already).
+          id=$(gh run list --workflow "Perf" --event pull_request --commit "$HEAD_SHA" --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')
+          [ -n "$id" ] || exit 0
+          gh run watch "$id" --interval 30 > /dev/null || true
+          conclusion=$(gh run view "$id" --json conclusion --jq .conclusion)
+          case "$ACTION:$conclusion" in
+            labeled:failure) gh run rerun "$id" --failed ;;
+            unlabeled:success) gh run rerun "$id" ;;
+          esac
 ```
 
 ## Comment on a pushed commit
@@ -377,6 +434,23 @@ or for a push, of the pull request that merged it, and passes them to
 `duel` as a JSON array, in `DUEL_LABELS`. That takes the
 `pull-requests: read` permission. Without the labels, such as when
 GitHub's API fails, nothing is accepted.
+
+The labels are read as the Duel job runs, so `perf-comment.yml` runs
+the job again when the label changes. Its Run Duel again job runs on
+`pull_request_target`, with this repository's own workflow, when a
+label is added to a pull request or taken off. For the label `.duel.rb`
+names, it waits for the Perf run of the pull request's head commit to
+finish. Then it runs the failed jobs again where the label was added
+to a run that failed, or the whole run again where the label was
+taken off one that passed. It checks nothing out and runs none of the
+pull request's code, and its only permission is `actions: write`. The
+workflows name the label as `.duel.rb` did when `duel init` wrote them,
+so if you rename it, rename it in both workflows too.
+
+On a schedule, the same step looks for the pull requests merged since
+the last release with the label, and passes `duel` the last commit
+that merged one, in `DUEL_ACCEPTED`. Duel compares with that commit
+instead of the release, as what it slowed down was accepted.
 
 ## Compare a push with the last commit that passed
 
@@ -898,7 +972,8 @@ match. `duel init` adds these steps for a project that has a
       # request targets (or run by hand, the main branch), a merge queue's
       # base, the commit before a push (or the last commit Duel passed, PASSED, if there is
       # one: see the Mark the commit passed job), or on a schedule the last
-      # release, the newest tag before HEAD that RELEASE_TAGS matches. (If
+      # release, the newest tag before HEAD that RELEASE_TAGS matches
+      # (or ACCEPTED, the last change accepted since then). (If
       # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
       # RELEASE_TAGS to match.)
       - name: Find the baseline's Ruby
@@ -909,13 +984,14 @@ match. `duel init` adds these steps for a project that has a
           PASSED: origin/duel/passed/${{ github.ref_name }}
           MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
           RELEASE_TAGS: "v*"
+          ACCEPTED: ${{ steps.labels.outputs.accepted }}
         run: |
           case "$GITHUB_EVENT_NAME" in
             push)
               base=$BEFORE
               if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
             merge_group) base=$QUEUE_BASE ;;
-            schedule) base=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || base= ;;
+            schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
             *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
           esac
           ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }'; }
