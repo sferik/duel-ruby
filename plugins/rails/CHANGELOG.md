@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The comment workflow fences a fork's report that has a NUL byte as it
   does any other (see Duel's changelog).
+- The Mark the commit passed job runs one at a time for each branch, so
+  two pushes that pass before the branch exists can't both try to make
+  it (see Duel's changelog).
 
 ## [0.1.5] - 2026-11-08
 
