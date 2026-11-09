@@ -324,11 +324,12 @@ class LaneTest < DuelTest
 
   # With workers enough for it (5 of each, at 99%), the interval is over
   # them: rounds of a sample from every worker, the baseline's in order,
-  # each with the candidate's in turn, decided from the second round.
+  # each with the candidate's in turn, decided from the second round, and
+  # each worker's median kept for across the board.
   def test_judged_by_process
     with_fake_workers do |workers|
       workers.benchmark("b")
-      result, = compare(workers, processes: 5)
+      result, l = compare(workers, processes: 5)
       cpu = result.timed.fetch("cpu")
 
       assert_equal({"median" => 1.0, "limit" => 1.02, "across" => true, "interval" => [1.0, 1.0], "pairs" => 10, "processes" => 5,
@@ -342,6 +343,8 @@ class LaneTest < DuelTest
 
       assert_equal rounds, samples(workers).select { |_, _, runs| runs == 5 }.drop(10).map(&:first).each_slice(2).to_a
       assert(samples(workers).select { |_, _, runs| runs == 5 }.none? { |*, count| count }, "timed, not counted")
+      assert_equal({"cpu" => {"lane" => l.instance_variable_get(:@id), "baseline" => [1_200_000] * 5, "candidate" => [1_200_000] * 5}},
+        result.processes)
     end
   end
 
@@ -376,6 +379,22 @@ class LaneTest < DuelTest
 
       assert_operator low, :<, 0.95
       assert_operator high, :>, 1.05
+    end
+  end
+
+  # Each round's samples count for each metric's workers: a worker's
+  # median is of its own samples, those it took as the baseline's
+  # worker, or the candidate's, in every pair it was in.
+  def test_each_workers_median_is_its_own
+    with_fake_workers do |workers|
+      workers.benchmark("b") do |_, n, label|
+        {"timed" => {"cpu" => n * 100_000 * Integer(label[/\d+/])}, "counted" => {}, "heap" => 0}
+      end
+      result, = compare(workers, processes: 5, limit: 100.0)
+      each = result.processes.fetch("cpu")
+
+      assert_equal [1, 2, 3, 4, 5], each.fetch("baseline").map { |median| median / each.fetch("baseline").first }
+      assert_equal each.fetch("baseline"), each.fetch("candidate")
     end
   end
 
@@ -418,6 +437,19 @@ class LaneTest < DuelTest
       assert_equal [12, 10, 7, 2, 2], [5, 6, 8, 30, 31].map { |k| l.send(:rounds, k) }
     ensure
       l&.stop
+    end
+  end
+
+  # Each lane its own number, from one more than the last.
+  def test_each_lane_has_a_number_of_its_own
+    with_fake_workers do |workers|
+      first = lane(workers, processes: 1)
+      second = lane(workers, processes: 1)
+
+      assert_equal first.instance_variable_get(:@id) + 1, second.instance_variable_get(:@id)
+    ensure
+      first&.stop
+      second&.stop
     end
   end
 

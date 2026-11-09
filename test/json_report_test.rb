@@ -123,13 +123,13 @@ class JSONReportTest < DuelTest
   # Across the board: every metric, "confirmed" only where a second
   # measurement confirmed it slower, and no interval for too few.
   def test_across_the_board
-    across = {"cpu" => {"median" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 8, "verdict" => "slower",
+    across = {"cpu" => {"median" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 8, "processes" => 6, "verdict" => "slower",
                         "confirmed" => true},
               "few" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "undecided"}}
 
-    assert_equal({"cpu" => {"ratio" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 8, "verdict" => "slower",
+    assert_equal({"cpu" => {"ratio" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 8, "processes" => 6, "verdict" => "slower",
                             "confirmed" => true},
-                  "few" => {"ratio" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "undecided",
+                  "few" => {"ratio" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "processes" => nil, "verdict" => "undecided",
                             "confirmed" => false}},
       report([result("a")], runner: runner(across: across), exit: 1).fetch("across"))
   end

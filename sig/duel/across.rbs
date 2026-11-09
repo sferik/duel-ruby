@@ -5,17 +5,39 @@ module Duel
     # A timed metric's verdict across the board ("confirmed": slower in a
     # second measurement too, see Runner#across).
     type verdict = { "median" => Float, "interval" => Array[Float]?, "limit" => Float, "benchmarks" => Integer,
-                     "verdict" => String, ?"confirmed" => bool }
+                     ?"processes" => Integer, "verdict" => String, ?"confirmed" => bool }
+
+    # The fewest benchmarks across the board is judged on by process.
+    MIN_BENCHMARKS: Integer
 
     @results: Array[Result]
     @confidence: Float
+    @by_process: bool
 
     # The across-the-board limit for a metric whose own limit is +limit+.
     def self.limit: (Float limit) -> Float
 
-    def initialize: (Array[Result] results, confidence: Float) -> void
+    def initialize: (Array[Result] results, confidence: Float, ?by_process: bool) -> void
 
     # Every timed metric any benchmark was judged on, by name.
     def verdicts: () -> Hash[String, verdict]
+
+    private
+
+    # The verdicts of a run that judged benchmarks over workers.
+    def by_process_or_benchmark: (Hash[String, Array[Float]] medians, Hash[String, Float] limits) -> Hash[String, verdict]
+
+    # Each benchmark's workers' medians, of those judged by process, by
+    # metric.
+    def workers: () -> Hash[String, Array[Result::processes]]
+
+    # The verdict over every benchmark's median ratio.
+    def by_benchmark: (Array[Float] list, Float limit) -> verdict
+
+    # The verdict over the workers' scores.
+    def by_process: (Array[Result::processes] processes, Float limit) -> verdict
+
+    # Each worker's score, by version.
+    def scores: (Array[Result::processes] processes) -> Hash[String, Array[Float]]
   end
 end

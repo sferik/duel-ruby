@@ -272,6 +272,7 @@ module Duel
     # server takes seconds), and stop at once. +sides+ are the versions as
     # the run prepared them (Runner#prepare), by name.
     def initialize(config, settings, sides, processes: settings.processes)
+      @id = Lane.next_id
       @dir = Lane.tmpdir
       @resources = []
       @workers = []
@@ -290,6 +291,14 @@ module Duel
       stop
       raise
     end
+
+    @ids = 0
+    @ids_lock = Mutex.new
+
+    # A number of its own for each lane, from 1: what tells one lane's
+    # workers from another's (see Result#processes).
+    # mutant:disable -- CRuby doesn't switch threads in the middle of += on an Integer, and JRuby can
+    def self.next_id = @ids_lock.synchronize { @ids += 1 }
 
     # Whether +processes+ workers of each version are enough for a
     # +confidence+ interval over them (see Stats.shift_rank): 5 at 99%.
@@ -606,7 +615,8 @@ module Duel
     # makes it faster or slower than another for its whole life (where
     # things landed in its memory, or what a JIT compiled), the interval
     # is as wide as that makes it. An interval over pairs would be as
-    # narrow as if every pair had processes of its own.
+    # narrow as if every pair had processes of its own. Each worker's
+    # medians are kept, by metric, for across the board (Result#processes).
     def judge_processes(name, n, judged, result)
       k = @bases.size
       # @type var values: Hash[String, Hash[String, Array[Array[Metric::value]]]]
@@ -639,6 +649,7 @@ module Duel
                                 "interval" => Stats.shift_interval(bases, candidates, @settings.confidence),
                                 "pairs" => pairs, "processes" => k, "verdict" => process_verdict(each, spec).to_s,
                                 "baseline" => Stats.median(each.fetch("baseline")), "candidate" => Stats.median(each.fetch("candidate"))}
+        result.processes[metric] = {"lane" => @id, "baseline" => each.fetch("baseline"), "candidate" => each.fetch("candidate")}
       end
     end
 
@@ -847,6 +858,13 @@ module Duel
     # @api private
     attr_reader :profile
 
+    # Each worker's median of each measure judged by process (see
+    # Lane#judge_processes): {metric => {"lane" => its lane's number,
+    # "baseline" => [each baseline worker's], "candidate" => [...]}},
+    # for across the board.
+    # @api private
+    attr_reader :processes
+
     # The measurements again that were too close to call (see #confirm).
     # @api private
     attr_reader :undecided
@@ -862,6 +880,7 @@ module Duel
       @details = {}
       @confirmations = []
       @undecided = []
+      @processes = {}
     end
 
     # Keeps what metrics said of a pair of samples (Metric#details): each
@@ -1128,7 +1147,7 @@ module Duel
     # every benchmark, in fresh processes, and are confirmed if they're
     # still slower.
     def judge_across(results, names)
-      verdicts = Across.new(results, confidence: @settings.confidence).verdicts
+      verdicts = across_of(results).verdicts
       slower = verdicts.select { |_, v| v.fetch("verdict") == "slower" }.keys
       return verdicts if slower.empty?
 
@@ -1141,10 +1160,15 @@ module Duel
       end
 
       @out.puts "\nMeasuring every benchmark again, in fresh processes: slower across the board in #{slower.join(", ")}?"
-      again = Across.new(with_lanes { |lanes| measure_all(lanes, names) }, confidence: @settings.confidence).verdicts
+      again = across_of(with_lanes { |lanes| measure_all(lanes, names) }).verdicts
       slower.each { |metric| verdicts.fetch(metric)["confirmed"] = again.dig(metric, "verdict") == "slower" }
       verdicts
     end
+
+    # Across the board, of +results+, judged over workers where the run
+    # judged benchmarks over them (see Lane.by_process?).
+    # mutant:disable -- whether it's over workers is only how fast: results judged over pairs have no workers' medians to find
+    def across_of(results) = Across.new(results, confidence: @settings.confidence, by_process: Lane.by_process?(@settings.processes, @settings.confidence))
 
     def open_lane = Lane.new(@config, @settings, @sides)
 

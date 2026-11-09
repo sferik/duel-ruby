@@ -13,7 +13,10 @@ class AcrossTest < DuelTest
     end
   end
 
-  def verdicts(results) = Duel::Across.new(results, confidence: 0.99).verdicts
+  def verdicts(results, by_process: false) = Duel::Across.new(results, confidence: 0.99, by_process: by_process).verdicts
+
+  # A run's that judged benchmarks over workers.
+  def over_workers(results) = verdicts(results, by_process: true)
 
   def test_the_limit_is_a_quarter_of_the_metrics_margin
     assert_in_delta 1.005, Duel::Across.limit(1.02), 1e-12
@@ -45,6 +48,83 @@ class AcrossTest < DuelTest
     cpu = verdicts(results).fetch("cpu")
 
     assert_equal ["undecided", 1, nil], cpu.values_at("verdict", "benchmarks", "interval")
+  end
+
+  # A result judged by process: its median ratio, and each worker's
+  # median, by version (+luck+, each worker's factor, the same at every
+  # benchmark, times +slower+ for the candidate's), in +lane+.
+  def by_process(name, luck, slower: 1.0, lane: 1, base: 1000.0)
+    result(name, {"cpu" => slower}).tap do |r|
+      r.processes["cpu"] = {"lane" => lane, "baseline" => luck.fetch("baseline").map { |f| base * f },
+                            "candidate" => luck.fetch("candidate").map { |f| base * f * slower }}
+    end
+  end
+
+  LUCK = {"baseline" => [1.0, 1.03, 0.98, 1.02, 0.99], "candidate" => [1.01, 0.97, 1.04, 1.0, 0.98]}.freeze
+
+  # Every benchmark's median says the candidate is 1% slower, and an
+  # interval over the benchmarks would call it, but the same workers
+  # measured every one, and their luck (the same at each) leaves it
+  # undecided: the interval is over the workers' scores.
+  def test_by_process_the_workers_luck_counts_once
+    results = Array.new(12) { |i| by_process("b#{i}", LUCK, slower: 1.01, base: 1000.0 * (i + 1)) }
+    cpu = over_workers(results).fetch("cpu")
+
+    assert_equal ["undecided", 12, 5], cpu.values_at("verdict", "benchmarks", "processes")
+    low, high = cpu.fetch("interval")
+
+    assert_operator low, :<, 1.0
+    assert_operator high, :>, 1.02
+    plain = results.map { |r| result(r.name, {"cpu" => 1.01}) }
+
+    assert_equal "slower", over_workers(plain).dig("cpu", "verdict"), "by benchmark"
+    assert_equal verdicts(plain), over_workers(plain), "by benchmark, as a run over pairs is"
+    refute Duel::Across.new(results, confidence: 0.99).verdicts.fetch("cpu").key?("processes"), "over pairs, unless it says"
+  end
+
+  # Without luck (every worker alike), a 1% slowdown everywhere shows.
+  def test_by_process_a_slowdown_across_the_board
+    even = {"baseline" => [1.0] * 5, "candidate" => [1.0] * 5}
+    results = Array.new(8) { |i| by_process("b#{i}", even, slower: 1.01, base: 100.0 * (i + 1)) }
+    # (Failed, skipped, and a measure not judged across the board, whatever
+    # their workers measured, are left out, wherever they are.)
+    results = [by_process("error", even, slower: 9.0).tap { |r| r.error = "boom" }, by_process("new", even, slower: 9.0).tap { |r| r.skipped = "new" },
+      by_process("noisy", even, slower: 9.0).tap { |r| r.timed.fetch("cpu")["across"] = false }] + results
+    cpu = over_workers(results).fetch("cpu")
+
+    assert_equal ["slower", 8, 5], cpu.values_at("verdict", "benchmarks", "processes")
+    assert_in_delta 1.005, cpu.fetch("limit"), 1e-12
+    assert_in_delta 1.01, cpu.fetch("median"), 1e-9
+    cpu.fetch("interval").each { |bound| assert_in_delta 1.01, bound, 1e-9 }
+    assert_equal "same", over_workers(Array.new(8) { |i| by_process("b#{i}", even, base: 100.0 * (i + 1)) }).dig("cpu", "verdict")
+  end
+
+  # Each lane's workers are their own (a worker of one lane is no other
+  # lane's), and fewer than 8 benchmarks by process are judged by
+  # benchmark, as are the rest where some weren't judged by process.
+  def test_by_process_each_lanes_workers
+    even = {"baseline" => [1.0] * 5, "candidate" => [1.0] * 5}
+    results = Array.new(8) { |i| by_process("b#{i}", even, lane: (i % 2) + 1, base: i.even? ? 1.0 : 1000.0) }
+
+    assert_equal 10, over_workers(results).dig("cpu", "processes")
+    refute verdicts(results, by_process: false).fetch("cpu").key?("processes"), "a run over pairs looks for no workers"
+    assert_equal [1.0, [1.0, 1.0], "same"], over_workers(results).fetch("cpu").values_at("median", "interval", "verdict"),
+      "each to its own lane's, at its own benchmarks"
+    refute over_workers(results.first(7)).fetch("cpu").key?("processes")
+    assert_equal 8, over_workers(results.first(7) + [result("p", {"cpu" => 1.0})]).dig("cpu", "benchmarks")
+    refute over_workers(results.first(7) + [result("p", {"cpu" => 1.0})]).fetch("cpu").key?("processes")
+  end
+
+  # A score is a ratio to its lane's every worker's median, so a worker
+  # that measured nothing (zero) is at 1, as a ratio to nothing is.
+  def test_a_worker_that_measured_nothing
+    zero = {"baseline" => [0.0] * 5, "candidate" => [0.0] * 5}
+    results = Array.new(8) { |i| by_process("b#{i}", zero) }
+
+    assert_equal [1.0, [1.0, 1.0], "same"], over_workers(results).fetch("cpu").values_at("median", "interval", "verdict")
+    small = Array.new(8) { |i| by_process("b#{i}", {"baseline" => [1.0] * 5, "candidate" => [1.0] * 5}, slower: 2.0, base: 1.0) }
+
+    assert_equal "slower", over_workers(small).dig("cpu", "verdict"), "at least 1, and no more"
   end
 
   # A metric that says across: false isn't judged across the board.

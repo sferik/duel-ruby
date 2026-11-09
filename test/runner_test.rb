@@ -59,6 +59,16 @@ class RunnerTest < DuelTest
     end
   end
 
+  # With workers enough, across the board is judged over them too.
+  def test_across_the_board_over_workers
+    with_fake_workers do |workers|
+      8.times { |i| workers.benchmark("b#{i}") }
+      _, _, runner = run_duel(workers, processes: 5)
+
+      assert_equal 5, runner.across.dig("cpu", "processes")
+    end
+  end
+
   # With workers enough, the interval is over them, and the first line
   # says so. With too few, it says how many it takes, where any of the
   # first twenty would do.

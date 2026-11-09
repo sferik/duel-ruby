@@ -103,7 +103,7 @@ module Duel
     def across
       @runner.across.transform_values do |v|
         {"ratio" => v.fetch("median"), "interval" => v.fetch("interval"), "limit" => v.fetch("limit"), "benchmarks" => v.fetch("benchmarks"),
-         "verdict" => v.fetch("verdict"), "confirmed" => v.fetch("confirmed", false)}
+         "processes" => v["processes"], "verdict" => v.fetch("verdict"), "confirmed" => v.fetch("confirmed", false)}
       end
     end
   end

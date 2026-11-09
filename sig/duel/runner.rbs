@@ -217,6 +217,11 @@ module Duel
     # The longest TMPDIR a lane's directory goes in.
     SHORT: Integer
 
+    self.@ids: Integer
+    self.@ids_lock: Thread::Mutex
+
+    # Its number (see .next_id).
+    @id: Integer
     @dir: String
     @resources: Array[Resource]
     @workers: Array[WorkerProcess]
@@ -235,6 +240,9 @@ module Duel
     attr_reader profiler: bool
 
     def initialize: (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) -> void
+
+    # A number of its own for each lane, from 1.
+    def self.next_id: () -> Integer
 
     # Whether +processes+ workers of each version are enough for a
     # +confidence+ interval over them.
@@ -367,6 +375,10 @@ module Duel
     type timed = { "median" => Float, "limit" => Float, "across" => bool, "unit" => String?, "plural" => String?, "interval" => Array[Float]?, "pairs" => Integer,
                    ?"processes" => Integer, "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
 
+    # Each worker's median of a measure judged by process, by version,
+    # and its lane's number.
+    type processes = { "lane" => Integer, "baseline" => Array[Metric::value], "candidate" => Array[Metric::value] }
+
     # A counted metric's fewest, on each version, in +n+ iterations.
     type counted = { "baseline" => Metric::value, "candidate" => Metric::value, "n" => Integer,
                      "tolerance" => Metric::value, "allowance" => Metric::value, "unit" => String?, "plural" => String? }
@@ -398,6 +410,7 @@ module Duel
     @details: Hash[String, Hash[String, String]]
     @confirmations: Array[Result]
     @undecided: Array[Result]
+    @processes: Hash[String, processes]
     @n: Integer?
     @seconds: Float?
     @skipped: String?
@@ -424,6 +437,10 @@ module Duel
     # The measurements again that were too close to call.
     # @api private
     attr_reader undecided: Array[Result]
+
+    # Each worker's median of each measure judged by process, by metric.
+    # @api private
+    attr_reader processes: Hash[String, processes]
 
     # Its iterations a sample.
     attr_reader n: Integer?
@@ -594,6 +611,9 @@ module Duel
     def with_lanes: [T] () { (Array[Lane] lanes) -> T } -> T
 
     def judge_across: (Array[Result] results, Array[String] names) -> Hash[String, Across::verdict]
+
+    # Across the board, of +results+.
+    def across_of: (Array[Result] results) -> Across
 
     def open_lane: () -> Lane
 

@@ -177,6 +177,7 @@ A run that found one regression, abridged to two benchmarks:
       "interval": [0.998, 1.012],
       "limit": 1.005,
       "benchmarks": 12,
+      "processes": 8,
       "verdict": "undecided",
       "confirmed": false
     }
@@ -307,9 +308,10 @@ Each metric in `across`, such as `cpu`:
 
 | Key | What it is |
 |---|---|
-| `ratio` | The median of every benchmark's ratio. |
-| `interval` | The confidence interval for that median, as `[low, high]`, or `null` with too few benchmarks to tell. |
+| `ratio` | The median of every benchmark's ratio, or where they were judged by process, the ratio of the candidate's workers to the baseline's over every benchmark. |
+| `interval` | The confidence interval for that ratio, as `[low, high]`, or `null` with too few benchmarks to tell. |
 | `limit` | The ratio above which it's slower across the board. |
 | `benchmarks` | The benchmarks that it's from. |
+| `processes` | The worker processes of each version that the interval is over, or `null` where it's over the benchmarks. |
 | `verdict` | `"slower"`, `"faster"`, `"same"`, or `"undecided"`. |
 | `confirmed` | Whether it was slower again when every benchmark was measured a second time, which fails the run. |

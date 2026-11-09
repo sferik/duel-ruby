@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release, so a slowdown accepted in its pull request doesn't fail
   every nightly run until the next release. Duel reads that commit from
   `DUEL_ACCEPTED`, and the report says what it compared with.
-- The JSON report says, for each timing, how many worker processes of
-  each version the interval is over (`processes`), or `null` where it's
-  over the pairs.
+- The JSON report says, for each timing and across the board, how many
+  worker processes of each version the interval is over (`processes`),
+  or `null` where it's over pairs or benchmarks.
 
 ### Changed
 
@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Duel::Testing.compare`'s 2), and for a process benchmark, the
   interval is over the pairs, as before, and the first line of the
   output says which.
+- Across the board, the interval is over the workers too: each worker's
+  score is how much faster or slower it was than its lane's other
+  workers, at the median of the benchmarks it measured. A worker whose
+  luck slowed it at every benchmark could fail identical code across
+  the board.
 - On JRuby and TruffleRuby, Duel measures one benchmark at a time for
   every four CPUs (`--jobs`), not every two: their JIT compilers keep the
   other CPUs busy, so more were no faster, and each worker is a JVM of

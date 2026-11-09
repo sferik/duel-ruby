@@ -72,12 +72,17 @@ never on noise, so that it can gate every pull request:
   iterations.
 - **Across the board, too.** A slowdown that's too small for any one
   benchmark to settle, such as 1% everywhere, still shows in all of the
-  benchmarks together. For each metric that's judged by ratio, every
-  benchmark's median ratio is a sample. The candidate fails when a
-  confidence interval for their median lies above a quarter of the
-  metric's margin: 1.005, for CPU time's 1.02. This takes 8 benchmarks,
-  so with fewer, Duel doesn't report it. Duel measures again before it
-  fails, as it does for the rest.
+  benchmarks together. The same workers measure every benchmark, so a
+  worker whose luck makes it slower is slower at all of them, and the
+  unit is the worker again. Each worker has a score: the median, over
+  the benchmarks it measured, of how much faster or slower it was than
+  the other workers of its lane. The candidate fails when a confidence
+  interval for the ratio of its workers' scores to the baseline's lies
+  above a quarter of the metric's margin: 1.005, for CPU time's 1.02.
+  Where the benchmarks were judged over pairs, every benchmark's median
+  ratio is a sample instead, and the interval is for their median.
+  Either takes 8 benchmarks, so with fewer, Duel doesn't report it.
+  Duel measures again before it fails, as it does for the rest.
 
 ## What Duel measures
 

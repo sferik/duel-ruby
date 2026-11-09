@@ -15,6 +15,10 @@ class ResultTest < DuelTest
     end
   end
 
+  def test_no_processes_yet
+    assert_equal({}, Duel::Result.new("b").processes)
+  end
+
   def test_worse_is_slower_or_more
     r = result(timed: {"cpu" => "slower", "db" => "same"}, counted: {"allocations" => [5, 6], "trips" => [2, 2]})
 
