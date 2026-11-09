@@ -60,8 +60,8 @@ class CLITest < DuelTest
                                            release tag), or a directory, already built
               --candidate-dir DIR          Candidate tree (default: this one)
               --filter REGEXP              Only benchmarks whose names match
-              --jobs N                     Benchmarks measured at once (default: half the CPUs)
-              --processes N                Worker processes per version (default: 3)
+              --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs)
+              --processes N                Worker processes per version (default: #{Duel::PROCESSES})
               --timeout SECONDS            Most a worker may take to load or answer (default: 60)
               --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)
               --limit RATIO                Ratio above which a timing is slower (default: 1.02)
@@ -82,8 +82,11 @@ class CLITest < DuelTest
     HELP
   end
 
+  # Half the CPUs, or on JRuby and TruffleRuby, a quarter.
   def test_jobs_by_default_half_the_cpus
-    assert_equal [1, 4], [1, 8].map { |cpus| stub(Etc, :nprocessors, -> { cpus }) { cli.parse.jobs } }
+    per = {"jruby" => 4, "truffleruby" => 4}.fetch(RUBY_ENGINE, 2)
+
+    assert_equal [1, 8 / per], [1, 8].map { |cpus| stub(Etc, :nprocessors, -> { cpus }) { cli.parse.jobs } }
   end
 
   def test_a_bad_option
@@ -185,7 +188,7 @@ class CLITest < DuelTest
     s = cli(env: env).parse
 
     assert_equal ["v1", /run/, true], [s.base, s.filter, s.force]
-    assert_equal 3, cli(env: {"DUEL_PROCESSES" => "7"}).parse.processes, "only those three"
+    assert_equal Duel::PROCESSES, cli(env: {"DUEL_PROCESSES" => "7"}).parse.processes, "only those three"
     assert_equal "v2", cli("--base", "v2", env: env).parse.base, "options win"
     assert_nil cli(env: {"DUEL_BASE" => ""}).parse.base, "empty is unset"
   end
@@ -193,9 +196,9 @@ class CLITest < DuelTest
   def test_defaults
     s = Dir.chdir(tmpdir) { cli.parse }
 
-    assert_equal [nil, nil, nil, //, [Etc.nprocessors / 2, 1].max, 1.02, 0.99, false, nil, 3, 60.0, 1800.0],
-      [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.confidence, s.force, s.config_path, s.processes,
-        s.timeout, s.time_limit]
+    assert_equal [nil, nil, nil, //, [Etc.nprocessors / Duel::CPUS_PER_LANE, 1].max, 1.02, 0.99, false, nil, 60.0, 1800.0],
+      [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.confidence, s.force, s.config_path, s.timeout, s.time_limit]
+    assert_equal({"jruby" => 6, "truffleruby" => 6}.fetch(RUBY_ENGINE, 8), s.processes, "fewer of a JVM's")
   end
 
   def test_finds_dot_duel_rb

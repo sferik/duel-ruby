@@ -123,7 +123,7 @@ module Duel
     # The settings, from the environment and then the options.
     def parse
       settings = Settings.defaults
-      settings.jobs = [Etc.nprocessors / 2, 1].max
+      settings.jobs = [Etc.nprocessors / CPUS_PER_LANE, 1].max
       parser(settings).parse!(env_options + @argv)
       branch = variable("GITHUB_REF_NAME", "CI_COMMIT_BRANCH")
       base = variable("DUEL_BASE")
@@ -459,8 +459,8 @@ module Duel
         end
         o.on("--candidate-dir DIR", "Candidate tree (default: this one)") { |v| settings.candidate_dir = v }
         o.on("--filter REGEXP", "Only benchmarks whose names match") { |v| settings.filter = CLI.regexp(v) }
-        o.on("--jobs N", Integer, "Benchmarks measured at once (default: half the CPUs)") { |v| settings.jobs = v }
-        o.on("--processes N", Integer, "Worker processes per version (default: 3)") { |v| settings.processes = v }
+        o.on("--jobs N", Integer, "Benchmarks measured at once (default: one for every #{CPUS_PER_LANE} CPUs)") { |v| settings.jobs = v }
+        o.on("--processes N", Integer, "Worker processes per version (default: #{PROCESSES})") { |v| settings.processes = v }
         o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: 60)") { |v| settings.timeout = v }
         o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)") do |v|
           settings.time_limit = v

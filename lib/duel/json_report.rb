@@ -77,7 +77,7 @@ module Duel
       result.timed.to_h do |metric, t|
         n = result.n #: Integer
         [metric, {"ratio" => t.fetch("median"), "interval" => t.fetch("interval"), "limit" => t.fetch("limit"),
-                  "pairs" => t.fetch("pairs"), "verdict" => t.fetch("verdict"), "baseline" => t.fetch("baseline").fdiv(n),
+                  "pairs" => t.fetch("pairs"), "processes" => t["processes"], "verdict" => t.fetch("verdict"), "baseline" => t.fetch("baseline").fdiv(n),
                   "candidate" => t.fetch("candidate").fdiv(n), "unit" => t.fetch("unit"), "plural" => t.fetch("plural"),
                   "across" => t.fetch("across")}]
       end

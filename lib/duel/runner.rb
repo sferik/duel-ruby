@@ -27,6 +27,22 @@ module Duel
   # @api private
   YJIT_WARM = 2.0
 
+  # Worker processes of each version, by default: enough for an interval
+  # over processes (see Lane#judge_processes), which takes 5 at 99%, and
+  # more, as it narrows with each. JRuby's and TruffleRuby's are JVMs,
+  # slow to start and big, and each warms up on every benchmark, so
+  # they get fewer.
+  # @api private
+  PROCESSES = {"jruby" => 6, "truffleruby" => 6}.fetch(RUBY_ENGINE, 8)
+
+  # The CPUs for each lane of workers, by default (see CLI#parse): half
+  # the CPUs make lanes, so that each lane's pair of workers has a CPU of
+  # its own. JRuby's and TruffleRuby's JIT compilers keep other CPUs busy,
+  # and each of their workers is a big JVM, so they get a lane for every
+  # four: more lanes are no faster there, and take more memory.
+  # @api private
+  CPUS_PER_LANE = {"jruby" => 4, "truffleruby" => 4}.fetch(RUBY_ENGINE, 2)
+
   # The seconds a run measures for, at most, by default (see
   # Settings#time_limit and Runner#out_of_time?).
   TIME_LIMIT = 1800.0
@@ -36,7 +52,7 @@ module Duel
   Settings = Struct.new(:base, :base_dir, :candidate_dir, :filter, :jobs, :processes, :limit, :confidence, :warm, :force,
     :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit, :accepted) do
     # @type self: singleton(Settings)
-    def self.defaults = new(filter: //, jobs: 1, processes: 3, limit: 1.02, confidence: 0.99, warm: nil, force: false,
+    def self.defaults = new(filter: //, jobs: 1, processes: PROCESSES, limit: 1.02, confidence: 0.99, warm: nil, force: false,
       timeout: 60.0, time_limit: TIME_LIMIT)
   end
 
@@ -210,12 +226,13 @@ module Duel
   # a worker that died or hung.
   class Failed < Error; end
 
-  # Workers of both versions, taking turns: PROCESSES of each (Settings),
-  # so that where things landed in one process's memory (which can make
-  # the very same code a few percent faster or slower for that process's
-  # whole life) is spread over many pairs as noise the confidence
-  # interval accounts for, not a bias every pair shares. Each worker has
-  # its own resources (Config#prepare(:worker)).
+  # Workers of both versions, taking turns: Settings#processes of each
+  # (PROCESSES, by default). Where things landed in one process's memory
+  # can make the very same code a few percent faster or slower for that
+  # process's whole life, so the interval is over the workers, where
+  # they're enough for one (see #judge_processes), and not over the
+  # pairs, which share them. Each worker has its own resources
+  # (Config#prepare(:worker)).
   # @api private
   class Lane
     # CPU time (or a plugin's ratio metric's equivalent) a run aims for:
@@ -238,6 +255,9 @@ module Duel
     # process benchmark's: see #judge).
     STEP = 10
     MAX_PAIRS = 60
+    # A benchmark judged by process (see #judge_processes) is decided from
+    # its MIN_ROUNDS-th round of a sample from every worker.
+    MIN_ROUNDS = 2
     # Counts are each version's fewest in COUNTS samples.
     COUNTS = 3
     # Peak memory is each version's least in MEMORY_SAMPLES fresh workers.
@@ -270,6 +290,10 @@ module Duel
       stop
       raise
     end
+
+    # Whether +processes+ workers of each version are enough for a
+    # +confidence+ interval over them (see Stats.shift_rank): 5 at 99%.
+    def self.by_process?(processes, confidence) = !Stats.shift_rank(processes, processes, confidence).nil?
 
     # A directory for a lane's sockets, short as a Unix socket's path must
     # be (see .short_tmp).
@@ -520,16 +544,21 @@ module Duel
     # Takes pairs until every ratio metric worth judging (measured on
     # both versions in the warm-up, and above its floors on either: one
     # that rises from next to nothing is judged too) is decided, or
-    # MAX_PAIRS run out: each decided at the end of a round of STEP pairs.
-    # A process benchmark's pairs take a process each, so it's decided not
-    # slower (Result::CLEARED) after any pair too. That can only stop it
-    # before it would have been found slower, never make it slower: it's
-    # found slower only at the end of a round, as any benchmark is.
+    # MAX_PAIRS run out: each decided at the end of a round of STEP pairs,
+    # and each interval over the pairs. That's for a process benchmark, or
+    # too few workers for an interval over them: otherwise, see
+    # #judge_processes. A process benchmark's pairs take a process each,
+    # so it's decided not slower (Result::CLEARED) after any pair too.
+    # That can only stop it before it would have been found slower, never
+    # make it slower: it's found slower only at the end of a round, as any
+    # benchmark is.
     def judge(name, n, floors, result)
       judged = metrics.select do |spec|
         floors.flatten.all? { |sample| sample.fetch("timed").key?(spec.fetch("name")) } &&
           floors.transpose.any? { |side| above_floors?(side.map { |sample| sample.fetch("timed") }, spec) }
       end
+      return judge_processes(name, n, judged, result) if by_process?(name)
+
       ratios = judged.to_h { |spec| [spec.fetch("name"), []] }
       # @type var raw: Hash[String, Array[[Metric::value, Metric::value]]]
       raw = judged.to_h { |spec| [spec.fetch("name"), []] }
@@ -559,6 +588,76 @@ module Duel
                                             "pairs" => list.size, "verdict" => verdict(list, spec).to_s,
                                             "baseline" => medians.fetch(0), "candidate" => medians.fetch(1)}
       end
+    end
+
+    # Whether a benchmark's timings are judged by process (see
+    # #judge_processes): unless it's a process benchmark (each of its
+    # samples is a fresh process already, so its pairs are independent),
+    # or there are too few workers of each version for an interval over
+    # them (Lane.by_process?).
+    def by_process?(name) = !benchmarks.fetch(name).fetch("process") && Lane.by_process?(@bases.size, @settings.confidence)
+
+    # Takes rounds of pairs, each a sample from every worker of each
+    # version (the baseline's in order, paired with the candidate's in
+    # turn: each round pairs each with another), until every ratio metric
+    # judged (see #judge) is decided, from the second round on, or
+    # #rounds run out. Each worker's median is a sample, and the interval
+    # is over workers (Stats.shift_interval): where a process's luck
+    # makes it faster or slower than another for its whole life (where
+    # things landed in its memory, or what a JIT compiled), the interval
+    # is as wide as that makes it. An interval over pairs would be as
+    # narrow as if every pair had processes of its own.
+    def judge_processes(name, n, judged, result)
+      k = @bases.size
+      # @type var values: Hash[String, Hash[String, Array[Array[Metric::value]]]]
+      values = judged.to_h { |spec| [spec.fetch("name"), {"baseline" => Array.new(k) { [] }, "candidate" => Array.new(k) { [] }}] }
+      pending = judged.dup
+      pairs = 0
+      rounds(k).times do |round|
+        break if pending.empty?
+
+        k.times do |i|
+          j = (i + round) % k
+          base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?)
+          result.note(base, candidate)
+          values.each do |metric, sides|
+            sides.fetch("baseline").fetch(i) << base.fetch("timed").fetch(metric)
+            sides.fetch("candidate").fetch(j) << candidate.fetch("timed").fetch(metric)
+          end
+          pairs += 1
+        end
+        next if round + 1 < MIN_ROUNDS
+
+        pending.reject! { |spec| decided?(process_verdict(medians(values.fetch(spec.fetch("name"))), spec), true) }
+      end
+      judged.each do |spec|
+        metric = spec.fetch("name")
+        each = medians(values.fetch(metric))
+        bases, candidates = clamped(each)
+        result.timed[metric] = {"median" => Stats.shift(bases, candidates), "limit" => limit(spec), "across" => spec.fetch("across"),
+                                "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural"),
+                                "interval" => Stats.shift_interval(bases, candidates, @settings.confidence),
+                                "pairs" => pairs, "processes" => k, "verdict" => process_verdict(each, spec).to_s,
+                                "baseline" => Stats.median(each.fetch("baseline")), "candidate" => Stats.median(each.fetch("candidate"))}
+      end
+    end
+
+    # The most rounds of +k+ workers' pairs: as many as make MAX_PAIRS
+    # pairs, and MIN_ROUNDS at least.
+    def rounds(k) = [MAX_PAIRS / k, MIN_ROUNDS].max
+
+    # Each worker's median, by version, of +values+ (each worker's
+    # measures, by version).
+    def medians(values) = values.transform_values { |lists| lists.map { |list| Stats.median(list) } }
+
+    # The baseline's medians (of +each+) at least 1, as the ratio's
+    # denominator (so a ratio to nothing is one to 1, as a pair's is),
+    # and the candidate's.
+    def clamped(each) = [each.fetch("baseline").map { |value| [value, 1].max }, each.fetch("candidate")]
+
+    def process_verdict(each, spec)
+      bases, candidates = clamped(each)
+      Stats.decide(Stats.shift_interval(bases, candidates, @settings.confidence), limit(spec))
     end
 
     # Whether both versions' CPU time in +floors+ is below its floor: then
@@ -632,9 +731,14 @@ module Duel
     # out, and weighs on both alike.
     def pair(name, n, index, runs: RUNS, count: false)
       k = @bases.size
-      base = @bases.fetch(index % k)
-      candidate = @candidates.fetch((index + (index / k)) % k)
-      order = index.even? ? [base, candidate] : [candidate, base]
+      sampled(name, n, @bases.fetch(index % k), @candidates.fetch((index + (index / k)) % k), base_first: index.even?, runs:, count:)
+    end
+
+    # A sample (of +n+ iterations) from +base+, a baseline worker, and
+    # from +candidate+, a candidate worker, the baseline's first if
+    # +base_first+ (see #pair).
+    def sampled(name, n, base, candidate, base_first:, runs: RUNS, count: false)
+      order = base_first ? [base, candidate] : [candidate, base]
       process = benchmarks.fetch(name).fetch("process")
       replies = if process
         # (Each run of one version's next to one of the other's.)
@@ -962,7 +1066,7 @@ module Duel
         @benchmarks = lanes.first.benchmarks
         @out.puts "Comparing #{Runner.count(found.size, "benchmark")}, #{@settings.jobs} at a time: baseline #{@base_root} " \
           "against candidate #{File.expand_path(@settings.candidate_dir || @config.root)} (slower: a " \
-          "#{(@settings.confidence * 100).round(1)}% interval above #{@settings.limit})"
+          "#{(@settings.confidence * 100).round(1)}% interval above #{@settings.limit}, #{interval_over})"
         rubies = @rubies = lanes.first.rubies
         rubies.each { |side, ruby| @out.puts "  #{side} on #{ruby}" } if rubies.values.uniq.size > 1
         @out.puts "  with plugins #{plugins.join(", ")}" unless plugins.empty?
@@ -974,6 +1078,23 @@ module Duel
       report(results, @seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
       results
     end
+
+    # What a benchmark's interval is over (see Lane#judge_processes): the
+    # workers, or the pairs, where they're too few (and says how many it
+    # takes, of the first PROCESSES_CHECKED).
+    # mutant:disable -- fewer than 2 of each never take an interval over them, and the last checked is only a bound
+    def interval_over
+      processes = @settings.processes
+      workers = Runner.count(processes, "worker process", "worker processes")
+      return "over #{workers} of each version" if Lane.by_process?(processes, @settings.confidence)
+
+      least = (1..PROCESSES_CHECKED).find { |k| Lane.by_process?(k, @settings.confidence) }
+      "over pairs: #{workers} of each version are too few for an interval over them" + (least ? ", which takes #{least}" : "")
+    end
+
+    # The most workers of each version #interval_over looks at, for how
+    # many it takes (more would take long to check, and longer to run).
+    PROCESSES_CHECKED = 20
 
     # Each version, prepared once for the run, before any of its workers
     # start: its Ruby found (Config#ruby, or --ruby), and its

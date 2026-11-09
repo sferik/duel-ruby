@@ -94,4 +94,96 @@ class StatsTest < DuelTest
     assert_equal :same, verdict([1.0] * 19 + [10.0])
     assert_equal :undecided, verdict([1.0] * 9 + [10.0]), "with 10 it can't be ruled out yet: more are taken"
   end
+
+  # P(U <= u) for samples of +m+ and +n+, from every way of ordering
+  # them (which of the m + n places are the first's): what the shift's
+  # ranks are checked against.
+  def u_cdf(m, n)
+    counts = Hash.new(0)
+    (0...(m + n)).to_a.combination(m).each do |places|
+      firsts = places.to_h { |place| [place, true] }
+      seen = 0
+      u = 0
+      (0...(m + n)).each { |place| firsts[place] ? u += seen : seen += 1 }
+      counts[u] += 1
+    end
+    total = counts.values.sum
+    sum = 0
+    (0..(m * n / 2)).map { |u| (sum += counts[u]).fdiv(total) }
+  end
+
+  def test_the_u_distribution_is_every_orderings
+    [[1, 1], [2, 3], [3, 2], [4, 4], [5, 3], [3, 6], [6, 6]].each do |m, n|
+      assert_equal u_cdf(m, n).size, Stats.u_lower_tail(m, n).size, "m=#{m} n=#{n}: up to m * n / 2"
+      Stats.u_lower_tail(m, n).zip(u_cdf(m, n)).each_with_index do |(found, exact), u|
+        assert_in_delta exact, found, 1e-12, "m=#{m} n=#{n} u=#{u}"
+      end
+    end
+  end
+
+  # The widest rank whose interval still covers the ratio 99% of the
+  # time: none below 5 of each (2/C(8, 4) = 0.029 > 0.01 in all), and
+  # as Mann-Whitney's tables have them (the critical U, plus one).
+  def test_shift_ranks
+    assert_nil Stats.shift_rank(4, 4, 0.99)
+    assert_equal 1, Stats.shift_rank(5, 5, 0.99), "2/C(10, 5) = 0.0079"
+    assert_equal 3, Stats.shift_rank(6, 6, 0.99)
+    assert_equal 8, Stats.shift_rank(8, 8, 0.99)
+    assert_equal 1, Stats.shift_rank(4, 4, 0.95)
+    assert_nil Stats.shift_rank(4, 5, 0.99)
+    assert_equal 1, Stats.shift_rank(4, 6, 0.99), "2/C(10, 4) = 0.0095"
+  end
+
+  def test_the_shift_ranks_cover_the_ratio_as_promised
+    [[5, 5], [6, 6], [6, 8], [8, 8], [10, 10]].each do |m, n|
+      r = Stats.shift_rank(m, n, 0.99)
+      cdf = u_cdf(m, n)
+
+      assert_operator 2 * cdf.fetch(r - 1), :<=, 0.01, "m=#{m} n=#{n}"
+      assert_operator 2 * cdf.fetch(r), :>, 0.01, "m=#{m} n=#{n}: the narrowest such"
+    end
+  end
+
+  # Where a tail is exactly the U distribution's, that rank is in.
+  def test_a_shift_tail_exactly_on_a_rank
+    assert_equal 1, Stats.shift_rank(1, 3, 0.5), "P(U <= 0) = 1/4 = the tail"
+    assert_nil Stats.shift_rank(1, 3, 0.6)
+    assert_nil Stats.shift_rank(1, 1, 0.0), "no confidence: no tail is above a half"
+    assert_equal [1.0], Stats.u_lower_tail(0, 3), "no samples of one: U is 0"
+  end
+
+  # The interval is over every cross ratio (each candidate's over each
+  # baseline's), and its middle is their median.
+  def test_shift_interval
+    bases = [100, 101, 102, 103, 104]
+    candidates = [110, 111, 112, 113, 114]
+
+    assert_equal [110.0 / 104, 114.0 / 100], Stats.shift_interval(bases, candidates, 0.99), "the extremes, with 5 of each"
+    assert_equal 112.0 / 102, Stats.shift(bases, candidates), "the 13th of 25"
+    assert_nil Stats.shift_interval(bases.first(4), candidates.first(4), 0.99), "too few"
+    ratios = Stats.cross_ratios([1, 2], [2, 6])
+
+    assert_equal [1.0, 2.0, 3.0, 6.0], ratios, "sorted"
+  end
+
+  # One slow worker of a version, whose luck slowed it for its whole
+  # life, widens the interval but can't make the other version look
+  # faster on its own.
+  def test_one_slow_worker_widens_the_interval
+    bases = [100, 100, 100, 100, 100, 100, 100, 130]
+    candidates = [100] * 8
+    interval = Stats.shift_interval(bases, candidates, 0.99)
+
+    assert_equal :same, Stats.decide(interval, 1.02)
+    assert_in_delta(1.0, Stats.shift(bases, candidates))
+  end
+
+  # Each distribution is found once, so many workers take no time: a
+  # lane of 32 of each, say, or across the board, several lanes'.
+  def test_many_workers_quickly
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    Stats.shift_rank(32, 32, 0.99)
+
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 5
+  end
 end

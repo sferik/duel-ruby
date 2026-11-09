@@ -53,7 +53,7 @@ A run that found one regression, abridged to two benchmarks:
     "limit": 1.02,
     "filter": "",
     "jobs": 4,
-    "processes": 3,
+    "processes": 8,
     "timeout": 60.0,
     "warm": null,
     "force": false
@@ -87,7 +87,8 @@ A run that found one regression, abridged to two benchmarks:
           "ratio": 1.071,
           "interval": [1.069, 1.073],
           "limit": 1.01,
-          "pairs": 10,
+          "pairs": 16,
+          "processes": 8,
           "verdict": "slower",
           "baseline": 1521000.0,
           "candidate": 1629000.0,
@@ -99,7 +100,8 @@ A run that found one regression, abridged to two benchmarks:
           "ratio": 1.081,
           "interval": [1.062, 1.097],
           "limit": 1.02,
-          "pairs": 10,
+          "pairs": 16,
+          "processes": 8,
           "verdict": "slower",
           "baseline": 112400.0,
           "candidate": 121500.0,
@@ -143,7 +145,8 @@ A run that found one regression, abridged to two benchmarks:
           "ratio": 1.002,
           "interval": [0.994, 1.009],
           "limit": 1.02,
-          "pairs": 10,
+          "pairs": 16,
+          "processes": 8,
           "verdict": "same",
           "baseline": 410.5,
           "candidate": 411.2,
@@ -192,7 +195,7 @@ A run with nothing to compare has the same keys, with nothing compared:
   "exit": 0,
   "message": "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
   "comment": "change",
-  "settings": {"confidence": 0.99, "limit": 1.02, "filter": "", "jobs": 4, "processes": 3, "timeout": 60.0, "warm": null, "force": false},
+  "settings": {"confidence": 0.99, "limit": 1.02, "filter": "", "jobs": 4, "processes": 8, "timeout": 60.0, "warm": null, "force": false},
   "seconds": null,
   "baseline": null,
   "candidate": null,
@@ -280,10 +283,11 @@ Each timing in `timed`, such as `cpu`:
 
 | Key | What it is |
 |---|---|
-| `ratio` | The median of the paired ratios, the candidate's to the baseline's. Above 1 is the candidate slower. |
-| `interval` | The confidence interval for that median, as `[low, high]`. |
+| `ratio` | The candidate's ratio to the baseline: the median of every candidate worker's median over every baseline worker's, or with `processes` `null`, the median of the paired ratios. Above 1 is the candidate slower. |
+| `interval` | The confidence interval for that ratio, as `[low, high]`. |
 | `limit` | The ratio above which it's slower. |
 | `pairs` | The pairs of samples measured. |
+| `processes` | The worker processes of each version that the interval is over, or `null` where it's over the pairs: for a process benchmark, or with fewer workers than the interval takes (see [How it works](how-it-works.md)). |
 | `verdict` | `"slower"`, `"faster"`, `"same"`, or `"undecided"` (too close to the limit to settle). |
 | `baseline`, `candidate` | Each version's median for one iteration, in `unit`. |
 | `unit`, `plural` | The metric's unit, singular and plural, such as `"ns"`, or `null` for a plain number. |

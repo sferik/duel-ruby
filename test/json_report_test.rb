@@ -64,7 +64,7 @@ class JSONReportTest < DuelTest
       "benchmarks" => [
         {"name" => "a", "verdict" => "changed", "passed" => true, "regressed" => [], "unsettled" => false, "iterations" => 2,
          "seconds" => 0.5, "confirmations" => 0,
-         "timed" => {"cpu" => {"ratio" => 1.0, "interval" => [0.99, 1.01], "limit" => 1.02, "pairs" => 20, "verdict" => "same",
+         "timed" => {"cpu" => {"ratio" => 1.0, "interval" => [0.99, 1.01], "limit" => 1.02, "pairs" => 20, "processes" => nil, "verdict" => "same",
                                "baseline" => 500.0, "candidate" => 550.0, "unit" => "ns", "plural" => "ns", "across" => true}},
          "counted" => {"queries" => {"baseline" => 1.5, "candidate" => 1.0, "unit" => "query", "plural" => "queries", "worse" => false}},
          "peak_memory" => nil, "details" => {}, "explanation" => [], "error" => nil, "skipped" => nil}
@@ -108,6 +108,7 @@ class JSONReportTest < DuelTest
   def test_the_rest_of_a_benchmark
     less = result("less", timed: {"cpu" => "undecided"})
     less.timed.fetch("cpu")["across"] = false
+    less.timed.fetch("cpu")["processes"] = 8
     less.memory = {"baseline" => 3 << 20, "candidate" => 1 << 20}
     skipped = Duel::Result.new("new").tap { |r| r.skipped = "not on the baseline (x)" }
     first, second = report([less, skipped]).fetch("benchmarks")
@@ -115,6 +116,7 @@ class JSONReportTest < DuelTest
     assert_equal [{"baseline" => 3 << 20, "candidate" => 1 << 20, "unit" => "B", "worse" => false}, true, "unsettled"],
       first.values_at("peak_memory", "unsettled", "verdict")
     refute first.dig("timed", "cpu", "across")
+    assert_equal 8, first.dig("timed", "cpu", "processes"), "the workers it's over"
     assert_equal ["skipped", true, "not on the baseline (x)", nil], second.values_at("verdict", "passed", "skipped", "error")
   end
 

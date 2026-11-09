@@ -14,7 +14,7 @@ code from becoming slower.
 
 ```sh
 $ duel
-Comparing 12 benchmarks, 2 at a time: baseline /src/.3f9c2a1b against candidate /src/my_parser (slower: a 99.0% interval above 1.02)
+Comparing 12 benchmarks, 2 at a time: baseline /src/.3f9c2a1b against candidate /src/my_parser (slower: a 99.0% interval above 1.02, over 8 worker processes of each version)
   parse: a small document                            0.6s n=412    cpu 0.998 [0.991, 1.006] same  allocations 20
 ! parse: a large document                            1.1s n=9      cpu 1.081 [1.062, 1.097] slower  allocations 5790
 ...

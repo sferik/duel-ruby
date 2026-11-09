@@ -17,25 +17,40 @@ never on noise, so that it can gate every pull request:
   only ever adds time. Garbage collection is kept out of samples, and
   its cost shows in the allocation count instead, which is exact.
 - **Side by side, many times over.** The two versions run in worker
-  processes of their own, three of each by default, at the same time on
-  the same machine. They take turns: one sample from each, in
-  alternating order, and each pair from a different pair of processes.
-  That way, a busy moment weighs on both versions alike, and no one
-  process's luck decides anything. (Where things land in a process's
-  memory can make the very same code a few percent faster or slower for
-  the process's whole life.) There are no stored numbers and no
-  thresholds to maintain, and any machine will do.
-- **A confidence interval, not an average.** A timing is slower only
-  when a 99% distribution-free confidence interval for the median of
-  the paired ratios (candidate / baseline) lies entirely above the
-  limit, which is 1.02 by default. No one outlier sample can decide it.
-  Duel takes samples in rounds of 10 pairs, up to 60, until the interval
-  settles the question. A process benchmark's sample is the fastest of
-  a few fresh processes, and it can also stop after any pair once the
+  processes of their own, at the same time on the same machine: eight
+  of each by default, or six on JRuby and TruffleRuby, whose workers
+  are JVMs. They take turns, one sample from each in alternating order,
+  in rounds. Each round takes a sample from every worker, and pairs
+  each baseline worker with a different candidate worker than the
+  last round did. That way, a busy moment weighs on both versions
+  alike. There are no stored numbers and no thresholds to maintain,
+  and any machine will do.
+- **A confidence interval over processes, not an average.** Where
+  things land in a process's memory can make the very same code a few
+  percent faster or slower for the process's whole life, and on JRuby,
+  so can what its JIT compiled. So a sample from one process isn't
+  independent of the next sample from it, and the unit Duel judges is
+  the process: each worker's median. A timing is slower only when a
+  99% distribution-free confidence interval for the ratio of the
+  candidate's workers to the baseline's (the Mann-Whitney interval,
+  over every candidate worker's median against every baseline
+  worker's) lies entirely above the limit, which is 1.02 by default.
+  No one outlier sample can decide it, and no one lucky or unlucky
+  worker can either: the interval is as wide as the workers make it.
+  An interval over the pairs would be as narrow as if every pair had
+  processes of its own, and with identical code on both sides, it
+  would often leave out 1. Duel takes rounds until the interval
+  settles the question, from the second round on, and up to some 60
+  pairs. Duel reports a timing that's still too close to the limit to
+  call, and doesn't fail on it.
+
+  The interval over workers takes five of each at least. With fewer
+  (`--processes`), Duel judges over the pairs, as it does a process
+  benchmark, and its first line says so. A process benchmark's
+  sample is the fastest of a few fresh processes, so its pairs are
+  independent already. It can also stop after any pair once the
   interval shows that it isn't slower, which only ever ends a
   measurement before it could find a slowdown.
-  Duel reports a timing that's still too close to the limit to call, and
-  doesn't fail on it.
 - **Measured again before failing.** Duel measures whatever looks
   slower again from scratch, up to three times, in fresh processes. It
   fails only if every measurement finds the same metric worse. A
@@ -227,8 +242,20 @@ later do. To warm up for a different time, use `--warm`.
 
 JRuby's and TruffleRuby's JIT compilers keep compiling for seconds, so
 Duel runs each benchmark for five seconds before it measures it
-(`--warm`). Their timings stay noisier than CRuby's, so Duel often
-leaves small timing regressions on them unsettled.
+(`--warm`). Each worker's JIT also compiles the same code a little
+differently, so one worker can run a benchmark 10% faster or slower
+than another for its whole life, however long it warms up. Duel's
+interval over workers is as wide as that makes it, so on JRuby and
+TruffleRuby, a CPU-time interval is often 10% wide or more, and Duel
+leaves all but large timing regressions unsettled there. It doesn't
+fail identical code on that noise. An interval over the pairs would
+be narrower, but it would often leave out 1 for identical code.
+
+Their workers are big JVMs, and their compilers keep other CPUs busy,
+so Duel starts six workers of each version rather than eight, and
+measures one benchmark at a time for every four CPUs (`--jobs`), not
+every two. More at once is no faster there, and takes more memory: some
+500 MB a worker.
 
 Neither has an allocation count, an instruction count, or profiles.
 TruffleRuby has peak memory only on Linux. JRuby measures peak memory in

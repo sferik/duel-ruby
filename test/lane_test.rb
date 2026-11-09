@@ -322,6 +322,105 @@ class LaneTest < DuelTest
     end
   end
 
+  # With workers enough for it (5 of each, at 99%), the interval is over
+  # them: rounds of a sample from every worker, the baseline's in order,
+  # each with the candidate's in turn, decided from the second round.
+  def test_judged_by_process
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+      result, = compare(workers, processes: 5)
+      cpu = result.timed.fetch("cpu")
+
+      assert_equal({"median" => 1.0, "limit" => 1.02, "across" => true, "interval" => [1.0, 1.0], "pairs" => 10, "processes" => 5,
+                    "verdict" => "same", "baseline" => 1_200_000, "candidate" => 1_200_000, "unit" => "ns", "plural" => "ns"}, cpu)
+      rounds = (0...2).flat_map do |round|
+        (0...5).map do |i|
+          pair = ["base-#{i + 1}", "head-#{((i + round) % 5) + 1}"]
+          (i + round).even? ? pair : pair.reverse
+        end
+      end
+
+      assert_equal rounds, samples(workers).select { |_, _, runs| runs == 5 }.drop(10).map(&:first).each_slice(2).to_a
+      assert(samples(workers).select { |_, _, runs| runs == 5 }.none? { |*, count| count }, "timed, not counted")
+    end
+  end
+
+  def test_a_slower_candidate_by_process
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+      workers.per_iteration["candidate"] = 110_000
+      cpu = compare(workers, processes: 5).first.timed.fetch("cpu")
+
+      assert_equal ["slower", 10, [1.1, 1.1]], cpu.values_at("verdict", "pairs", "interval")
+      assert_in_delta 1.1, cpu.fetch("median"), 1e-12
+    end
+  end
+
+  # Each worker's luck (as where things landed in its memory gives it)
+  # lasts its whole life, so the interval is as wide as the workers make
+  # it: every pair says the candidate is a little faster or slower, and
+  # an interval over pairs would call it, but the workers don't settle
+  # it, so it takes every round (as many as make the most pairs).
+  def test_a_workers_luck_widens_the_interval
+    luck = {"base-1" => 1.0, "base-2" => 1.03, "base-3" => 0.98, "base-4" => 1.02, "base-5" => 0.99,
+            "head-1" => 1.01, "head-2" => 0.97, "head-3" => 1.04, "head-4" => 1.0, "head-5" => 0.98}
+    with_fake_workers do |workers|
+      workers.benchmark("b") do |_, n, label|
+        {"timed" => {"cpu" => (n * 100_000 * luck.fetch(label)).round}, "counted" => {}, "heap" => 0}
+      end
+      result, = compare(workers, processes: 5)
+      cpu = result.timed.fetch("cpu")
+
+      assert_equal ["undecided", 60], cpu.values_at("verdict", "pairs")
+      low, high = cpu.fetch("interval")
+
+      assert_operator low, :<, 0.95
+      assert_operator high, :>, 1.05
+    end
+  end
+
+  # Judged by process, as over pairs: a ratio to nothing is one to 1,
+  # what metrics said of the last pair is kept, and a metric's across is
+  # its own.
+  def test_by_process_as_over_pairs
+    with_fake_workers do |workers|
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::CPU.merge("name" => "nothing", "floor" => 0, "across" => false)]
+      workers.benchmark("b") do |side, n, label|
+        {"timed" => {"cpu" => n * 100_000, "nothing" => (side == "baseline") ? 0 : 1}, "counted" => {}, "heap" => 0,
+         "details" => {"cpu" => "said by #{label}"}}
+      end
+      result, = compare(workers, processes: 5)
+      nothing = result.timed.fetch("nothing")
+
+      assert_equal [1.0, [1.0, 1.0], "same", false], nothing.values_at("median", "interval", "verdict", "across")
+      assert_equal({"baseline" => "said by base-5", "candidate" => "said by head-1"}, result.details.fetch("cpu"))
+    end
+  end
+
+  # Too few workers (4 of each, at 99%), or a process benchmark (each of
+  # whose samples is a fresh process already), is judged over pairs.
+  def test_by_process_when_enough
+    assert Duel::Lane.by_process?(5, 0.99)
+    refute Duel::Lane.by_process?(4, 0.99)
+    assert Duel::Lane.by_process?(4, 0.95)
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+
+      refute compare(workers, processes: 4).first.timed.fetch("cpu").key?("processes")
+    end
+  end
+
+  # As many rounds as make the most pairs, and two at least.
+  def test_rounds
+    with_fake_workers do |workers|
+      l = lane(workers, processes: 1)
+
+      assert_equal [12, 10, 7, 2, 2], [5, 6, 8, 30, 31].map { |k| l.send(:rounds, k) }
+    ensure
+      l&.stop
+    end
+  end
+
   # Only metrics either version measured above their floors in the
   # warm-up pairs (the median of them) are judged (one that rises from
   # next to nothing too), and ratios to nothing are to one.
@@ -922,6 +1021,21 @@ class LaneVersionsTest < DuelTest
   # taking turns, paired as any benchmark's are, after a warm-up of its
   # own (a process each), judged on its CPU time, with each version's
   # least peak memory.
+  # A process benchmark is judged over its pairs, however many workers:
+  # each of its samples is a process of its own already.
+  def test_a_process_benchmark_by_pairs
+    with_fake_workers do |workers|
+      workers.benchmark("boot", process: {"command" => %w[bin/boot], "ruby" => nil, "runs" => 1}) do |_, n, _|
+        {"timed" => {"cpu" => n * 1_000_000}, "peak" => 1 << 20}
+      end
+      l = lane(processes: 5)
+      result = l.compare("boot")
+      l.stop
+
+      refute result.timed.fetch("cpu").key?("processes")
+    end
+  end
+
   def test_a_process_benchmark
     process = {"command" => %w[bin/boot], "ruby" => nil, "runs" => nil}
     with_fake_workers do |workers|

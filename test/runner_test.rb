@@ -29,7 +29,8 @@ class RunnerTest < DuelTest
       assert_equal %w[a b], results.map(&:name)
       assert_equal [
         "Comparing 2 benchmarks, 1 at a time: baseline #{File.join(tmpdir, "base")} against candidate #{candidate} " \
-        "(slower: a 99.0% interval above 1.02)",
+        "(slower: a 99.0% interval above 1.02, over pairs: 3 worker processes of each version are too few for an interval " \
+        "over them, which takes 5)",
         line("a", 12, "cpu 1.000 [1.000, 1.000] same  allocations 2"),
         line("b", 12, "cpu 1.000 [1.000, 1.000] same  allocations 2"),
         "",
@@ -52,8 +53,27 @@ class RunnerTest < DuelTest
       elsewhere { runner.run }
 
       assert_equal "Comparing 1 benchmark, 2 at a time: baseline base against candidate #{File.join(tmpdir, "other")} " \
-        "(slower: a 95.0% interval above 1.05)", out.string.lines.first.chomp
+        "(slower: a 95.0% interval above 1.05, over pairs: 3 worker processes of each version are too few for an interval " \
+        "over them, which takes 4)", out.string.lines.first.chomp
       assert_equal 12, workers.made.size, "two lanes"
+    end
+  end
+
+  # With workers enough, the interval is over them, and the first line
+  # says so. With too few, it says how many it takes, where any of the
+  # first twenty would do.
+  def test_what_the_interval_is_over
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      _, out, = run_duel(workers, processes: 5)
+
+      assert_includes out.lines.first, "(slower: a 99.0% interval above 1.02, over 5 worker processes of each version)\n"
+      _, out, = run_duel(workers, processes: 1)
+
+      assert_includes out.lines.first, "over pairs: 1 worker process of each version are too few"
+      runner = Duel::Runner.new(Duel::Config.new(candidate), settings(confidence: 1.0), "base")
+
+      assert_equal "over pairs: 3 worker processes of each version are too few for an interval over them", runner.send(:interval_over)
     end
   end
 

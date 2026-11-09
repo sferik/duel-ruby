@@ -20,6 +20,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release, so a slowdown accepted in its pull request doesn't fail
   every nightly run until the next release. Duel reads that commit from
   `DUEL_ACCEPTED`, and the report says what it compared with.
+- The JSON report says, for each timing, how many worker processes of
+  each version the interval is over (`processes`), or `null` where it's
+  over the pairs.
+
+### Changed
+
+- A timing's interval is over worker processes, not pairs of samples.
+  Where things land in a process's memory (or on JRuby, what its JIT
+  compiles) can make the same code faster or slower for the process's
+  whole life, so the pairs of 3 workers of each version were far from
+  independent, and with identical code on both sides, their intervals
+  left out 1 several times as often as 99% intervals should. Each
+  worker's median is now a sample, and the interval is the Mann-Whitney
+  interval for the ratio of the candidate's workers to the baseline's.
+  Duel takes rounds of a sample from every worker, and starts 8 workers
+  of each version by default (6 on JRuby and TruffleRuby). On CRuby,
+  CPU-time intervals are about as wide as before, and instruction
+  counts' (which a process repeats almost exactly) a little wider. On
+  JRuby, they're some three times as wide, as wide as each JVM's JIT
+  makes them, so Duel leaves more timings there unsettled. With fewer
+  than 5 workers of each version (`--processes`, and
+  `Duel::Testing.compare`'s 2), and for a process benchmark, the
+  interval is over the pairs, as before, and the first line of the
+  output says which.
+- On JRuby and TruffleRuby, Duel measures one benchmark at a time for
+  every four CPUs (`--jobs`), not every two: their JIT compilers keep the
+  other CPUs busy, so more were no faster, and each worker is a JVM of
+  some 500 MB.
 
 ### Fixed
 

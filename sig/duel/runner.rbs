@@ -20,6 +20,14 @@ module Duel
   # @api private
   TIME_LIMIT: Float
 
+  # The CPUs for each lane of workers, by default.
+  # @api private
+  CPUS_PER_LANE: Integer
+
+  # Worker processes of each version, by default.
+  # @api private
+  PROCESSES: Integer
+
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
   class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | Config::fail_on | nil]
@@ -194,6 +202,9 @@ module Duel
     HEAP_CAP: Integer
     STEP: Integer
     MAX_PAIRS: Integer
+    # The round of a sample from every worker from which a benchmark
+    # judged by process is decided.
+    MIN_ROUNDS: Integer
     COUNTS: Integer
     MEMORY_SAMPLES: Integer
     PROFILE_SAMPLES: Integer
@@ -224,6 +235,10 @@ module Duel
     attr_reader profiler: bool
 
     def initialize: (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) -> void
+
+    # Whether +processes+ workers of each version are enough for a
+    # +confidence+ interval over them.
+    def self.by_process?: (Integer processes, Float confidence) -> bool
 
     # A directory for a lane's sockets.
     def self.tmpdir: () -> String
@@ -287,6 +302,25 @@ module Duel
 
     def judge: (String name, Integer n, Array[[WorkerProcess::reply, WorkerProcess::reply]] floors, Result result) -> void
 
+    # Whether a benchmark's timings are judged by process.
+    def by_process?: (String name) -> bool
+
+    # Judges each of +judged+ over workers, in rounds of a sample from
+    # every worker.
+    def judge_processes: (String name, Integer n, Array[Metric::spec] judged, Result result) -> void
+
+    # The most rounds of +k+ workers' pairs.
+    def rounds: (Integer k) -> Integer
+
+    # Each worker's median, by version.
+    def medians: (Hash[String, Array[Array[Metric::value]]] values) -> Hash[String, Array[Metric::value]]
+
+    # The baseline's medians, at least 1, and the candidate's.
+    def clamped: (Hash[String, Array[Metric::value]] each) -> [Array[Metric::value], Array[Metric::value]]
+
+    # What each worker's medians say against the spec's limit.
+    def process_verdict: (Hash[String, Array[Metric::value]] each, Metric::spec spec) -> Stats::verdict
+
     # Whether both versions' CPU time is below its floor.
     def below_cpu_floor?: (Array[[Worker::sampled, Worker::sampled]] floors) -> bool
 
@@ -313,6 +347,9 @@ module Duel
     # The +index+th pair: [baseline's reply, candidate's].
     def pair: (String name, Integer n, Integer index, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
 
+    # A sample from a baseline worker and from a candidate worker: [baseline's reply, candidate's].
+    def sampled: (String name, Integer n, WorkerProcess base, WorkerProcess candidate, base_first: bool, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
+
     def count: (String name, Integer n, Result result) -> void
 
     def peak_memory: (String name, Integer n, Result result) -> void
@@ -328,7 +365,7 @@ module Duel
     # A ratio metric's verdict, and each version's (the median of its
     # samples).
     type timed = { "median" => Float, "limit" => Float, "across" => bool, "unit" => String?, "plural" => String?, "interval" => Array[Float]?, "pairs" => Integer,
-                   "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
+                   ?"processes" => Integer, "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
 
     # A counted metric's fewest, on each version, in +n+ iterations.
     type counted = { "baseline" => Metric::value, "candidate" => Metric::value, "n" => Integer,
@@ -547,6 +584,12 @@ module Duel
 
     # Each version, prepared once for the run.
     def prepare: () -> Hash[String, Side]
+
+    # What a benchmark's interval is over: the workers, or the pairs.
+    def interval_over: () -> String
+
+    # The most workers of each version #interval_over looks at.
+    PROCESSES_CHECKED: Integer
 
     def with_lanes: [T] () { (Array[Lane] lanes) -> T } -> T
 

@@ -385,7 +385,9 @@ with every setting filled in. For example,
 `{kind: :ratio, unit: "µs", floor: 300, ...}`.
 
 `compare` takes `duel`'s options as keywords: `processes:` (two unless
-given), `timeout:`, `limit:`, `warm:`, and `filter:` (a Regexp). It
+given, too few for an interval over workers, so each timing is judged
+over its pairs: enough to test a plugin, but not to judge how calibrated
+its intervals are), `timeout:`, `limit:`, `warm:`, and `filter:` (a Regexp). It
 returns the comparison: `passed?`, its `output` (what `duel` would have
 printed), and its `results`, one for each benchmark.
 `comparison["name"]` finds one. A result has the following:
