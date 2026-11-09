@@ -134,6 +134,9 @@
   image: alpine:3
   stage: .post
   needs: [<%= gitlab_job %>]
+  # One at a time, as each deletes the branch and makes it again: two at
+  # once could both delete it, and the second to make it would fail.
+  resource_group: <%= ["duel", working_directory, "passed"].compact.join("/") %>
   rules:
     - if: $DUEL_TOKEN && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:

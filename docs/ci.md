@@ -468,8 +468,10 @@ branch that the workflow guards has its own (see
 nothing to compare, Duel sets the `passed` output to `true`, and the
 Mark the commit passed job moves the branch to the push, or creates the
 branch. It never moves the branch back: when two pushes run at once and
-the older one finishes last, the branch stays at the newer push. After
-a force push rewrites the branch's history, it moves the branch anyway.
+the older one finishes last, the branch stays at the newer push. The
+job runs one at a time for each branch, so two runs can't race to
+create the branch. After a force push rewrites the branch's history,
+it moves the branch anyway.
 That job checks nothing out either, and it gets the `contents: write`
 permission that moving a branch takes. Until the branch exists, and
 when the push's history doesn't have its commit, Duel compares the push
@@ -516,6 +518,13 @@ yourself:
   passed:
     name: Mark the commit passed
     needs: duel
+    # One at a time for each branch, so that two runs can't both find no
+    # branch and race to make it (a push's run doesn't wait for the one
+    # before it). One that's running is never cancelled, and one that's
+    # waiting gives way to a newer push's, which moves it further anyway.
+    concurrency:
+      group: ${{ github.workflow }}-passed-${{ github.ref_name }}
+      cancel-in-progress: false
     if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
     runs-on: ubuntu-latest
     permissions:
@@ -539,13 +548,16 @@ yourself:
             done
             exit 1
           }
-          # (Forward: GitHub moves it only where it's behind the push.)
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
-          at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
-          if [ -z "$at" ]; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null || blocked
-            exit 0
-          fi
+          # (Forward: GitHub moves it only where it's behind the push. Where
+          # there's no branch, and making it fails, it looks once more, as
+          # something else may have made it: a push of it, say.)
+          for _ in 1 2; do
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
+            at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
+            [ -n "$at" ] && break
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null && exit 0
+          done
+          [ -n "$at" ] || blocked
           compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status 2>&1) || case "$compared" in
             # (GitHub can't compare commits with no history in common.)
             *"No common ancestor"*) compared=unrelated ;;
@@ -903,6 +915,9 @@ duel:passed:
   image: alpine:3
   stage: .post
   needs: [duel]
+  # One at a time, as each deletes the branch and makes it again: two at
+  # once could both delete it, and the second to make it would fail.
+  resource_group: duel/passed
   rules:
     - if: $DUEL_TOKEN && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:

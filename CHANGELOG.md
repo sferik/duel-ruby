@@ -104,6 +104,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was three, and a line of three backticks in the report closed it. The
   workflow now drops NUL bytes, which GitHub doesn't take in a comment,
   and reads the report as text whatever's in it.
+- The Mark the commit passed job runs one at a time for each branch
+  (and on GitLab CI, one at a time). Before the branch that marks the
+  last commit Duel passed existed, two pushes that passed at once could
+  both try to make it, and the second failed, saying another branch
+  kept it from being made. Where making the branch fails, the job now
+  also looks for it again before it says so. Update the job in
+  `.github/workflows/perf.yml` (or `.gitlab/duel.gitlab-ci.yml`) to pick
+  this up.
 
 ## [0.1.5] - 2026-11-08
 

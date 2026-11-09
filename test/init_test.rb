@@ -439,6 +439,8 @@ class InitTest < DuelTest
 
     assert_equal "${{ steps.compare.outputs.passed }}", jobs.dig("duel", "outputs", "passed")
     assert_equal ["duel", {"contents" => "write"}, "Mark the commit passed"], passed.values_at("needs", "permissions", "name")
+    assert_equal({"group" => "${{ github.workflow }}-passed-${{ github.ref_name }}", "cancel-in-progress" => false}, passed.fetch("concurrency"),
+      "one at a time for each branch")
     assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}", passed.fetch("if")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/passed/${{ github.ref_name }}"}, step.fetch("env"))
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
@@ -450,22 +452,24 @@ class InitTest < DuelTest
   # a push (abc) whose fast-forward GitHub refuses (+refused+), where the
   # branch is +at+ (nil, missing), and compared with the push +compared+
   # (or not, where gh fails with +compare_error+). A branch named +blocker+
-  # keeps it from making the branch.
-  def passed_run(refused: false, at: nil, compared: nil, compare_error: nil, blocker: nil, success: true)
+  # keeps it from making the branch. Where +made+, something else made the
+  # branch first, there (+ahead+ of the push, or not), so making it fails.
+  def passed_run(refused: false, at: nil, compared: nil, compare_error: nil, blocker: nil, made: nil, ahead: false, success: true)
     gem
     push_settings
     init.run
     run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
     log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
+    FileUtils.rm_f(File.join(tmpdir, "made"))
     File.write(File.join(bin, "gh"), <<~SH)
       #!/bin/bash
       echo "gh $*" >> #{log}
       case "$*" in
         *"force=true"*) ;;
-        *"--method PATCH"*) [ -z "$REFUSED" ] ;;
-        *"--method POST"*) [ -z "$BLOCKER" ] ;;
-        *"/git/ref/heads/"*"--jq"*) [ -n "$AT" ] && echo "$AT" || exit 1 ;;
+        *"--method PATCH"*) if [ -f "$MADE_IT" ]; then [ -z "$AHEAD" ]; else [ -z "$REFUSED" ]; fi ;;
+        *"--method POST"*) if [ -n "$MADE" ]; then touch "$MADE_IT" && exit 1; fi; [ -z "$BLOCKER" ] ;;
+        *"/git/ref/heads/"*"--jq"*) if [ -f "$MADE_IT" ]; then echo "$MADE"; elif [ -n "$AT" ]; then echo "$AT"; else exit 1; fi ;;
         *"/git/ref/heads/"*) [ "${2##*/git/ref/heads/}" = "$BLOCKER" ] ;;
         *"/compare/"*) [ -z "$COMPARE_ERROR" ] || { echo "$COMPARE_ERROR" >&2; exit 1; }; echo "$COMPARED" ;;
       esac
@@ -473,7 +477,7 @@ class InitTest < DuelTest
     FileUtils.chmod(0o755, File.join(bin, "gh"))
     env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
            "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "COMPARE_ERROR" => compare_error,
-           "BLOCKER" => blocker}
+           "BLOCKER" => blocker, "MADE" => made, "AHEAD" => (ahead ? "1" : nil), "MADE_IT" => File.join(tmpdir, "made")}
 
     assert_equal success, system(env, "bash", "-ec", run, out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
@@ -524,6 +528,20 @@ class InitTest < DuelTest
       assert_equal "::error::The branch #{blocker} keeps Duel from making duel/passed/main, as Git can't have both. " \
         "Delete it (git push origin --delete #{blocker}), or rename it.\n", File.read(@said), blocker
     end
+  end
+
+  # Where making the branch fails as something else made it first (a
+  # push of it, say), it moves it forward from there, or leaves it where
+  # that's ahead of the push.
+  def test_marking_a_push_passed_where_something_else_made_the_branch
+    make = ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc", "git/ref/heads/duel/passed/main --jq .object.sha",
+      "--method POST git/refs -f ref=refs/heads/duel/passed/main -f sha=abc"]
+
+    assert_equal [*make, make.first], passed_run(refused: true, made: "old"), "forward from there"
+    calls = passed_run(refused: true, made: "def", ahead: true, compared: "ahead")
+
+    assert_equal [*make, *make.first(2), "compare/abc...def --jq .status"], calls, "left ahead"
+    assert_empty File.read(@said)
   end
 
   def test_marking_a_push_passed_without_a_comparison
@@ -1014,6 +1032,7 @@ class InitTest < DuelTest
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
+    assert_equal "duel/passed", jobs.dig("duel:passed", "resource_group"), "one at a time"
   end
 
   # What GitLab's job that marks a push passed asks its API, with curl
@@ -1083,6 +1102,7 @@ class InitTest < DuelTest
     assert_equal ["gems/parser/duel.md", "gems/parser/duel.env"], jobs.dig("duel:gems/parser", "artifacts").values_at("paths", "reports").map { |v| v.is_a?(Array) ? v.first : v.fetch("dotenv") }
     assert_includes text, %(marker="<!-- duel gems/parser"\n)
     assert_includes text, %(branch="duel/passed-gems-parser/$CI_COMMIT_BRANCH"\n)
+    assert_equal "duel/gems/parser/passed", jobs.dig("duel:gems/parser:passed", "resource_group"), "its own, with no colon, which GitLab doesn't take"
   end
 
   def test_help
