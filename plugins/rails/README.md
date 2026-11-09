@@ -451,8 +451,8 @@ and the bundle, in the app's directory (`working-directory`).
 ## YJIT
 
 Rails 7.2 and later turn YJIT on as the app boots. When YJIT is on,
-Duel warms each benchmark up for two seconds before it measures it, so
-that YJIT has compiled your app's code first.
+Duel warms each benchmark up until it's steady, for up to two seconds,
+before it measures it, so that YJIT has compiled your app's code first.
 
 ## Requirements
 

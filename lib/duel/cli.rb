@@ -466,7 +466,7 @@ module Duel
           settings.time_limit = v
         end
         o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: 1.02)") { |v| settings.limit = v }
-        o.on("--warm SECONDS", Float, "Warm-up per benchmark (default: 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)") { |v| settings.warm = v }
+        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: until steady, up to 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)") { |v| settings.warm = v }
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",
           "path (default: c.ruby, or this one)") { |v| settings.ruby = (v == "version-file") ? :version_file : v }
         o.on("--force", "Compare even if nothing watched changed") { settings.force = true }

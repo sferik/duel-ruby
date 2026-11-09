@@ -53,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workers, at the median of the benchmarks it measured. A worker whose
   luck slowed it at every benchmark could fail identical code across
   the board.
+- Without `--warm`, each worker warms a benchmark up until it's steady
+  (the median of its samples over each of three half seconds in a row
+  is no more than 1% faster than over the last half second that was),
+  for up to the 5 seconds on JRuby and TruffleRuby, or 2 with YJIT on,
+  that it took every time before. `--warm` still warms up for the time
+  it says.
 - On JRuby and TruffleRuby, Duel measures one benchmark at a time for
   every four CPUs (`--jobs`), not every two: their JIT compilers keep the
   other CPUs busy, so more were no faster, and each worker is a JVM of

@@ -308,6 +308,18 @@ module Duel
 
     def warm: (String name, Integer n) -> void
 
+    # The seconds of samples whose median, no faster by STEADY_GAIN than
+    # the last's, end a worker's warm-up, without --warm.
+    STEADY: Float
+    STEADY_GAIN: Float
+    STEADY_WINDOWS: Integer
+
+    # Samples a worker until it's steady, or it's +warm_until+.
+    def steady: (WorkerProcess worker, String name, Integer n, Float warm_until) -> void
+
+    # STEADY seconds of a worker's samples' CPU time, and when they ended.
+    def window: (WorkerProcess worker, String name, Integer n, Float warm_until) -> [Array[Metric::value], Float]
+
     def judge: (String name, Integer n, Array[[WorkerProcess::reply, WorkerProcess::reply]] floors, Result result) -> void
 
     # Whether a benchmark's timings are judged by process.

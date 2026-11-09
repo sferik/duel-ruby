@@ -236,25 +236,34 @@ when the gems are installed in the project's directory, as
 
 ## JIT compilers
 
-If YJIT is on in a worker, Duel runs each benchmark for two seconds
-before it measures it. A small library's methods are compiled within
-Duel's first samples, but in a big app, YJIT compiles a method only after
-120 calls. YJIT can be on because you turned it on (`RUBY_YJIT_ENABLE=1`,
-for example), or because your code did as it loaded, as Rails 7.2 and
-later do. To warm up for a different time, use `--warm`.
+If YJIT is on in a worker, Duel runs each benchmark until it's steady
+before it measures it, for up to two seconds. A small library's methods
+are compiled within Duel's first samples, but in a big app, YJIT
+compiles a method only after 120 calls. YJIT can be on because you
+turned it on (`RUBY_YJIT_ENABLE=1`, for example), or because your code
+did as it loaded, as Rails 7.2 and later do.
+
+A worker is steady once the median of its samples over each of three
+half seconds in a row is no more than 1% faster than over the last half
+second that was, so a pause (a collection, say) doesn't end its warm-up,
+and code that creeps faster by less a half second isn't steady. Duel
+measures once every worker is steady, or the time is up. To warm up for
+a set time instead, use `--warm`.
 
 ### JRuby and TruffleRuby
 
 JRuby's and TruffleRuby's JIT compilers keep compiling for seconds, so
-Duel runs each benchmark for five seconds before it measures it
-(`--warm`). Each worker's JIT also compiles the same code a little
-differently, so one worker can run a benchmark 10% faster or slower
-than another for its whole life, however long it warms up. Duel's
-interval over workers is as wide as that makes it, so on JRuby and
-TruffleRuby, a CPU-time interval is often 10% wide or more, and Duel
-leaves all but large timing regressions unsettled there. It doesn't
-fail identical code on that noise. An interval over the pairs would
-be narrower, but it would often leave out 1 for identical code.
+Duel runs each benchmark until it's steady, for up to five seconds,
+before it measures it (`--warm`). Code that a JIT compiles quickly is
+steady in a few seconds, but some code is still several times faster
+after five seconds than it was. Each worker's JIT also compiles the same
+code a little differently, so one worker can run a benchmark 10% faster
+or slower than another for its whole life, however long it warms up.
+Duel's interval over workers is as wide as that makes it, so on JRuby
+and TruffleRuby, a CPU-time interval is often 10% wide or more, and Duel
+leaves all but large timing regressions unsettled there. It doesn't fail
+identical code on that noise. An interval over the pairs would be
+narrower, but it would often leave out 1 for identical code.
 
 Their workers are big JVMs, and their compilers keep other CPUs busy,
 so Duel starts six workers of each version rather than eight, and

@@ -247,7 +247,7 @@ was slower across the board and confirmed (`"confirmed": true`).
 | `processes` | Worker processes for each version (`--processes`). |
 | `timeout` | The seconds that a worker may take to load or to answer (`--timeout`). |
 | `time_limit` | The seconds that a run measures for, at most (`--time-limit`). |
-| `warm` | The seconds of warm-up for each benchmark (`--warm`), or `null` for the default, which depends on the Ruby. |
+| `warm` | The seconds of warm-up for each benchmark (`--warm`), or `null` for the default: until steady, for up to as long as the Ruby takes. |
 | `force` | Whether `--force` was given. |
 
 ### The versions

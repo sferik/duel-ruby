@@ -661,31 +661,90 @@ class LaneTest < DuelTest
   end
 
   # Without --warm, a lane where a worker has YJIT on (an app turned it
-  # on, say, or only the candidate did, upgraded) warms up as long as
-  # YJIT_WARM says, and else as JIT_WARM does (nothing on CRuby, 5 seconds
-  # on JRuby). --warm says otherwise.
+  # on, say, or only the candidate did, upgraded) warms up for as long as
+  # YJIT_WARM says at most, and else as JIT_WARM does (nothing on CRuby, 5
+  # seconds on JRuby). --warm says otherwise.
   def test_warming_up_with_yjit
     with_fake_workers do |workers|
       workers.benchmark("b")
-      warmed = lambda do |warm|
-        workers.log.clear
-        compare(workers, warm: warm)
-        samples(workers).count { |_, _, runs, count| runs == 1 && !count }
+      warm = lambda do |seconds|
+        l = lane(workers, processes: 1, warm: seconds)
+        l.instance_variable_get(:@warm)
+      ensure
+        l&.stop
       end
-      plain = 6 * 2 + Duel::JIT_WARM.to_i # (a look a second)
 
-      assert_equal plain, warmed.call(nil)
+      assert_equal Duel::JIT_WARM, warm.call(nil)
       workers.yjit = true
 
-      assert_equal 6 * 2 + 2, warmed.call(nil), "for YJIT_WARM: two looks, on a clock that ticks once a look"
+      assert_equal Duel::YJIT_WARM, warm.call(nil)
       workers.yjit = "candidate"
 
-      assert_equal 6 * 2 + 2, warmed.call(nil), "YJIT on in one version's workers"
+      assert_equal Duel::YJIT_WARM, warm.call(nil), "YJIT on in one version's workers"
       workers.yjit = true
 
-      assert_equal 6 * 2, warmed.call(0.0)
+      assert_in_delta 0.0, warm.call(0.0)
     end
     assert_in_delta 2.0, Duel::YJIT_WARM
+  end
+
+  # Without --warm, each worker warms up until the median of its samples
+  # over half a second is no faster, by 1%, than over the half second
+  # before: its samples, of +cpu+ in turn, until +cap+ seconds from now,
+  # on a clock that ticks +tick+ seconds a look (a second: a sample a
+  # half second).
+  def steady(cpu, cap: 100, tick: 1.0)
+    with_fake_workers do |workers|
+      times = cpu.each
+      workers.benchmark("b") { |*| {"timed" => {"cpu" => times.next}, "counted" => {}, "heap" => 0} }
+      l = lane(workers, processes: 1)
+      clock = 1000.0
+      l.define_singleton_method(:monotonic) { clock += tick }
+      worker = l.instance_variable_get(:@bases).first
+      l.send(:steady, worker, "b", 3, l.send(:monotonic) + cap)
+      l.stop
+
+      assert_equal [3], samples(workers).map { |_, n, _| n }.uniq, "of its iterations"
+      samples(workers).size
+    end
+  end
+
+  def test_warming_up_until_steady
+    assert_equal 4, steady([100] * 4), "three half seconds no faster"
+    assert_equal 6, steady([100, 90, 80, 80, 80, 80]), "each faster by 1% or more starts them again"
+    assert_equal 5, steady([100, 99, 99, 99, 99]), "1% exactly"
+    assert_equal 4, steady([100, 101, 99.5, 99.5]), "slower, or faster by less than 1%, is no gain"
+    assert_equal 6, steady([100, 120, 80, 80, 80, 80]), "one slow half second doesn't end it"
+    assert_equal 8, steady([100, 99.5, 99.0, 98.5, 98.0, 97.5, 97.0, 96.5, 96.0], cap: 15),
+      "creeping faster by less than 1% a half second isn't steady"
+    assert_equal 3, steady([100, 90, 80, 70, 60, 50], cap: 5), "for at most the warm-up's seconds"
+  end
+
+  # Each half second's median, of every sample in it (three, on a clock
+  # that ticks a fifth of a second a look), not its first, last, least
+  # or most.
+  def test_warming_up_by_each_half_seconds_median
+    steady_after = [100] * 6
+
+    assert_equal 12, steady([120, 100, 80, 70, 100, 130, *steady_after], tick: 0.2)
+    assert_equal 12, steady([120, 100, 80, 130, 100, 70, *steady_after], tick: 0.2)
+    assert_equal 12, steady([90, 100, 110, 80, 100, 105, *steady_after], tick: 0.2)
+    assert_equal 1, steady([100, 90, 80], tick: 0.2, cap: 0.3), "ending where the warm-up's time does"
+  end
+
+  # Without --warm, every worker warms up until it's steady, or its time
+  # is up: with none, a sample each, after the first two (where --warm
+  # 0 takes none).
+  def test_warming_up_without_warm
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+      l = lane(workers, warm: nil)
+      l.instance_variable_set(:@warm, 0.0)
+      l.compare("b")
+      l.stop
+
+      assert_equal 6 * 3, samples(workers).count { |_, _, runs, count| runs == 1 && !count }
+    end
   end
 
   # What allocates a lot, while the garbage collector is held off, is

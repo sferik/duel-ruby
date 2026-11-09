@@ -14,14 +14,15 @@ require_relative "rubies"
 require_relative "process_sample"
 
 module Duel
-  # Seconds each benchmark runs before it's measured, unless --warm
-  # says: JRuby's and TruffleRuby's JITs keep compiling for seconds.
+  # The most seconds each benchmark runs before it's measured, unless
+  # --warm says: until each worker is steady (see Lane#steady), for up to
+  # this long. JRuby's and TruffleRuby's JITs keep compiling for seconds.
   # @api private
   JIT_WARM = {"jruby" => 5.0, "truffleruby" => 5.0}.fetch(RUBY_ENGINE, 0.0)
 
-  # Seconds each benchmark runs before it's measured where a worker has
-  # YJIT on (an app may turn it on as it boots, as Rails does), unless
-  # --warm says. A small library's methods are compiled within the
+  # The most seconds each benchmark runs before it's measured where a
+  # worker has YJIT on (an app may turn it on as it boots, as Rails
+  # does), unless --warm says. A small library's methods are compiled within the
   # warm-up samples, but a big app's only after 120 calls each, more than
   # a slow benchmark's warm-up samples make.
   # @api private
@@ -539,14 +540,68 @@ module Duel
       PROCESS_SAMPLE_NS.fdiv(longest).clamp(1, PROCESS_RUNS).floor
     end
 
-    # Every worker runs the benchmark a few times, and for the warm-up's
-    # seconds (Settings#warm, or JIT_WARM, or YJIT_WARM), all at once:
-    # none of it is measured, so they needn't take turns.
+    # Every worker runs the benchmark a few times, and then, all at once
+    # (none of it is measured, so they needn't take turns), for the
+    # seconds --warm says (Settings#warm), or else until it's steady (see
+    # #steady), for JIT_WARM's or YJIT_WARM's seconds at most.
     def warm(name, n)
       warm_until = monotonic + @warm
       in_parallel(@bases + @candidates) do |worker|
         2.times { worker.sample(name, n) }
-        worker.sample(name, n) until monotonic > warm_until
+        if @settings.warm
+          worker.sample(name, n) until monotonic > warm_until
+        else
+          steady(worker, name, n, warm_until)
+        end
+      end
+    end
+
+    # A worker's warm-up ends once STEADY_WINDOWS windows of STEADY
+    # seconds in a row each have a median of its samples no faster, by
+    # STEADY_GAIN, than the last window that was (so code that creeps
+    # faster by less a window isn't steady): a JIT has compiled what it
+    # will. (Not once its fastest sample stops getting
+    # faster: the more samples, the faster the fastest of them, by
+    # chance. And not once one window is no faster: a pause, a collection
+    # say, can slow one.) A small library's code is steady in a few
+    # seconds, where a big app's JIT keeps compiling, for up to the
+    # warm-up's seconds.
+    STEADY = 0.5
+    STEADY_GAIN = 0.01
+    STEADY_WINDOWS = 3
+
+    # Samples +worker+ (+n+ iterations each), STEADY seconds at a time,
+    # until it's steady, or it's +warm_until+.
+    def steady(worker, name, n, warm_until)
+      window, now = window(worker, name, n, warm_until)
+      return if now > warm_until
+
+      fastest = Stats.median(window)
+      calm = 0
+      loop do
+        window, now = window(worker, name, n, warm_until)
+        return if now > warm_until
+
+        median = Stats.median(window)
+        if median > fastest * (1 - STEADY_GAIN)
+          calm += 1
+          return if calm == STEADY_WINDOWS
+        else
+          calm = 0
+          fastest = median
+        end
+      end
+    end
+
+    # STEADY seconds of +worker+'s samples' CPU time (a sample at least),
+    # or until +warm_until+, and when they ended.
+    def window(worker, name, n, warm_until)
+      window_until = monotonic + STEADY
+      samples = [] #: Array[Metric::value]
+      loop do
+        samples << worker.sample(name, n).fetch("timed").fetch("cpu")
+        now = monotonic
+        return [samples, now] if now > window_until || now > warm_until
       end
     end
 

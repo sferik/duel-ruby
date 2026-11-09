@@ -65,7 +65,7 @@ class CLITest < DuelTest
               --timeout SECONDS            Most a worker may take to load or answer (default: 60)
               --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 1800)
               --limit RATIO                Ratio above which a timing is slower (default: 1.02)
-              --warm SECONDS               Warm-up per benchmark (default: 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)
+              --warm SECONDS               Warm-up per benchmark, in seconds (default: until steady, up to 5 on JRuby and TruffleRuby, 2 with YJIT on, else 0)
               --ruby version-file|PATH     Each version's Ruby: the one its version file names (.ruby-version, say), or a
                                            path (default: c.ruby, or this one)
               --force                      Compare even if nothing watched changed
