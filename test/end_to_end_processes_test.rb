@@ -51,11 +51,17 @@ class EndToEndProcessesTest < DuelTest
     base = project(File.join(tmpdir, "base"))
     candidate = project(File.join(tmpdir, "candidate"), benchmarks: hangs)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    # Long enough for a worker to load: JRuby's and TruffleRuby's load
-    # slowly.
-    # (Their workers load at once, too.)
-    timeout, most = (RUBY_ENGINE == "ruby") ? [1.0, 30] : [30.0, 150]
-    results, out = compare(base, candidate, timeout: timeout, filter: /hangs|work/)
+    # Long enough for the work benchmark's every answer: JRuby's and
+    # TruffleRuby's are slow until their JIT compilers have warmed up.
+    timeout, most = (RUBY_ENGINE == "ruby") ? [1.0, 60] : [30.0, 150]
+    # A worker loads with the default timeout, and is given the short one
+    # once it has said hello: on a busy machine, loading Ruby can take
+    # more than a second, and the hang is a benchmark's, not a load's.
+    loading = Duel::WorkerProcess.method(:new)
+    loaded = lambda do |*args, **options|
+      loading.call(*args, **options, timeout: Duel::TIMEOUT).tap { |worker| worker.instance_variable_set(:@timeout, timeout) }
+    end
+    results, out = stub(Duel::WorkerProcess, :new, loaded) { compare(base, candidate, timeout: timeout, filter: /hangs|work/) }
     hung = results.find { |r| r.name == "hangs" }
 
     assert_equal "Duel::Failed: head-1 worker didn't answer within #{timeout}s (killed: a benchmark that hangs?)", hung.error
