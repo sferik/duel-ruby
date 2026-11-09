@@ -167,14 +167,18 @@ class ProcessSampleTest < DuelTest
   end
 
   # One that takes too long is killed, with what it started, and the Ruby
-  # process that ran it: the next run starts another. (Long enough for
-  # that Ruby process to start: JRuby's takes seconds.)
+  # process that ran it: the next run starts another. (The timeout is
+  # short only for the one that hangs. A run's time includes starting
+  # its Ruby process, where there isn't one, and on a busy machine,
+  # that can take more than a second.)
   def test_a_process_that_hangs
     started = File.join(tmpdir, "started")
     pids = File.join(tmpdir, "pids")
     timeout = (RUBY_ENGINE == "ruby") ? 1.0 : 15.0
     other = ended_child
-    runs = sampler(timeout: timeout)
+    runs = sampler
+    noting { runs.run(["true"]) }
+    runs.instance_variable_set(:@timeout, timeout)
     error = assert_raises(Duel::Failed) { noting { runs.run(["sh", "-c", "sleep 60 & echo $! > #{pids}; touch #{started}; wait"]) } }
 
     assert_equal "head-1: sh -c sleep 60 & echo $! > #{pids}; touch #{started}; wait didn't end within #{timeout}s (killed)",
@@ -188,6 +192,7 @@ class ProcessSampleTest < DuelTest
       10.times { Process.kill(0, pid) && sleep(0.1) }
     end
     assert_equal [true, true], %i[@requests @replies].map { |pipe| runs.instance_variable_get(pipe).closed? }
+    runs.instance_variable_set(:@timeout, 30.0)
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "another, for the next"
