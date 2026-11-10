@@ -51,6 +51,20 @@ never on noise, so that it can gate every pull request:
   independent already. It can also stop after any pair once the
   interval shows that it isn't slower, which only ever ends a
   measurement before it could find a slowdown.
+
+  Duel measures one benchmark at a time for every two CPUs
+  (`--jobs`), each with workers of its own, so a run can start many
+  workers, and each one's resources (a database server, say) with it.
+  Where they wouldn't fit in the memory available (Linux's
+  MemAvailable, or a container's cgroup limit, or macOS's free and
+  inactive pages), Duel measures fewer benchmarks at once, and where
+  even one benchmark's workers wouldn't fit, it starts fewer workers.
+  Running out would make the machine swap, or stop a CI runner from
+  answering, so its job is lost. To find what they take, Duel starts
+  one worker of each version first, and allows each pair a quarter
+  more than that, and 1 GB for everything else. Its first line says
+  when it lowered either. A `--jobs` or `--processes` you give is
+  kept as it is.
 - **Measured again before failing.** Duel measures whatever looks
   slower again from scratch, up to three times, in fresh processes. It
   fails only if every measurement finds the same metric worse. A

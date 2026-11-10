@@ -12,6 +12,7 @@ require_relative "message"
 require_relative "resource"
 require_relative "rubies"
 require_relative "process_sample"
+require_relative "memory"
 
 module Duel
   # The most seconds each benchmark runs before it's measured, unless
@@ -59,11 +60,14 @@ module Duel
 
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
+  # Of +jobs+ and +processes+, +fit+ names those Duel may lower to fit
+  # the memory available (see Runner#fit): the defaults, but not what
+  # an option set.
   Settings = Struct.new(:base, :base_dir, :candidate_dir, :filter, :jobs, :processes, :limit, :confidence, :warm, :force,
-    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit, :accepted) do
+    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit, :accepted, :fit) do
     # @type self: singleton(Settings)
     def self.defaults = new(filter: //, jobs: 1, processes: PROCESSES, limit: 1.02, confidence: 0.99, warm: nil, force: false,
-      timeout: TIMEOUT, time_limit: TIME_LIMIT)
+      timeout: TIMEOUT, time_limit: TIME_LIMIT, fit: [])
   end
 
   # One version as a run has it (see Runner#prepare), +name+d "baseline"
@@ -1222,6 +1226,7 @@ module Duel
     # What #run does, with its versions prepared in its directory.
     def compare_all(started)
       @sides = prepare
+      fit
       names, results = with_lanes do |lanes|
         found = lanes.first.benchmarks.keys.grep(@settings.filter)
         @benchmarks = lanes.first.benchmarks
@@ -1276,6 +1281,47 @@ module Duel
         side
       end
     end
+
+    # The memory Runner#fit leaves for everything but the workers and
+    # their resources: the runner, the system, and other processes.
+    RESERVE = 1 << 30
+
+    # How much more than what it took to start a pair of workers takes
+    # while it measures (its heap grows, and so do its resources'), by
+    # Runner#fit's reckoning.
+    HEADROOM = 1.25
+
+    # Lowers Settings#jobs, and then Settings#processes, as far as
+    # Settings#fit lets it, where their workers (and each one's
+    # resources, a database server, say) wouldn't fit in the memory
+    # available: more than that and the machine swaps, or a CI runner
+    # stops answering and its job is lost. What one worker of each
+    # version takes is found by starting them (a lane of them), and every
+    # pair is taken to need that, HEADROOM over.
+    def fit
+      return if @settings.fit.empty?
+
+      available = Memory.available or return
+      taken = Lane.open(@config, @settings, @sides, processes: 1) { available - (Memory.available || available) }
+      return unless taken.positive?
+
+      pair = (taken * HEADROOM).ceil
+      pairs = [(available - RESERVE) / pair, 1].max
+      processes = @settings.fit.include?(:processes) ? [@settings.processes, pairs].min : @settings.processes
+      # (More jobs than the settings' are never taken: only fewer are.)
+      jobs = @settings.fit.include?(:jobs) ? [pairs / processes, 1].max : @settings.jobs
+      fewer = [("#{Runner.count(jobs, "benchmark")} at a time (not #{@settings.jobs})" if jobs < @settings.jobs),
+        ("#{Runner.count(processes, "worker")} of each version (not #{@settings.processes})" if processes < @settings.processes)].compact
+      return if fewer.empty?
+
+      @out.puts "A worker of each version takes #{gigabytes(taken)} GB, with its resources, of #{gigabytes(available)} GB available, " \
+        "so to fit: #{fewer.join(", and ")}"
+      @settings.jobs = jobs
+      @settings.processes = processes
+    end
+
+    # +bytes+ in gigabytes, to a tenth.
+    def gigabytes(bytes) = format("%.1f", bytes.fdiv(1 << 30))
 
     def with_lanes
       # @type var lanes: Array[Lane]

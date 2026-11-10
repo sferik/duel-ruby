@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Duel measures fewer benchmarks at once, and where even one
+  benchmark's workers wouldn't fit, starts fewer workers, so that they
+  fit in the memory available. Since 0.1.6 starts twelve workers of
+  each version for each benchmark it measures at once, a plugin whose
+  workers each start a server could run a machine out of memory: on a
+  GitHub runner, duel-mysql's 48 MySQL servers took more than its
+  16 GB, and the runner stopped answering until its job was lost. Duel
+  starts one worker of each version first to find what a pair takes
+  (with its resources), and allows each pair a quarter more, and 1 GB
+  for everything else. It reads what's available from Linux's
+  MemAvailable (or a container's cgroup limit, if lower) or macOS's
+  `vm_stat`, and its first line says when it lowered either. A
+  `--jobs` or `--processes` you give is kept as it is.
+
 ## [0.1.6] - 2026-11-10
 
 ### Added

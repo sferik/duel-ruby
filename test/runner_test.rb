@@ -52,6 +52,119 @@ class RunnerTest < DuelTest
     end
   end
 
+  GB = 1 << 30
+
+  # A run whose memory readings are +readings+, one after another: the
+  # first before a worker of each version starts, the next with them
+  # started. And the run's settings, and the readings left.
+  def fitted(workers, readings, **overrides)
+    readings = readings.dup
+    stub(Duel::Memory, :available, -> { readings.shift }) do
+      workers.benchmark("a")
+      run = settings(jobs: 2, processes: 8, fit: %i[jobs processes], **overrides)
+      out = StringIO.new
+      elsewhere { Duel::Runner.new(Duel::Config.new(candidate), run, File.join(tmpdir, "base"), out:).run }
+      [out.string.lines(chomp: true), run, readings]
+    end
+  end
+
+  # Where a worker of each version takes 1 GB, 2 benchmarks at a time of
+  # 8 workers each take 20 GB with HEADROOM: of 16 GB, less RESERVE, that
+  # leaves 12 pairs, so 1 at a time.
+  def test_fewer_jobs_to_fit_the_memory
+    with_fake_workers do |workers|
+      lines, run, readings = fitted(workers, [16 * GB, 15 * GB])
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, of 16.0 GB available, so to fit: 1 benchmark at a time (not 2)",
+        lines.first
+      assert_match(/\AComparing 1 benchmark, 1 at a time: /, lines[1])
+      assert_equal [1, 8], [run.jobs, run.processes]
+      assert_equal 2 + 16, workers.made.size, "a worker of each version, then one lane"
+      assert_empty readings
+    end
+  end
+
+  # Where a lane doesn't fit either, fewer workers in it: 3 GB (less
+  # RESERVE) leaves two pairs of 1.25 GB.
+  def test_fewer_workers_to_fit_the_memory
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [3 * GB, 2 * GB])
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, of 3.0 GB available, so to fit: 1 benchmark at a time (not 2), " \
+        "and 1 worker of each version (not 8)", lines.first
+      assert_equal [1, 1], [run.jobs, run.processes]
+      assert_equal 2 + 2, workers.made.size
+    end
+  end
+
+  # As many workers as fit, and never none.
+  def test_at_least_one_worker
+    with_fake_workers do |workers|
+      _, run, = fitted(workers, [(3.75 * GB).to_i, (2.75 * GB).to_i])
+
+      assert_equal [1, 2], [run.jobs, run.processes], "2.75 GB (less RESERVE) is two pairs of 1.25 GB"
+      _, run, = fitted(workers, [GB / 2, 0])
+
+      assert_equal [1, 1], [run.jobs, run.processes], "none fit"
+      _, run, = fitted(workers, [GB + 21, GB + 19], processes: 4)
+
+      assert_equal [1, 4], [run.jobs, run.processes], "2 bytes a pair, HEADROOM over, rounded up to 3: 7 pairs of 21 bytes"
+    end
+  end
+
+  # An option's jobs or processes stay as it says.
+  def test_what_an_option_says_is_kept
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [3 * GB, 2 * GB], fit: %i[jobs])
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, of 3.0 GB available, so to fit: 1 benchmark at a time (not 2)",
+        lines.first
+      assert_equal [1, 8], [run.jobs, run.processes]
+      lines, run, = fitted(workers, [3 * GB, 2 * GB], fit: %i[processes])
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, of 3.0 GB available, so to fit: 1 worker of each version (not 8)",
+        lines.first
+      assert_equal [2, 1], [run.jobs, run.processes]
+    end
+  end
+
+  # What fits stays, and says nothing.
+  def test_what_fits
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [64 * GB, 63 * GB])
+
+      assert_match(/\AComparing 1 benchmark, 2 at a time: /, lines.first)
+      assert_equal [2, 8], [run.jobs, run.processes]
+      _, run, = fitted(workers, [11 * GB, 10 * GB], processes: 4)
+
+      assert_equal [2, 4], [run.jobs, run.processes], "10 GB (less RESERVE) is 8 pairs of 1.25 GB, just"
+      _, run, = fitted(workers, [(11 * GB) - 1, (10 * GB) - 1], processes: 4)
+
+      assert_equal [1, 4], [run.jobs, run.processes], "a byte less is 7"
+    end
+  end
+
+  # Nothing to fit, no telling what's available, or no telling what the
+  # workers took: the settings as they were.
+  def test_nothing_fitted
+    with_fake_workers do |workers|
+      _, run, readings = fitted(workers, [16 * GB], fit: [])
+
+      assert_equal [[2, 8], [16 * GB], 32], [[run.jobs, run.processes], readings, workers.made.size],
+        "memory not read, nor workers started for it"
+      workers.made.clear
+      _, run, = fitted(workers, [nil])
+
+      assert_equal [[2, 8], 32], [[run.jobs, run.processes], workers.made.size]
+      [[16 * GB, nil], [16 * GB, 16 * GB], [16 * GB, 17 * GB]].each do |readings|
+        workers.made.clear
+        _, run, = fitted(workers, readings)
+
+        assert_equal [[2, 8], 2 + 32], [[run.jobs, run.processes], workers.made.size], readings.inspect
+      end
+    end
+  end
+
   def test_the_candidate_by_default_is_the_configs
     with_fake_workers do |workers|
       workers.benchmark("a")

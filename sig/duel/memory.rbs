@@ -1,0 +1,30 @@
+module Duel
+  # The memory a run's workers can take: what the machine has available,
+  # or what its cgroup's limit leaves.
+  # @api private
+  module Memory
+    # The kinds of pages macOS's vm_stat counts as available.
+    MAC_PAGES: Array[String]
+
+    # Where Linux's proc and sys are.
+    ROOT: String
+
+    # The bytes available, or nil where Duel can't tell.
+    def self.available: (?root: String, ?vm_stat: ^() -> String?) -> Integer?
+
+    # MemAvailable, at most what the cgroup leaves, or nil.
+    def self.linux: (String root) -> Integer?
+
+    # What a cgroup (v2) at +dir+ leaves of its limit, or nil.
+    def self.cgroup: (String dir) -> Integer?
+
+    # The bytes in vm_stat's available pages, or nil.
+    def self.mac: (String? output) -> Integer?
+
+    # A file's contents, or nil.
+    def self.read: (String path) -> String?
+
+    # What a command prints, or nil.
+    def self.command: (*String args) -> String?
+  end
+end

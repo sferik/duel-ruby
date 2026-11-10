@@ -60,8 +60,8 @@ class CLITest < DuelTest
                                            release tag), or a directory, already built
               --candidate-dir DIR          Candidate tree (default: this one)
               --filter REGEXP              Only benchmarks whose names match
-              --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs)
-              --processes N                Worker processes per version (default: #{Duel::PROCESSES})
+              --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs, as many as fit in memory)
+              --processes N                Worker processes per version (default: #{Duel::PROCESSES}, as many as fit in memory)
               --timeout SECONDS            Most a worker may take to load or answer (default: #{Duel::TIMEOUT.round})
               --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)
               --limit RATIO                Ratio above which a timing is slower (default: 1.02)
@@ -87,6 +87,13 @@ class CLITest < DuelTest
     per = {"jruby" => 4, "truffleruby" => 4}.fetch(RUBY_ENGINE, 2)
 
     assert_equal [1, 8 / per], [1, 8].map { |cpus| stub(Etc, :nprocessors, -> { cpus }) { cli.parse.jobs } }
+  end
+
+  # Duel may lower the jobs and processes to fit the memory available
+  # (Runner#fit), but not those an option sets.
+  def test_fit
+    assert_equal [%i[jobs processes], %i[processes], %i[jobs], []],
+      [[], ["--jobs", "2"], ["--processes", "4"], ["--jobs", "2", "--processes", "4"]].map { |args| cli(*args).parse.fit }
   end
 
   def test_a_bad_option

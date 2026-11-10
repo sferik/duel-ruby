@@ -243,8 +243,8 @@ was slower across the board and confirmed (`"confirmed": true`).
 | `confidence` | The confidence of each interval, such as `0.99`. |
 | `limit` | The ratio above which a timing is slower (`--limit`). A metric can have its own limit, which its timings show. |
 | `filter` | The regular expression that picked the benchmarks (`--filter`), as source. `""` matches every one. |
-| `jobs` | Benchmarks measured at once (`--jobs`). |
-| `processes` | Worker processes for each version (`--processes`). |
+| `jobs` | Benchmarks measured at once (`--jobs`), or fewer, where that many wouldn't fit in the memory available. |
+| `processes` | Worker processes for each version (`--processes`), or fewer, where even one benchmark's wouldn't fit in the memory available. |
 | `timeout` | The seconds that a worker may take to load or to answer (`--timeout`). |
 | `time_limit` | The seconds that a run measures for, at most (`--time-limit`). |
 | `warm` | The seconds of warm-up for each benchmark (`--warm`), or `null` for the default: until steady, for up to as long as the Ruby takes. |
