@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-10
+
 ### Added
 
 - The comment workflow that `duel init` writes runs the Duel job again
@@ -680,7 +682,8 @@ needs Ruby 3.4 or later (or JRuby 10, or TruffleRuby 40).
   Anything marked `@api private`, in lib/ and sig/, may change in any
   release.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/sferik/duel-ruby/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/sferik/duel-ruby/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/sferik/duel-ruby/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/sferik/duel-ruby/compare/v0.1.2...v0.1.3

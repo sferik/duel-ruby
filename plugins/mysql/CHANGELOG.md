@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-10
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.5] - 2026-11-08
 
 No changes of its own: released in step with the other Duel gems.
@@ -93,7 +97,8 @@ or later (not MariaDB).
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.5...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.6...HEAD
+[0.1.6]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.5...duel-mysql-v0.1.6
 [0.1.5]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.4...duel-mysql-v0.1.5
 [0.1.4]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.3...duel-mysql-v0.1.4
 [0.1.3]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.2...duel-mysql-v0.1.3
