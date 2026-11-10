@@ -13,8 +13,10 @@ class RunnerTest < DuelTest
   def run_duel(workers, config: Duel::Config.new(candidate), **overrides)
     runner = Duel::Runner.new(config, settings(**overrides), File.join(tmpdir, "base"), out: (out = StringIO.new))
     results = elsewhere { runner.run }
-    # (Each benchmark's time, which a busy machine stretches, as no time.)
-    [results, out.string.gsub(/ +\d+\.\ds n=/) { |time| "#{" " * (time.size - 7)}0.0s n=" }, runner]
+    # (Each benchmark's time, and the run's, which a busy machine
+    # stretches, as no time.)
+    out = out.string.gsub(/ +\d+\.\ds n=/) { |time| "#{" " * (time.size - 7)}0.0s n=" }
+    [results, out.gsub(/^(\d+ benchmarks? in )\d+s: /) { "#{Regexp.last_match(1)}0s: " }, runner]
   end
 
   def line(name, n, measures, mark: " ") = format("%s %-48s %5.1fs n=%-6d %s", mark, name, 0.0, n, measures)
@@ -595,7 +597,7 @@ class RunnerTest < DuelTest
       workers.benchmark("a")
       out, = capture_io { elsewhere { Duel::Runner.new(Duel::Config.new(candidate), settings, "base").run } }
 
-      assert_includes out, "1 benchmark in 0s"
+      assert_match(/^1 benchmark in \d+s: /, out)
     end
   end
 
