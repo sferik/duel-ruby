@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-10
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.6] - 2026-11-10
 
 ### Added
@@ -250,7 +254,8 @@ Rails 7.2 or later, and Ruby 3.4 or later.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.6...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.7...HEAD
+[0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.6...duel-rails-v0.1.7
 [0.1.6]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.5...duel-rails-v0.1.6
 [0.1.5]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.4...duel-rails-v0.1.5
 [0.1.4]: https://github.com/sferik/duel-ruby/compare/duel-rails-v0.1.3...duel-rails-v0.1.4
