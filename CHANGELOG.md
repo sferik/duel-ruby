@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MemAvailable (or a container's cgroup limit, if lower) or macOS's
   `vm_stat`, and its first line says when it lowered either. A
   `--jobs` or `--processes` you give is kept as it is.
+- The badge (in the workflow that `duel init --badge` writes) says
+  "not measured", in grey, where the Duel job failed
+  before Duel judged the push (its runner lost, say, or a step before
+  Duel's failed), instead of "perf regressed". It's red only where
+  Duel failed the push or found a regression, and a job that fails
+  after Duel passed the push leaves it green.
 
 ## [0.1.6] - 2026-11-10
 

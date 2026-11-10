@@ -557,7 +557,8 @@ class InitTest < DuelTest
 
   # With --badge, a push to the default branch that Duel compared updates
   # the badge, by a job of its own that writes it to a branch, and runs none of the
-  # code: red where the Duel job failed or found a regression.
+  # code: red where Duel failed the push or found a regression, and grey
+  # where the Duel job failed before Duel said.
   def test_the_badge
     gem
     init("--badge").run
@@ -629,10 +630,19 @@ class InitTest < DuelTest
     assert_equal "gh api --method POST repos/me/my_gem/git/refs -f ref=refs/heads/duel/badge -f sha=commit1", calls.last, "the branch made"
   end
 
-  def test_a_red_badge_for_a_failed_job
+  # A job that failed before Duel said whether the push passed (its
+  # runner lost, say) measured nothing.
+  def test_a_grey_badge_for_a_failed_job
     _, tree = badge_run("RESULT" => "failure", "STATUS" => "")
 
-    assert_equal image("badge-regressed"), tree
+    assert_equal image("badge-not-measured"), tree
+  end
+
+  # A step that failed after Duel passed the push leaves the badge green.
+  def test_a_green_badge_for_a_job_that_failed_after_duel_passed
+    _, tree = badge_run("RESULT" => "failure", "STATUS" => "passed")
+
+    assert_equal image("badge"), tree
   end
 
   # A newer push's badge replaces an older push's (or the same push's,
@@ -661,6 +671,15 @@ class InitTest < DuelTest
     assert_equal green.sub('width="133"', 'width="142"').gsub("perf guarded", "perf regressed").sub("#34D058", "#EA4A5A")
       .sub("#28A745", "#D73A49").sub("M0 0h76.939C78.629 0 80 1.343 80 3v14c0 1.657-1.37 3-3.061 3H0V0z",
         "M0 0h85.939C87.629 0 89 1.343 89 3v14c0 1.657-1.37 3-3.061 3H0V0z"), red
+  end
+
+  # The grey badge is the green one, wider for its words too.
+  def test_the_grey_badge
+    green, grey = %w[badge badge-not-measured].map { |name| File.read(File.expand_path("../assets/#{name}.svg", __dir__)) }
+
+    assert_equal green.sub('width="133"', 'width="138"').gsub("perf guarded", "not measured").sub("#34D058", "#959DA5")
+      .sub("#28A745", "#6A737D").sub("M0 0h76.939C78.629 0 80 1.343 80 3v14c0 1.657-1.37 3-3.061 3H0V0z",
+        "M0 0h81.939C83.629 0 85 1.343 85 3v14c0 1.657-1.37 3-3.061 3H0V0z"), grey
   end
 
   # On a push, a job of its own comments on the commit, as Duel says

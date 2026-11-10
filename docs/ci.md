@@ -584,16 +584,19 @@ your README can show it:
 ```
 
 The badge says "perf guarded", in green, when Duel passed the push. It
-says "perf regressed", in red, when the Duel job failed or found a
+says "perf regressed", in red, when Duel failed the push or found a
 regression, even one that passed, with
 [`c.fail_on = :pull_requests`](#comment-on-a-pushed-commit), or that a
-label accepted. A push with nothing to compare leaves the badge as it
-was, and so does a run that finishes after a newer push's, so the
-badge is always the newest push's that Duel compared. The branch holds
-one commit, with the badge alone, whose message names that push. The
-job checks nothing out, and it gets the `contents: write` permission
-that moving a branch takes. For a project in a subdirectory of its
-repository, the branch names the directory, such as
+label accepted. It says "not measured", in grey, when the Duel job
+failed before Duel could judge the push, as when its runner ran out of
+memory or a step before Duel's failed. A job that fails after Duel
+passed the push leaves it green. A push with nothing to compare leaves
+the badge as it was, and so does a run that finishes after a newer
+push's, so the badge is always the newest push's that Duel compared.
+The branch holds one commit, with the badge alone, whose message names
+that push. The job checks nothing out, and it gets the `contents: write`
+permission that moving a branch takes. For a project in a subdirectory
+of its repository, the branch names the directory, such as
 `duel/badge-gems-parser`.
 
 Until the first push to your default branch after you add the job, the
@@ -607,13 +610,15 @@ keeps `.duel.rb`), or add the job yourself:
 
 ```yaml
 # .github/workflows/perf.yml, in jobs: (with duel init --badge)
-  # Duel's badge, for the README: green (perf guarded) or red (perf
-  # regressed), as the last push to the default branch that Duel compared
-  # left it. It's red where the Duel job failed or found a regression,
-  # even one that passed (with c.fail_on = :pull_requests in .duel.rb). A
-  # push with nothing to compare leaves it as it was, and so does a run
-  # for an older push than the badge's. This job writes the badge, alone,
-  # to a branch of its own, which the README shows:
+  # Duel's badge, for the README: green (perf guarded), red (perf
+  # regressed) or grey (not measured), as the last push to the default
+  # branch that Duel compared left it. It's red where Duel failed the push
+  # or found a regression, even one that passed (with
+  # c.fail_on = :pull_requests in .duel.rb), and grey where the Duel job
+  # failed before Duel could judge the push (its runner ran out of memory,
+  # say). A push with nothing to compare leaves it as it was, and so does
+  # a run for an older push than the badge's. This job writes the badge,
+  # alone, to a branch of its own, which the README shows:
   #
   #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
   #
@@ -659,10 +664,13 @@ keeps `.duel.rb`), or add the job yourself:
           last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
           if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
           # (Its image, written here rather than fetched from anywhere: green,
-          # or red where the Duel job failed or found a regression.)
+          # red where Duel failed the push or found a regression, or grey
+          # where the Duel job failed before Duel said either.)
           state="perf guarded" width=133 top="#34D058" bottom="#28A745" right="76.939C78.629 0 80 1.343 80"
-          if [ "$RESULT" = failure ] || [ "$STATUS" = failed ]; then
+          if [ "$STATUS" = failed ]; then
             state="perf regressed" width=142 top="#EA4A5A" bottom="#D73A49" right="85.939C87.629 0 89 1.343 89"
+          elif [ "$RESULT" = failure ] && [ "$STATUS" != passed ]; then
+            state="not measured" width=138 top="#959DA5" bottom="#6A737D" right="81.939C83.629 0 85 1.343 85"
           fi
           cat > "$RUNNER_TEMP/badge.svg" <<SVG
           <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="20">
