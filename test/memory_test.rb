@@ -76,6 +76,14 @@ class MemoryTest < DuelTest
     assert_equal 10 * 16_384, available(vm_stat: VM_STAT.lines.first(2).join), "a kind it doesn't count as none"
   end
 
+  # By default, what the vm_stat command prints, wherever Linux's
+  # MemAvailable isn't there.
+  def test_vm_stat_by_default
+    command = ->(*args) { (args == ["vm_stat"]) ? VM_STAT : nil }
+
+    assert_equal 33 * 16_384, stub(Duel::Memory, :command, command) { Duel::Memory.available(root: tmpdir) }
+  end
+
   # Neither, and Duel can't tell.
   def test_neither
     assert_nil available
