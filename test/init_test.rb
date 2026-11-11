@@ -85,7 +85,8 @@ class InitTest < DuelTest
     assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
-    assert_equal 1, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "the comment workflow's"
+    refute_includes workflow, "marker="
+    assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
@@ -104,7 +105,8 @@ class InitTest < DuelTest
 
     assert_equal %w[duel commit-comment passed], jobs.keys
     assert_equal [%w[Get Comment], %w[Move]], %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step.fetch("name").split.first } }
-    assert_equal 2, (workflow + read(".github/workflows/perf-comment.yml")).scan(%(marker="<!-- duel"\n)).size, "each workflow's"
+    assert_equal 1, workflow.scan(%(marker="<!-- duel"\n)).size, "the Comment on the commit job's"
+    assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
   end
 
   # Each job for pushes, alone, where .duel.rb asks for only it.
@@ -178,15 +180,14 @@ class InitTest < DuelTest
 
   # The Perf comment workflow comments on a pull request (a fork's too)
   # once Perf has run, with a token that can write, so it runs none of
-  # the pull request's code, and trusts only what the Duel job could have
-  # said: a number that names the pull request it compared, and a comment
-  # and a status that are Duel's.
+  # the pull request's code: only `duel comment`, from RubyGems, which
+  # decides what to post (see CommentTest).
   def test_the_comment_workflow
     gem
     init.run
     workflow = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
     comment = workflow.dig("jobs", "comment")
-    get, post = comment.fetch("steps")
+    get, ruby, post = comment.fetch("steps")
 
     assert_equal [{"workflows" => ["Perf"], "types" => ["completed"]}, {}], [workflow.dig(true, "workflow_run"), workflow.fetch("permissions")]
     assert_equal "${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' }}",
@@ -194,61 +195,25 @@ class InitTest < DuelTest
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.fetch("permissions"))
     assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/report", "run-id" => "${{ github.event.workflow_run.id }}",
                   "github-token" => "${{ github.token }}"}, get.fetch("with"))
-    assert_equal ["POST"], post.fetch("run").scan(/--method (\w+)/).flatten, "a new comment, never an edit"
+    assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
+    assert_equal ["steps.report.outcome == 'success'"] * 2, [ruby, post].map { |step| step.fetch("if") }
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "HEAD_SHA" => "${{ github.event.workflow_run.head_sha }}"}, post.fetch("env"))
+    assert_equal "gem install duel --version '~> 0.1.8' --no-document\n" \
+      "duel comment --report \"$RUNNER_TEMP/report\" --head \"$HEAD_SHA\" --marker 'duel'\n", post.fetch("run")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
-    said = lambda do |env|
-      FileUtils.mkdir_p(File.join(tmpdir, "report"))
-      File.write(File.join(tmpdir, "report", "comment.env"), env)
-      script = "#{post.fetch("run")[/\A.*?\|\| exit 0\n/m]}echo \"$PR $COMMENT $STATUS\""
-      IO.popen({"RUNNER_TEMP" => tmpdir}, ["bash", "-c", script], &:read)
-    end
-
-    assert_equal "12 post failed\n", said.call("pr=12\ncomment=post\nstatus=failed\n")
-    assert_equal "12 change neutral\n", said.call("pr=12\ncomment=change\nstatus=neutral\n")
-    assert_empty said.call("pr=12\ncomment=none\nstatus=failed\n"), "none: no comment"
-    assert_empty said.call("pr=12; rm -rf /\ncomment=post\nstatus=failed\n"), "not a number"
-    assert_empty said.call("pr=12\ncomment=post\nstatus=failed -->\n"), "not a status"
-    assert_empty said.call("pr=\ncomment=post\nstatus=failed\n"), "no pull request"
-    assert_includes post.fetch("run"), %([ "$head" = "$HEAD_SHA" ] || exit 0\n)
-    assert_equal "${{ github.event.workflow_run.head_sha }}", post.dig("env", "HEAD_SHA")
   end
 
-  # What the comment step posts, with gh stubbed, on pull request 12 of
-  # me/my_gem, whose head is +head+, for a run whose report is +report+:
-  # the comment, or nil.
-  def posted(report, head: "abc")
+  # A marker with a quote in it is quoted for the shell.
+  def test_the_comment_workflows_marker_quoted
     gem
     init.run
-    post = YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "comment", "steps", 1)
-    dir = FileUtils.mkdir_p(File.join(tmpdir, "report")).first
-    File.write(File.join(dir, "comment.env"), "pr=12\ncomment=post\nstatus=failed\n")
-    File.write(File.join(dir, "duel.md"), report)
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    body = File.join(tmpdir, "body.md")
-    File.write(File.join(bin, "gh"), <<~SH)
-      #!/bin/bash
-      case "$*" in
-        *"/pulls/12 --jq"*) echo "#{head}" ;;
-        *"--method POST"*) for arg in "$@"; do case "$arg" in body=@*) cp "${arg#body=@}" #{body} ;; esac; done ;;
-      esac
-    SH
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
-    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "HEAD_SHA" => "abc"}
+    init = self.init
 
-    assert system(env, "bash", "-ec", post.fetch("run"))
-    File.read(body) if File.exist?(body)
-  end
+    init.define_singleton_method(:marker) { "duel it's" }
+    text = init.send(:render, "perf-comment.yml")
 
-  # A pull request, from a branch of the repository or from a fork, gets
-  # the report as it is, as Markdown.
-  def test_a_comment_on_a_pull_request
-    assert_equal "<!-- duel status=failed -->\n**Slower**, says @someone\n", posted("**Slower**, says @someone\n")
-  end
-
-  # A pull request whose head has moved on since the run gets nothing.
-  def test_no_comment_on_a_pull_request_that_moved_on
-    assert_nil posted("**Slower**\n", head: "def")
+    assert_equal "duel it's", IO.popen(["bash", "-c", "printf %s #{text[/--marker (.*)$/, 1]}"], &:read)
   end
 
   # Duel gets the labels of a pull request, or of the one that merged a
@@ -944,7 +909,7 @@ class InitTest < DuelTest
 
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [YAML.safe_load(workflow).fetch("name"), comments.dig(true, "workflow_run", "workflows")],
       "a workflow of its own, and its comments"
-    assert_includes comments.dig("jobs", "comment", "steps", 1, "run"), %(marker="<!-- duel gems/parser"\n)
+    assert_includes comments.dig("jobs", "comment", "steps", 2, "run"), %(--marker 'duel gems/parser'\n)
     assert_equal "duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "a branch of its own"
     assert_equal "duel/badge-gems-parser", YAML.safe_load(workflow).dig("jobs", "badge", "steps", 0, "env", "BRANCH"), "a badge of its own"
     assert_includes workflow, "https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg"
@@ -1103,6 +1068,39 @@ class InitTest < DuelTest
     assert_equal "duel/gems/parser/passed", jobs.dig("duel:gems/parser:passed", "resource_group"), "its own, with no colon, which GitLab doesn't take"
   end
 
+  # --check says whether each workflow is what it writes, or how it
+  # differs, or that it's missing, and writes nothing.
+  def test_check
+    gem
+    init.run
+    before = Dir.glob("**/*", File::FNM_DOTMATCH, base: root).sort
+
+    assert_equal 0, init("--check").run
+    assert_equal "  same      .github/workflows/perf.yml\n  same      .github/workflows/perf-comment.yml\n", @out.string
+    File.write(File.join(root, ".github/workflows/perf.yml"), read(".github/workflows/perf.yml").sub("name: Perf\n", "name: Mine\n"))
+
+    assert_equal 1, init("--check").run, "one that differs"
+    File.delete(File.join(root, ".github/workflows/perf-comment.yml"))
+
+    assert_equal 1, init("--check").run
+    assert_equal <<~OUT, @out.string
+        differs   .github/workflows/perf.yml
+      --- .github/workflows/perf.yml
+      +++ .github/workflows/perf.yml (duel init)
+      @@ -1,4 +1,4 @@
+      -name: Mine
+      +name: Perf
+       
+       on:
+         pull_request:
+        missing   .github/workflows/perf-comment.yml
+    OUT
+    assert_equal before - [".github/workflows/perf-comment.yml"], Dir.glob("**/*", File::FNM_DOTMATCH, base: root).sort, "nothing written"
+    assert_equal 1, init("--check", "--badge").run, "with other options, other workflows"
+    assert_equal 1, init("--check", "--gitlab").run
+    assert_equal "  missing   .gitlab/duel.gitlab-ci.yml\n", @out.string
+  end
+
   def test_help
     assert_equal 0, init("--help").run
     assert_empty @err.string
@@ -1114,6 +1112,7 @@ class InitTest < DuelTest
 
               --force                      Overwrite files that exist
               --dry-run                    Say what it would do, and write nothing
+              --check                      Say how the workflows differ from what it writes (with the same options), and write nothing
               --badge                      Write a job that keeps a badge for the README (it needs contents: write)
               --gitlab                     Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows
           -h, --help                       Print this help

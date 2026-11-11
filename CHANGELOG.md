@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `duel comment`, which the Perf comment workflow now runs instead of
+  a shell script: it installs Duel from RubyGems (the newest release of
+  the same minor version) and comments with it, so a fix to how it
+  comments comes with a release of Duel, without a change to the
+  workflow. `duel init --check` shows how a project's workflows differ
+  from what the installed Duel writes.
 - A plugin can say how much memory what it starts for each worker
   takes at most (`def self.worker_memory`), and Duel counts at least
   that much for each worker as it fits them in the memory available. A
@@ -24,13 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A run whose failures `c.accept_label` accepted says so in its
   heading, under 🟡 instead of 🔻: "1 benchmark failed, accepted".
 - The Perf comment workflow posts a report from a fork's pull request
-  as Markdown, like any other, instead of as text in a code block. Run
-  `duel init --force` (or `bin/rails generate duel:install --force`)
-  again to update `.github/workflows/perf-comment.yml`.
+  as Markdown, like any other, instead of as text in a code block.
 - A regression that `c.accept_label` accepts is commented on as a run
   that passed would be. With the default `c.comment = :failures`, Duel
   no longer posts the report again when the label is added, since the
   last comment already showed it failing.
+
+To pick up the Perf comment workflow's changes, run `duel init --check`
+(or see duel-rails's generator's template), and copy them into
+`.github/workflows/perf-comment.yml`.
 
 ## [0.1.7] - 2026-11-10
 

@@ -228,12 +228,14 @@ the pull request's number, `comment`, and `status`. A second workflow,
 the Perf workflow completes (`workflow_run`), with your repository's
 own copy of the workflow and a token that can write, so a pull request
 from a fork gets a comment too. It checks nothing out and runs none of
-the pull request's code. The pull request's code ran in the Duel job,
-and could have written anything into the artifact, so the workflow
-trusts only what Duel could have said there: a number that names the
-pull request whose head the run compared, and a `comment` and a
-`status` that Duel uses. The report's Markdown, a fork's too, is the
-comment's body. When the Duel job fails before it compares, there's
+the pull request's code. It installs Duel from RubyGems (the newest
+0.1 release, 0.1.8 or later) and runs `duel comment`, so a fix to how it comments comes
+with a release of Duel, without a change to the workflow. The pull
+request's code ran in the Duel job, and could have written anything
+into the artifact, so `duel comment` trusts only what Duel could have
+said there: a number that names the pull request whose head the run
+compared, and a `comment` and a `status` that Duel uses. The report's
+Markdown, a fork's too, is the comment's body. When the Duel job fails before it compares, there's
 no report, and no comment. GitHub runs a `workflow_run` workflow only
 from your default branch, so the pull request that adds the workflow
 gets no comment.
@@ -248,11 +250,11 @@ name: Perf comment
 # deletes a comment. It runs once the Perf workflow has, with this
 # repository's own workflow and a token that can write, so a pull request
 # from a fork gets a comment too. It checks nothing out and runs none of
-# the pull request's code, and of what the Duel job kept (where that code
-# ran), it trusts only what that job could have said: the pull request's
-# number, if it names the pull request the run compared, and the comment
-# and the status, if they're ones Duel says. Its report, a fork's too,
-# is the comment, as Markdown.
+# the pull request's code, only `duel comment` (see Duel's docs/ci.md),
+# which trusts only what the Duel job could have said in what it kept:
+# the pull request's number, if it names the pull request the run
+# compared, and the comment and the status, if they're ones Duel says.
+# Its report, a fork's too, is the comment, as Markdown.
 #
 # And when the label that accepts a regression (c.accept_label in
 # .duel.rb) is added to a pull request, or taken off, it runs the Duel
@@ -290,29 +292,20 @@ jobs:
           path: ${{ runner.temp }}/report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - uses: ruby/setup-ruby@v1
+        if: steps.report.outcome == 'success'
+        with:
+          ruby-version: ruby
+      # Duel's own code, from RubyGems (none of the pull request's), so a
+      # fix to how it comments comes with a release of Duel.
       - name: Comment on the pull request
         if: steps.report.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          said() { grep -xE "$1=($2)" "$RUNNER_TEMP/report/comment.env" | tail -n 1 | cut -d= -f2; }
-          PR=$(said pr '[0-9]+')
-          COMMENT=$(said comment 'post|change')
-          STATUS=$(said status 'passed|failed|neutral')
-          [ -n "$PR" ] && [ -n "$COMMENT" ] && [ -n "$STATUS" ] || exit 0
-          # (The pull request's head commit.)
-          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .head.sha)
-          [ "$head" = "$HEAD_SHA" ] || exit 0
-          marker="<!-- duel"
-          # The first line of the last comment Duel posted here: its marker,
-          # with its status (none in Duel 0.1.0's, which counts as another).
-          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\") or . == \"$marker -->\")" | tail -n 1)
-          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
-            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
-            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
-          fi
+          gem install duel --version '~> 0.1.8' --no-document
+          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel'
 
   again:
     name: Run Duel again
@@ -721,6 +714,21 @@ Duel compares a push to each branch with the commit before it, or with
 that branch, which a branch of its own marks: `duel/passed/2-x-stable`.
 A pull request into the branch is compared with the branch, whatever
 the workflow guards.
+
+## Keep the workflows up to date
+
+A release of Duel can change the workflows that `duel init` writes. To
+see how yours differ from what the installed Duel writes, run it with
+`--check`, and the options you ran it with (such as `--badge`):
+
+```sh
+bundle exec duel init --check
+```
+
+It says whether each workflow is the same, differs (and shows how, as
+`diff -u` does), or is missing, and writes nothing. It exits with 1
+where one isn't the same. Copy in the changes you want, so that steps
+you added to the Duel job (to install a database server, say) stay.
 
 ## Run Duel on GitLab CI
 

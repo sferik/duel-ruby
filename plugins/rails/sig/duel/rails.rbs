@@ -259,6 +259,9 @@ module Duel
       def ruby_version: () -> String?
       def repository: () -> String
       def working_directory: () -> String?
+
+      # What marks the workflow's comment on a pull request.
+      def marker: () -> String
     end
   end
 end

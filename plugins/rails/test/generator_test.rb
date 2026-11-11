@@ -82,6 +82,7 @@ class GeneratorTest < PluginTest
     generate
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
+    require "duel/comment" # (for the template's Duel::Comment::SINCE)
     own = ERB.new(File.read(File.expand_path("../../../lib/duel/templates/perf-comment.yml.erb", __dir__)), trim_mode: "-")
 
     assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"\n)
@@ -181,8 +182,8 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
     assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog/${{ github.ref_name }}",
-      "          BRANCH: duel/badge-apps-blog"],
-      (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|BRANCH: /).uniq,
+      "          BRANCH: duel/badge-apps-blog", %(          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel apps/blog')],
+      (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|--marker |BRANCH: /).uniq,
       "comments, and a branch, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
       YAML.safe_load(workflow).fetch("jobs").values_at("duel", "commit-comment").map { |job| job["defaults"] }, "none where nothing's checked out"

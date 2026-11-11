@@ -10,11 +10,13 @@ require_relative "lock"
 require_relative "summary"
 require_relative "json_report"
 require_relative "init"
+require_relative "comment"
 
 module Duel
-  # The `duel` command (and `duel init`: see Init). What a run behind a
-  # rake task or a CI expression can't pass as an option can be set in
-  # the environment (DUEL_BASE, DUEL_FILTER, DUEL_FORCE), and options win.
+  # The `duel` command (and `duel init` and `duel comment`: see Init and
+  # Comment). What a run behind a rake task or a CI expression can't pass
+  # as an option can be set in the environment (DUEL_BASE, DUEL_FILTER,
+  # DUEL_FORCE), and options win.
   # On GitHub Actions (GITHUB_STEP_SUMMARY), it adds its report to the
   # job's summary, in Markdown (see Summary), and tells the step's
   # outputs (GITHUB_OUTPUT) what to do about the comment on a pull
@@ -24,8 +26,9 @@ module Duel
   # outcome, but not for a command line that isn't valid.
   # @api private
   class CLI
-    USAGE = "Usage: duel [options]\n       duel init [options]\n\n" \
-      "Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project.\n\n"
+    USAGE = "Usage: duel [options]\n       duel init [options]\n       duel comment [options]\n\n" \
+      "Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project, and\n" \
+      "`duel comment` is what its Perf comment workflow runs.\n\n"
 
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY = "GITHUB_STEP_SUMMARY"
@@ -73,6 +76,7 @@ module Duel
     # warned (see WARNED).
     def run
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
+      return Comment.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "comment"
 
       settings = @settings = catch(:version) { parse } or return 0
       config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new

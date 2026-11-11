@@ -7,6 +7,7 @@ require "open3"
 require "optparse"
 require "pathname"
 require_relative "../duel"
+require_relative "comment"
 
 module Duel
   # `duel init`: sets Duel up in a gem or an app that isn't a Rails app
@@ -17,7 +18,8 @@ module Duel
   # --gitlab, GitLab CI jobs to include, adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
   # of regressions, on CRuby). It overwrites nothing without --force, and
-  # writes nothing with --dry-run.
+  # writes nothing with --dry-run, or with --check, which says how the
+  # workflows differ from what it writes.
   # @api private
   class Init
     USAGE = "Usage: duel init [options]\n\n" \
@@ -45,12 +47,15 @@ module Duel
       @root = root
     end
 
-    # Returns the exit status: 0 set up, 1 a Rails app (not set up), 2 a
-    # bad option.
+    # Returns the exit status: 0 set up (or with --check, its workflows
+    # are what it writes), 1 a Rails app (not set up, or checked), or with
+    # --check, a workflow that differs, 2 a bad option.
     def run
       rest = catch(:help) { parser.parse(@argv) } or return 0
       raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
       return rails if File.exist?(File.join(@root, "config", "application.rb"))
+
+      return check if @check
 
       @out.puts "duel init: a dry run, so nothing is written" if @dry_run
       files.each { |path, content| write(path, content) }
@@ -81,6 +86,7 @@ module Duel
         o.banner = USAGE
         o.on("--force", "Overwrite files that exist") { @force = true }
         o.on("--dry-run", "Say what it would do, and write nothing") { @dry_run = true }
+        o.on("--check", "Say how the workflows differ from what it writes (with the same options), and write nothing") { @check = true }
         o.on("--badge", "Write a job that keeps a badge for the README (it needs contents: write)") { @badge = true }
         o.on("--gitlab", "Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows") { @gitlab = true }
         o.on("-h", "--help", "Print this help") do
@@ -95,6 +101,30 @@ module Duel
       @err.puts "duel init: this is a Rails app (config/application.rb). Add duel-rails to the Gemfile's development group, " \
         "and run `bin/rails generate duel:install` instead"
       1
+    end
+
+    # Says whether each workflow (or with --gitlab, the GitLab CI jobs) is
+    # what it writes, or how it differs, or that it's missing: they're the
+    # files a project rarely changes, but Duel's releases do. Returns 0
+    # where each is, or else 1.
+    def check
+      written = files.except(".duel.rb", benchmark_file)
+      written.count { |path, content| !same?(path, content) }.zero? ? 0 : 1
+    end
+
+    # Whether the file at +path+ is +content+, saying so, or how it
+    # differs (as diff -u has it), or that it's missing.
+    def same?(path, content)
+      full = File.join(@root, path)
+      unless File.file?(full)
+        said("missing", path)
+        return false
+      end
+
+      differences, = Open3.capture2("diff", "-u", "-L", path, "-L", "#{path} (duel init)", full, "-", stdin_data: content)
+      said(differences.empty? ? "same" : "differs", path)
+      @out.print differences
+      differences.empty?
     end
 
     # Writes +content+ to +path+, unless it exists (without --force), and

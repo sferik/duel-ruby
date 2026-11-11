@@ -161,6 +161,10 @@ module Duel
         path = Pathname(File.realpath(destination_root)).relative_path_from(File.realpath(repository)).to_s
         path unless path == "."
       end
+
+      # What marks the workflow's comment on a pull request, as `duel
+      # init`'s does (see Duel::Init#marker).
+      def marker = ["duel", working_directory].compact.join(" ")
     end
   end
 end

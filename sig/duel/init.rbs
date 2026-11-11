@@ -21,6 +21,7 @@ module Duel
     @root: String
     @force: bool?
     @dry_run: bool?
+    @check: bool?
     @gitlab: bool?
     @badge: bool?
     @settings: Config?
@@ -37,6 +38,12 @@ module Duel
     private
 
     def parser: () -> OptionParser
+
+    # Says whether each workflow is what it writes, or how it differs.
+    def check: () -> Integer
+
+    # Whether the file at +path+ is +content+, saying so, or how it differs.
+    def same?: (String path, String content) -> bool
 
     # Says to use duel-rails's generator instead.
     def rails: () -> Integer

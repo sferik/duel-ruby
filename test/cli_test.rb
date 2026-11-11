@@ -49,12 +49,34 @@ class CLITest < DuelTest
     assert_equal ["--force"], argv
   end
 
+  # `duel comment` is the Comment command's, given the environment.
+  def test_the_comment_command
+    report = FileUtils.mkdir_p(File.join(tmpdir, "report")).first
+    File.write(File.join(report, "comment.env"), "pr=12\ncomment=post\nstatus=failed\n")
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    File.write(File.join(bin, "gh"), "#!/bin/sh\nexit 1\n")
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    path = ENV.fetch("PATH")
+    ENV["PATH"] = "#{bin}:#{path}"
+
+    assert_equal 1, cli("comment", "--report", report, "--head", "abc", env: {"GITHUB_REPOSITORY" => "me/mine"}).run
+    assert_equal ["", "duel comment: gh api repos/me/mine/pulls/12: \n"], [@out.string, @err.string]
+    File.delete(File.join(report, "comment.env"))
+
+    assert_equal 0, cli("comment", "--report", report, "--head", "abc").run
+    assert_equal "duel comment: no comment (Duel said not to)\n", @out.string
+  ensure
+    ENV["PATH"] = path
+  end
+
   def test_help
     assert_equal <<~HELP, cli.send(:parser, Duel::Settings.defaults).help
       Usage: duel [options]
              duel init [options]
+             duel comment [options]
 
-      Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project.
+      Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project, and
+      `duel comment` is what its Perf comment workflow runs.
 
               --base REF|DIR               Baseline: a commit (default: where HEAD left the main branch), last-release (the newest
                                            release tag), or a directory, already built

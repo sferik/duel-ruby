@@ -1,0 +1,55 @@
+module Duel
+  # `duel comment`: what the Perf comment workflow runs, to comment on a
+  # pull request with Duel's report.
+  # @api private
+  class Comment
+    USAGE: String
+
+    # The first release whose `duel comment` the workflow can run.
+    SINCE: String
+
+    # What Duel says in comment.env, as each line must have it.
+    SAID: Hash[String, Regexp]
+
+    # The jq that lists the comments GitHub Actions' token posted.
+    LISTED: String
+
+    @argv: Array[String]
+    @env: CLI::_Env
+    @out: _Output
+    @err: _Output
+    @marker: String
+    @report: String?
+    @head: String?
+
+    def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
+
+    # Returns the exit status: 0 commented (or had nothing to say), 1
+    # GitHub wouldn't take it, 2 a bad option.
+    def run: () -> Integer
+
+    private
+
+    def parser: () -> OptionParser
+
+    # Comments, if Duel said to, and the pull request's head is still the
+    # run's.
+    def comment: () -> Integer
+
+    # What Duel said in comment.env, or nil.
+    def said: (String name) -> String?
+
+    # Duel's comments on the pull request, oldest first, or nil.
+    def earlier: (String pr) -> Array[Hash[String, String]]?
+
+    # What gh api prints, or nil where it fails.
+    def gh: (*String args) -> String?
+
+    # Says why it doesn't comment, and returns 0.
+    def quiet: (String why) -> Integer
+
+    def marker: () -> String
+
+    def repository: () -> String
+  end
+end

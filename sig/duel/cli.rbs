@@ -5,6 +5,8 @@ module Duel
     # The environment (ENV, or a Hash in its place).
     interface _Env
       def reject: () { (String name, String value) -> boolish } -> _Variables
+
+      def fetch: (String name) -> String
     end
 
     # What's left of it.
