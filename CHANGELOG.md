@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer posts the report again when the label is added, since the
   last comment already showed it failing.
 
+### Fixed
+
+- On TruffleRuby, Duel fits the workers in the memory available as
+  they'll be once warm, not as they start: its workers grow some 2.9
+  times as its JIT compiles, so where 8 of each version seemed to fit,
+  they took 24 GB, more than a 16 GB CI runner has, and the runner
+  stopped answering.
+
 To pick up the Perf comment workflow's changes, run `duel init --check`
 (or see duel-rails's generator's template), and copy them into
 `.github/workflows/perf-comment.yml`.

@@ -14,9 +14,13 @@ class EndToEndComparingTest < DuelTest
     # (Twice the work, four times under a JIT, whose timings on a shared
     # machine swing too far to tell twice from noise every time.)
     slower = project(File.join(tmpdir, "slower"), work: Duel::JIT_WARM.zero? ? 6000 : 12_000)
+    # (On a JIT's engine, 3 workers of each version, not the default 8:
+    # TruffleRuby's grow to some 1.5 GB each as they warm up, and 16 of
+    # them ran a CI runner out of memory.)
+    fewer = Duel::JIT_WARM.zero? ? [] : %w[--processes 3]
     duel = lambda do |dir|
       out = StringIO.new
-      [Dir.chdir(dir) { Duel::CLI.new(["--base", base, "--jobs", "1"], env: {}, out: out).run }, out.string]
+      [Dir.chdir(dir) { Duel::CLI.new(["--base", base, "--jobs", "1", *fewer], env: {}, out: out).run }, out.string]
     end
 
     assert_equal 0, duel.call(candidate).first

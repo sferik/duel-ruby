@@ -62,7 +62,8 @@ never on noise, so that it can gate every pull request:
   Running out would make the machine swap, or stop a CI runner from
   answering, so its job is lost. To find what they take, Duel starts
   one worker of each version first, and allows each pair a quarter
-  more than that, or what its plugins say each worker's resources
+  more than that (on TruffleRuby, whose workers grow as its JIT warms
+  up, 2.5 times that), or what its plugins say each worker's resources
   take at most, if that's more (a server takes more as it's used), and
   1 GB for everything else. Its first line says
   when it lowered either. A `--jobs` or `--processes` you give is

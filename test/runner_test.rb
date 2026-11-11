@@ -59,8 +59,14 @@ class RunnerTest < DuelTest
   # A run whose memory readings are +readings+, one after another: the
   # first before a worker of each version starts, the next with them
   # started. And the run's settings, and the readings left.
-  def fitted(workers, readings, memory: 0, **overrides)
+  def fitted(workers, readings, memory: 0, engine: RUBY_ENGINE, **overrides)
     readings = readings.dup
+    stub(Duel::Rubies, :engine, ->(_) { engine }) do
+      fitted_on(workers, readings, memory, **overrides)
+    end
+  end
+
+  def fitted_on(workers, readings, memory, **overrides)
     stub(Duel::Memory, :available, -> { readings.shift }) do
       workers.benchmark("a")
       run = settings(jobs: 2, processes: 8, fit: %i[jobs processes], **overrides)
@@ -168,6 +174,49 @@ class RunnerTest < DuelTest
 
       assert_equal [2, 8], [run.jobs, run.processes], "16 GB (less RESERVE) is 30 pairs of 0.5 GB"
     end
+  end
+
+  # On TruffleRuby, a worker grows some JIT_GROWTH times as it warms up:
+  # where one of each version took 1 GB as they started, each pair needs
+  # 2.5 times that, HEADROOM over (3.125 GB), so of 16 GB, less RESERVE,
+  # 4 pairs. On either version's engine, as the other's may be CRuby.
+  def test_a_jits_growth
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [16 * GB, 15 * GB], engine: "truffleruby")
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, as it starts, and some 2.5x that once warm, of " \
+        "16.0 GB available, so to fit: 1 benchmark at a time (not 2), and 4 workers of each version (not 8)", lines.first
+      assert_equal [1, 4], [run.jobs, run.processes]
+      engines = %w[ruby truffleruby]
+      _, run, = stub(Duel::Rubies, :engine, ->(_) { engines.shift }) { fitted_on(workers, [16 * GB, 15 * GB], 0) }
+
+      assert_equal [1, 4], [run.jobs, run.processes], "the candidate's"
+      engines = %w[truffleruby ruby]
+      _, run, = stub(Duel::Rubies, :engine, ->(_) { engines.shift }) { fitted_on(workers, [16 * GB, 15 * GB], 0) }
+
+      assert_equal [1, 4], [run.jobs, run.processes], "the baseline's"
+      _, run, = fitted(workers, [16 * GB, 15 * GB], engine: "jruby")
+
+      assert_equal [1, 8], [run.jobs, run.processes], "not JRuby's"
+      lines, run, = fitted(workers, [16 * GB, 15 * GB], engine: "truffleruby", memory: 2 * GB)
+
+      assert_match(/takes 4\.0 GB, with its resources, as its plugins say/, lines.first)
+      assert_equal [1, 3], [run.jobs, run.processes]
+      lines, = with_growth(1.5) { fitted(workers, [16 * GB, 15 * GB], engine: "truffleruby") }
+
+      assert_match(/takes 1\.0 GB, with its resources, as it starts, and some 1\.5x that once warm, /, lines.first)
+    end
+  end
+
+  # With JIT_GROWTH's TruffleRuby's +growth+.
+  def with_growth(growth)
+    original = Duel::Runner::JIT_GROWTH
+    Duel::Runner.send(:remove_const, :JIT_GROWTH)
+    Duel::Runner.const_set(:JIT_GROWTH, {"truffleruby" => growth}.freeze)
+    yield
+  ensure
+    Duel::Runner.send(:remove_const, :JIT_GROWTH)
+    Duel::Runner.const_set(:JIT_GROWTH, original)
   end
 
   # Nothing to fit, no telling what's available, or no telling what the
