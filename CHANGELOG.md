@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Once the Perf comment workflow posts a comment, it hides Duel's
   earlier ones on the pull request as outdated, which GitHub collapses,
   so the newest is the one in view.
+- `duel init` offers to create the label that `c.accept_label` names,
+  with `gh`, where it can (at a terminal, in a GitHub repository that
+  hasn't the label). Where it doesn't, its next steps say to.
 - A plugin can say how much memory what it starts for each worker
   takes at most (`def self.worker_memory`), and Duel counts at least
   that much for each worker as it fits them in the memory available. A

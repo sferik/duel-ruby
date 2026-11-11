@@ -15,10 +15,22 @@ module Duel
     # A Gemfile's development group.
     DEVELOPMENT: Regexp
 
+    # The color of the label it creates.
+    LABEL_COLOR: String
+
+    # Where it reads an answer.
+    interface _Input
+      def tty?: () -> bool
+
+      def gets: () -> String?
+    end
+
     @argv: Array[String]
     @out: _Output
     @err: _Output
+    @input: _Input
     @root: String
+    @label: bool?
     @force: bool?
     @dry_run: bool?
     @check: bool?
@@ -27,7 +39,7 @@ module Duel
     @settings: Config?
     @stackprof: bool?
 
-    def initialize: (Array[String] argv, ?out: _Output, ?err: _Output, ?root: String) -> void
+    def initialize: (Array[String] argv, ?out: _Output, ?err: _Output, ?input: _Input, ?root: String) -> void
 
     # Returns the exit status: 0 set up, 1 a Rails app, 2 a bad option.
     def run: () -> Integer
@@ -44,6 +56,13 @@ module Duel
 
     # Whether the file at +path+ is +content+, saying so, or how it differs.
     def same?: (String path, String content) -> bool
+
+    # Creates the label that accepts a regression, with gh, if it's missing
+    # and the answer to whether to is yes.
+    def create_label: () -> void
+
+    # What gh prints, run in the project, or nil.
+    def gh: (*String args) -> String?
 
     # Says to use duel-rails's generator instead.
     def rails: () -> Integer

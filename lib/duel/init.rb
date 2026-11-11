@@ -40,10 +40,15 @@ module Duel
     # indentation of its first line.
     DEVELOPMENT = /^([ \t]*)group[ \t(]+(?::development(?:,[ \t]*:test)?|:test,[ \t]*:development)[ \t)]+do[ \t]*\n/
 
-    def initialize(argv, out: $stdout, err: $stderr, root: Dir.pwd)
+    # The color of the label it creates (see #create_label): GitHub's
+    # yellow, a warning's.
+    LABEL_COLOR = "FBCA04"
+
+    def initialize(argv, out: $stdout, err: $stderr, input: $stdin, root: Dir.pwd)
       @argv = argv
       @out = out
       @err = err
+      @input = input
       @root = root
     end
 
@@ -61,6 +66,7 @@ module Duel
       files.each { |path, content| write(path, content) }
       add_rake_task
       add_stackprof
+      create_label
       @out.print next_steps
       0
     rescue OptionParser::ParseError => e
@@ -125,6 +131,42 @@ module Duel
       said(differences.empty? ? "same" : "differs", path)
       @out.print differences
       differences.empty?
+    end
+
+    # Creates the label that accepts a regression (Config#accept_label) in
+    # the project's GitHub repository, with gh, if it's missing and the
+    # answer to whether to is yes: it asks only at a terminal, and not on
+    # a dry run, or for GitLab. Where it doesn't, the next steps say to.
+    def create_label
+      label = accept_label
+      return unless label && !@gitlab && !@dry_run && @input.tty?
+
+      repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")&.chomp or return
+      names = gh("label", "list", "--repo", repo, "--search", label, "--limit", "100", "--json", "name", "--jq", ".[].name") or return
+      if names.lines(chomp: true).include?(label)
+        said("skip", "label #{label} (#{repo} has it)")
+        return @label = true
+      end
+
+      @out.print "Create the label #{label.inspect} in #{repo} with gh, so a pull request can accept a regression? [y/N] "
+      return unless @input.gets.to_s.strip.match?(/\Ay(?:es)?\z/i)
+
+      created = gh("label", "create", label, "--repo", repo, "--color", LABEL_COLOR, "--description", "Accepts a regression that Duel found")
+      return unless created
+
+      said("create", "label #{label} (#{repo})")
+      @label = true
+    end
+
+    # What gh prints, run in the project, or nil where it fails (which it
+    # says) or isn't there.
+    def gh(*args)
+      out, err, status = Open3.capture3("gh", *args, chdir: @root)
+      return out if status.success?
+
+      @err.puts "duel init: gh #{args.first(2).join(" ")}: #{err.strip}"
+    rescue SystemCallError
+      nil
     end
 
     # Writes +content+ to +path+, unless it exists (without --force), and
@@ -196,6 +238,8 @@ module Duel
       end
       steps << "Set c.library in .duel.rb to what each version's workers require." unless required
       steps << "Replace the example in #{benchmark_file} with benchmarks of your own code."
+      steps << "Create the label #{accept_label.inspect} in your repository, so a pull request can accept a regression (c.accept_label)." if
+        accept_label && !@label
       steps << "Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound."
       steps << if @gitlab
         "Include #{gitlab_file} from .gitlab-ci.yml, and add the tokens it says to, for comments. On a merge request, the job " \

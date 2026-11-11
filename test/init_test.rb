@@ -10,7 +10,7 @@ class InitTest < DuelTest
 
   def root = @root ||= FileUtils.mkdir_p(File.join(tmpdir, "my_gem")).first
 
-  def init(*argv, at: root) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), root: at)
+  def init(*argv, at: root, input: StringIO.new) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), input: input, root: at)
 
   def read(path) = File.read(File.join(root, path))
 
@@ -65,8 +65,9 @@ class InitTest < DuelTest
       Next:
         1. Run `bundle install`, for StackProf (added to the Gemfile).
         2. Replace the example in duel/my_gem_duel.rb with benchmarks of your own code.
-        3. Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound.
-        4. Commit and push. On a pull request, the workflow compares the code with the branch it targets, and comments with the report when a benchmark fails (c.comment in .duel.rb says when).
+        3. Create the label "duel: accept" in your repository, so a pull request can accept a regression (c.accept_label).
+        4. Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound.
+        5. Commit and push. On a pull request, the workflow compares the code with the branch it targets, and comments with the report when a benchmark fails (c.comment in .duel.rb says when).
     OUT
     assert_empty @err.string
     assert_includes read(".duel.rb"), <<~RUBY
@@ -1099,6 +1100,103 @@ class InitTest < DuelTest
     assert_equal 1, init("--check", "--badge").run, "with other options, other workflows"
     assert_equal 1, init("--check", "--gitlab").run
     assert_equal "  missing   .gitlab/duel.gitlab-ci.yml\n", @out.string
+  end
+
+  # A terminal, answering +answer+.
+  def terminal(answer = "")
+    StringIO.new(answer).tap { |io| io.define_singleton_method(:tty?) { true } }
+  end
+
+  # Runs `duel init` (with +argv+), its input +input+, with gh faked: it
+  # answers as +answers+ say (by its first two arguments), and nil to
+  # anything else. Returns the calls it made to gh.
+  def labeled(*argv, input: terminal, answers: {})
+    gem
+    calls = []
+    command = init(*argv, input: input)
+    command.define_singleton_method(:gh) do |*args|
+      calls << args
+      answers[args.first(2)]
+    end
+    command.run
+    calls
+  end
+
+  REPO = {%w[repo view] => "me/my_gem\n"}.freeze
+
+  LISTED = %w[label list --repo me/my_gem --search duel:\ accept --limit 100 --json name --jq .[].name].freeze
+
+  # At a terminal, with a GitHub repository that hasn't the label that
+  # accepts a regression, it asks whether to create it, with gh.
+  def test_creating_the_label
+    calls = labeled(input: terminal("y\n"), answers: REPO.merge(%w[label list] => "duel\nduel: accepted\n", %w[label create] => ""))
+
+    assert_equal [%w[repo view --json nameWithOwner --jq .nameWithOwner], LISTED,
+      ["label", "create", "duel: accept", "--repo", "me/my_gem", "--color", "FBCA04", "--description", "Accepts a regression that Duel found"]], calls
+    assert_includes @out.string, %(Create the label "duel: accept" in me/my_gem with gh, so a pull request can accept a regression? [y/N]   create    label duel: accept (me/my_gem)\n)
+    refute_includes @out.string, "Create the label \"duel: accept\" in your repository"
+    %W[yes\n Y\n YES].each do |answer|
+      assert_equal 3, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[label list] => "", %w[label create] => "")).size, answer
+    end
+  end
+
+  # Where it doesn't create the label, the next steps say to.
+  def test_not_creating_the_label
+    step = %(Create the label "duel: accept" in your repository, so a pull request can accept a regression (c.accept_label).\n)
+    [["n\n", "no"], ["", "no answer"], ["yes, sure\n", "not a yes"]].each do |answer, why|
+      assert_equal 2, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[label list] => "")).size, why
+      assert_includes @out.string, step, why
+    end
+    assert_equal 3, labeled("--force", input: terminal("y\n"), answers: REPO.merge(%w[label list] => "")).size
+    assert_includes @out.string, step, "gh didn't"
+    refute_includes @out.string, "  create    label"
+    assert_equal [LISTED], labeled("--force", answers: REPO).drop(1), "it couldn't list them"
+    assert_includes @out.string, step
+    assert_equal 1, labeled("--force").size, "not a GitHub repository, say"
+    refute_includes @out.string, "[y/N]"
+    assert_includes @out.string, step
+  end
+
+  # With the label already, it says so.
+  def test_a_label_that_exists
+    assert_equal 2, labeled(answers: REPO.merge(%w[label list] => "bug\nduel: accept\n")).size
+    assert_includes @out.string, "  skip      label duel: accept (me/my_gem has it)\n"
+    refute_includes @out.string, "[y/N]"
+    refute_includes @out.string, "Create the label"
+  end
+
+  # It asks only at a terminal, for GitHub, not on a dry run, and only
+  # with a label.
+  def test_when_it_asks_about_the_label
+    assert_empty labeled(input: StringIO.new("y\n"), answers: REPO)
+    assert_includes @out.string, "Create the label \"duel: accept\" in your repository"
+    assert_empty labeled("--force", "--gitlab", answers: REPO)
+    assert_includes @out.string, "Create the label \"duel: accept\" in your repository", "GitLab's too"
+    assert_empty labeled("--force", "--dry-run", answers: REPO)
+    write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
+
+    assert_empty labeled(answers: REPO)
+    refute_includes @out.string, "Create the label"
+  end
+
+  # gh, run in the project: what it prints, or nil where it fails (which
+  # it says) or isn't there.
+  def test_gh
+    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
+    File.write(File.join(bin, "gh"), "#!/bin/sh\n[ \"$2\" = fail ] && { echo ' no ' >&2; exit 1; }\necho \"$*\"; pwd -P\n")
+    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    command = init
+    original = ENV.fetch("PATH")
+    ENV["PATH"] = "#{bin}:#{original}"
+
+    assert_equal "a b\n#{File.realpath(root)}\n", command.send(:gh, "a", "b")
+    assert_nil command.send(:gh, "a", "fail", "c")
+    assert_equal "duel init: gh a fail: no\n", @err.string
+    ENV["PATH"] = File.join(tmpdir, "nothing")
+
+    assert_nil command.send(:gh, "a")
+  ensure
+    ENV["PATH"] = original
   end
 
   def test_help

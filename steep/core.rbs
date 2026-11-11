@@ -75,6 +75,9 @@ module Open3
   # Open3 passes options on to Process.spawn: Duel's is chdir:.
   def self.capture2e: (*String command, chdir: String) -> [String, Process::Status]
                     | ...
+
+  def self.capture3: (*String command, chdir: String) -> [String, String, Process::Status]
+                   | ...
 end
 
 class Integer
