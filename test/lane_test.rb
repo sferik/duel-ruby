@@ -214,6 +214,10 @@ class LaneTest < DuelTest
     assert_equal elsewhere, File.dirname(other), "where short_tmp says"
     assert_equal ["/tmp/x", "/tmp", "/#{"x" * 39}"], ["/tmp/x", "/var/folders/18/4jzcjnnj3kx8x4nwvbjnydnm0000gn/T", "/#{"x" * 39}"].map { |tmp| Duel::Lane.short_tmp(tmp) }
     assert_equal "/tmp", Duel::Lane.short_tmp("/#{"x" * 40}")
+    long = "C:/Users/#{"x" * 40}/AppData/Local/Temp"
+
+    assert_equal [long, "/tmp"], [true, false].map { |windows| Duel::Lane.short_tmp(long, windows: windows) }, "Windows has no /tmp"
+    assert_equal long, with_constants(Duel::Native, WINDOWS: true) { Duel::Lane.short_tmp(long) }, "by default, on Windows"
   ensure
     FileUtils.rm_rf(dir)
   end

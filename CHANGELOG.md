@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The start of Windows support (CRuby): resident memory comes from
+  the process's working set, the memory available from
+  `GlobalMemoryStatusEx`, a process benchmark's process that hangs is
+  killed with what it started by `taskkill /T`, and a resource's
+  processes are killed as it stops, as Windows can send them no other
+  signal (an `at_stop` block can ask one to stop first). A process
+  benchmark's peak memory isn't measured there yet, nor instructions.
+  The tests run on macOS and Windows in CI too, Windows's advisory
+  until they pass there.
 - `duel comment`, which the Perf comment workflow now runs instead of
   a shell script: it installs Duel from RubyGems (the newest release of
   the same minor version) and comments with it, so a fix to how it

@@ -11,14 +11,16 @@ module Duel
     FIDDLE: bool
     OS: String
     CPU: String
+    WINDOWS_OS: Regexp
+    WINDOWS: bool
     UINT64: Integer
 
-    # A C function of the process's own libraries, by name, taking and
-    # returning Fiddle types (:INT, :LONG, :VOIDP...).
     # Loads Fiddle, as the first C function is made.
     def self.require_fiddle: () -> bool
 
-    def self.function: (String name, Array[Symbol] args, Symbol returns) -> _Function
+    # A C function of the process's own libraries (or of +library+), by
+    # name, taking and returning Fiddle types (:INT, :LONG, :VOIDP...).
+    def self.function: (String name, Array[Symbol] args, Symbol returns, ?library: String?) -> _Function
 
     # Instructions retired in user space, from the CPU's counters.
     class Counter
@@ -79,6 +81,31 @@ module Duel
       def field: (Integer offset) -> Integer
     end
 
+    # Windows: this process's working set, and the memory available, from
+    # kernel32.
+    class Windows
+      KERNEL32: String
+      CURRENT_PROCESS: Integer
+      COUNTERS: Integer
+      WORKING_SET: Integer
+      STATUS: Integer
+      AVAILABLE: Integer
+
+      @memory_info: _Function
+      # The struct K32GetProcessMemoryInfo fills in, in place.
+      @buffer: String
+
+      def self.open: (?platform: String, ?memory_info: _Function?) -> Windows?
+
+      # The bytes of physical memory available, or nil.
+      def self.available: (?platform: String, ?status: _Function?) -> Integer?
+
+      def initialize: (_Function memory_info) -> void
+
+      # The bytes in its working set, or nil.
+      def resident: () -> Integer?
+    end
+
     # A child process of this one, waited for.
     module Child
       RUSAGE_SIZE: Integer
@@ -93,12 +120,13 @@ module Duel
     # This process's resident memory in bytes, or nil where it can't tell.
     module Memory
       STATUS: String
-      self.@macos: MacOS?
+      self.@reader: (MacOS | Windows)?
 
-      # macOS's counter, opened as resident memory is first read, or nil.
-      def self.macos_counter: () -> MacOS?
+      # macOS's counter, or Windows's reader, opened as resident memory is
+      # first read, or nil.
+      def self.opened_reader: () -> (MacOS | Windows)?
 
-      def self.resident: (?status: String, ?macos: MacOS?) -> Integer?
+      def self.resident: (?status: String, ?reader: (MacOS | Windows)?) -> Integer?
 
       def self.used: () -> Integer?
 

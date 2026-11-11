@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "rbconfig"
+require_relative "native"
 
 module Duel
   # What a prepare block (see Config#prepare) gets: a worker's, or a
@@ -134,7 +135,9 @@ module Duel
     # Starts a process (as Process.spawn takes it), its output added to a
     # log in the directory (+log+.log: by default, its program's name),
     # and stopped with the resource, by +stop_signal+ (then KILL, five
-    # seconds later). Returns its pid. Its input is
+    # seconds later). On Windows, which can't send another process a
+    # signal, it's killed: ask it to stop in an #at_stop block, which
+    # runs first. Returns its pid. Its input is
     # nothing, and it gets no other file descriptors, unless +options+
     # say otherwise (in:, close_others:). It runs in its version's
     # environment (on its Ruby: see Config#ruby), under any it's given.
@@ -193,6 +196,11 @@ module Duel
       @processes.each { |pid, (_, _, signal)| end_process(pid, signal) }
     end
 
+    # The signal that stops a process whose stop signal is +signal+: that
+    # one, but on Windows, KILL, the only one it can send another process.
+    # @api private
+    def self.stop_signal(signal, windows: Native::WINDOWS) = windows ? "KILL" : signal
+
     private
 
     # Builds +dir+ in a directory of its own, then renames it into place:
@@ -229,7 +237,7 @@ module Duel
     # (Waited for on a thread of its own: a Timeout can't interrupt a wait
     # on JRuby.)
     def end_process(pid, signal)
-      Process.kill(signal, pid)
+      Process.kill(Resource.stop_signal(signal), pid)
       waiter = Process.detach(pid)
       return if waiter.join(STOP_WAIT)
 

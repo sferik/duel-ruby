@@ -45,6 +45,14 @@ module Duel
     # How a process that failed ended.
     def self.why: (Integer? code, Integer? signal) -> String
 
+    # The Ruby process of its own's group: a process group of its own, or
+    # on Windows, a console's.
+    def self.group: (?windows: bool) -> ({ pgroup: true } | { new_pgroup: true })
+
+    # Kills +pid+ and what it started: its process group, or on Windows,
+    # its tree of children.
+    def self.kill_tree: (Integer pid, ?windows: bool) -> untyped
+
     private
 
     def start: () -> void

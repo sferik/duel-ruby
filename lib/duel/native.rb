@@ -12,6 +12,10 @@ module Duel
     FIDDLE = RUBY_ENGINE == "ruby"
     OS = RbConfig::CONFIG["host_os"]
     CPU = RbConfig::CONFIG["host_cpu"]
+    # What host_os is on Windows: mingw's ("mingw32", "mingw-ucrt") or
+    # mswin's ("mswin64_140").
+    WINDOWS_OS = /mingw|mswin/
+    WINDOWS = OS.match?(WINDOWS_OS)
     UINT64 = 8 # bytes, the size of every count read
 
     # Loads Fiddle, as the first C function is made (see .function): not
@@ -23,11 +27,12 @@ module Duel
     # a process of its own
     def self.require_fiddle = require("fiddle")
 
-    # A C function of the process's own libraries, by name, taking and
-    # returning Fiddle types (:INT, :LONG, :VOIDP...).
-    def self.function(name, args, returns)
+    # A C function of the process's own libraries (or of +library+, a
+    # DLL: on Windows, the process's own are only its program's), by
+    # name, taking and returning Fiddle types (:INT, :LONG, :VOIDP...).
+    def self.function(name, args, returns, library: nil)
       require_fiddle
-      Fiddle::Function.new(Fiddle.dlopen(nil)[name], args.map { |type| Fiddle.const_get(:"TYPE_#{type}") },
+      Fiddle::Function.new(Fiddle.dlopen(library)[name], args.map { |type| Fiddle.const_get(:"TYPE_#{type}") },
         Fiddle.const_get(:"TYPE_#{returns}"))
     end
 
@@ -116,6 +121,51 @@ module Duel
       end
     end
 
+    # Windows: this process's working set (its resident memory), from
+    # K32GetProcessMemoryInfo, and the memory available, from
+    # GlobalMemoryStatusEx, both kernel32's, needing no privileges. (No
+    # instructions: it counts none a process can read.)
+    class Windows
+      KERNEL32 = "kernel32"
+      # GetCurrentProcess()'s handle, which needs no closing.
+      CURRENT_PROCESS = -1
+      COUNTERS = 72 # sizeof(PROCESS_MEMORY_COUNTERS), 64-bit
+      WORKING_SET = 16 # offsetof(WorkingSetSize)
+      STATUS = 64 # sizeof(MEMORYSTATUSEX)
+      AVAILABLE = 16 # offsetof(ullAvailPhys)
+
+      def self.open(platform: OS, memory_info: nil)
+        return unless platform.match?(WINDOWS_OS)
+
+        memory_info ||= Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32)
+        windows = new(memory_info)
+        windows if windows.resident
+      rescue Fiddle::DLError # no such function
+        nil
+      end
+
+      # The bytes of physical memory available, or nil where it can't
+      # tell.
+      def self.available(platform: OS, status: nil)
+        return unless platform.match?(WINDOWS_OS)
+
+        status ||= Native.function("GlobalMemoryStatusEx", %i[VOIDP], :INT, library: KERNEL32)
+        # (Each struct says its size first, as the call checks.)
+        buffer = [STATUS].pack("L").ljust(STATUS, "\0")
+        buffer.unpack1("Q", offset: AVAILABLE) unless status.call(buffer).zero?
+      rescue Fiddle::DLError # no such function
+        nil
+      end
+
+      def initialize(memory_info)
+        @memory_info = memory_info
+        @buffer = [COUNTERS].pack("L").ljust(COUNTERS, "\0")
+      end
+
+      # The bytes in its working set, or nil where the call fails.
+      def resident = (@buffer.unpack1("Q", offset: WORKING_SET) unless @memory_info.call(CURRENT_PROCESS, @buffer, COUNTERS).zero?)
+    end
+
     # A child process of this one, waited for.
     module Child
       # wait4(2)'s struct rusage: its size, and where its ru_maxrss is (on
@@ -128,9 +178,10 @@ module Duel
       # Waits for the child +pid+, and returns how it ended (its exit
       # status, or nil, and the signal that killed it, or nil) and the most
       # resident memory it reached (its children's too), in bytes, or nil
-      # where that can't be told (without Fiddle).
+      # where that can't be told (without Fiddle, or on Windows, which has
+      # no wait4).
       def self.wait(pid, fiddle: FIDDLE, platform: OS, wait4: nil)
-        unless fiddle
+        if !fiddle || platform.match?(WINDOWS_OS)
           status = Process.wait2(pid).last
           return [status.exitstatus, status.termsig, nil]
         end
@@ -157,20 +208,21 @@ module Duel
       # pages need, which would take Etc, a gem a worker would load before
       # its version.)
       STATUS = "/proc/self/status"
-      # macOS's counter, which reads resident memory there, or nil: opened
-      # as resident memory is first read, as opening it loads Fiddle.
+      # What reads resident memory where there's no /proc: macOS's
+      # counter, or Windows's, or nil. Opened as resident memory is first
+      # read, as opening it loads Fiddle.
       # mutant:disable -- kept only so as not to open it again: it's the
-      # same counter however often it's opened
-      def self.macos_counter
-        return @macos if defined?(@macos)
+      # same reader however often it's opened
+      def self.opened_reader
+        return @reader if defined?(@reader)
 
-        # (Never false: Steep doesn't see that false || nil is nil.)
-        @macos = (FIDDLE && MacOS.open) || nil #: MacOS?
+        @reader = (MacOS.open || Windows.open if FIDDLE)
       end
 
-      # From /proc (Linux), else from macOS's counter, else nil.
-      def self.resident(status: STATUS, macos: macos_counter)
-        return macos&.resident unless File.readable?(status)
+      # From /proc (Linux), else from macOS's or Windows's reader, else
+      # nil.
+      def self.resident(status: STATUS, reader: opened_reader)
+        return reader&.resident unless File.readable?(status)
 
         kb = File.read(status)[/^VmRSS:\s+(\d+) kB$/, 1] #: String
         Integer(kb) * 1024

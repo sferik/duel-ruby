@@ -29,7 +29,7 @@ class MemoryTest < DuelTest
     File.write(File.join(tmpdir, path), content)
   end
 
-  def available(vm_stat: nil) = Duel::Memory.available(root: tmpdir, vm_stat: -> { vm_stat })
+  def available(vm_stat: nil) = Duel::Memory.available(root: tmpdir, vm_stat: -> { vm_stat }, windows: -> {})
 
   # Linux's MemAvailable, in bytes.
   def test_linux
@@ -84,6 +84,19 @@ class MemoryTest < DuelTest
     assert_equal 33 * 16_384, stub(Duel::Memory, :command, command) { Duel::Memory.available(root: tmpdir) }
   end
 
+  # Windows's, where it's neither Linux nor macOS: GlobalMemoryStatusEx's.
+  def test_windows
+    assert_equal 4096, Duel::Memory.available(root: tmpdir, vm_stat: -> {}, windows: -> { 4096 })
+    write("proc/meminfo", MEMINFO)
+
+    assert_equal 2_048_000 * 1024, Duel::Memory.available(root: tmpdir, vm_stat: -> {}, windows: -> { 4096 }), "Linux's first"
+    assert_equal 33 * 16_384, Duel::Memory.available(root: File.join(tmpdir, "none"), vm_stat: -> { VM_STAT }, windows: -> { 4096 }),
+      "macOS's first"
+    windows = stub(Duel::Native::Windows, :available, -> { 8192 }) { Duel::Memory.available(root: File.join(tmpdir, "none"), vm_stat: -> {}) }
+
+    assert_equal 8192, windows, "Native::Windows.available, by default"
+  end
+
   # Neither, and Duel can't tell.
   def test_neither
     assert_nil available
@@ -107,6 +120,6 @@ class MemoryTest < DuelTest
 
   # By default, this machine's: Linux's, or else macOS's.
   def test_this_machine
-    assert_kind_of Integer, Duel::Memory.available if RUBY_PLATFORM.match?(/linux|darwin/)
+    assert_kind_of Integer, Duel::Memory.available if RUBY_PLATFORM.match?(/linux|darwin|mingw|mswin/)
   end
 end

@@ -114,6 +114,20 @@ module Duel
       "was killed by SIG#{Signal.signame(killed)}"
     end
 
+    # The Ruby process of its own's group, for .kill_tree to kill it with
+    # what it started: a process group of its own, or on Windows, which
+    # has none, a console's (and Ctrl-C at the runner's doesn't reach it,
+    # as a process group's doesn't).
+    def self.group(windows: Native::WINDOWS) = windows ? {new_pgroup: true} : {pgroup: true}
+
+    # Kills +pid+ and what it started: its process group, or on Windows,
+    # where no group can be killed, its tree of children (taskkill /T).
+    def self.kill_tree(pid, windows: Native::WINDOWS)
+      return Process.kill("KILL", -pid) unless windows
+
+      system("taskkill", "/T", "/F", "/PID", pid.to_s, out: File::NULL, err: File::NULL)
+    end
+
     private
 
     # Starts the Ruby process of its own, given the environment, the
@@ -126,7 +140,7 @@ module Duel
       # (Out of the runner's bundle: it needs nothing of it.)
       @pid = Process.spawn({"RUBYOPT" => nil, "RUBYLIB" => nil}, RbConfig.ruby,
         *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-        "Duel::ProcessSample.main(*ARGV)", spec, in: requests, out: replies, pgroup: true, close_others: true)
+        "Duel::ProcessSample.main(*ARGV)", spec, in: requests, out: replies, **ProcessSample.group, close_others: true)
       requests.close
       replies.close
     end
@@ -134,7 +148,7 @@ module Duel
     # Kills the Ruby process of its own, and what it started.
     def kill
       pid = @pid #: Integer
-      Process.kill("KILL", -pid)
+      ProcessSample.kill_tree(pid)
       Process.wait(pid)
       @requests.close
       @replies.close

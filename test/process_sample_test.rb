@@ -333,6 +333,28 @@ class ProcessSampleTest < DuelTest
     assert_equal 1_750_000_000, stub(Process, :times, -> { times }) { Duel::ProcessSample.cpu }
   end
 
+  # A process group of its own, or on Windows, a console's.
+  def test_its_group
+    assert_equal [{pgroup: true}, {new_pgroup: true}], [false, true].map { |windows| Duel::ProcessSample.group(windows: windows) }
+    assert_equal({new_pgroup: true}, with_constants(Duel::Native, WINDOWS: true) { Duel::ProcessSample.group }, "by default, on Windows")
+  end
+
+  # Its group killed, or on Windows, its tree, with taskkill.
+  def test_killing_its_tree
+    killed = []
+    ran = []
+    trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
+      stub(Duel::ProcessSample, :system, ->(*args, **options) { (ran << [args, options]) && :tree }) do
+        [false, true].map { |windows| Duel::ProcessSample.kill_tree(42, windows: windows) } +
+          [with_constants(Duel::Native, WINDOWS: true) { Duel::ProcessSample.kill_tree(42) }]
+      end
+    end
+
+    assert_equal %i[group tree tree], trees
+    assert_equal [["KILL", -42]], killed
+    assert_equal [[%w[taskkill /T /F /PID 42], {out: File::NULL, err: File::NULL}]] * 2, ran
+  end
+
   def test_why
     assert_equal "exited with 4", Duel::ProcessSample.why(4, nil)
     assert_equal "was killed by SIGKILL", Duel::ProcessSample.why(nil, 9)

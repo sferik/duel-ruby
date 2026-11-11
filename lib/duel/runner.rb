@@ -339,8 +339,9 @@ module Duel
     SHORT = 40
 
     # Where lanes' directories go: +tmpdir+ (TMPDIR) if it's that short,
-    # else /tmp (macOS's TMPDIR is long).
-    def self.short_tmp(tmpdir = Dir.tmpdir) = (tmpdir.size <= SHORT) ? tmpdir : "/tmp"
+    # else /tmp (macOS's TMPDIR is long). Windows has no /tmp, so its own
+    # TMP, however long.
+    def self.short_tmp(tmpdir = Dir.tmpdir, windows: Native::WINDOWS) = (windows || tmpdir.size <= SHORT) ? tmpdir : "/tmp"
 
     # Opens a lane, yields it and always closes it.
     def self.open(config, settings, sides, processes: settings.processes)

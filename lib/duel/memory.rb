@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
+require_relative "native"
+
 module Duel
   # The memory a run's workers can take (see Runner#fit): what the
   # machine has available, or what its cgroup's limit leaves, if that's
-  # less (a container's, say).
+  # less (a container's, say), or on Windows, what GlobalMemoryStatusEx
+  # says is available.
   # @api private
   module Memory
     # The kinds of pages macOS's vm_stat counts that a process can have
@@ -17,8 +20,11 @@ module Duel
       # The bytes available, or nil where Duel can't tell: Linux's
       # MemAvailable (in +root+'s proc/meminfo), at most what the cgroup
       # mounted at sys/fs/cgroup leaves, or else macOS's free and
-      # inactive pages (in what +vm_stat+ prints).
-      def available(root: ROOT, vm_stat: -> { command("vm_stat") }) = linux(root) || mac(vm_stat.call)
+      # inactive pages (in what +vm_stat+ prints), or else what +windows+
+      # says (see Native::Windows.available).
+      def available(root: ROOT, vm_stat: -> { command("vm_stat") }, windows: -> { Native::Windows.available })
+        linux(root) || mac(vm_stat.call) || windows.call
+      end
 
       # MemAvailable, at most what the cgroup leaves, or nil.
       def linux(root)

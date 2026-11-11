@@ -265,7 +265,7 @@ module Duel
     def self.tmpdir: () -> String
 
     # Where lanes' directories go: TMPDIR if it's short, else /tmp.
-    def self.short_tmp: (?String tmpdir) -> String
+    def self.short_tmp: (?String tmpdir, ?windows: bool) -> String
 
     # Opens a lane, yields it and always closes it.
     def self.open: [T] (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) { (Lane lane) -> T } -> T

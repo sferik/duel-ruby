@@ -60,6 +60,33 @@ jobs:
         if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"
 
+  # The tests on macOS and Windows, on the latest CRuby. Windows's are
+  # advisory until they pass there: Duel itself runs on Windows, but
+  # many of its tests still start their processes the Unix way (sh, ps,
+  # $VAR in a command).
+  os:
+    name: ${{ matrix.os }}
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Run tests
+        id: tests
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
+        run: bundle exec rake test:parallel
+      - name: Note an advisory failure
+        if: steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.os }} (advisory)::The tests failed on ${{ matrix.os }}, which Duel's tests don't pass on yet"
+
   coverage:
     name: Coverage (100% line, branch and method)
     # (Nightly, only TruffleRuby's tests run.)

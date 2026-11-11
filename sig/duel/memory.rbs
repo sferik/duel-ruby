@@ -10,7 +10,7 @@ module Duel
     ROOT: String
 
     # The bytes available, or nil where Duel can't tell.
-    def self.available: (?root: String, ?vm_stat: ^() -> String?) -> Integer?
+    def self.available: (?root: String, ?vm_stat: ^() -> String?, ?windows: ^() -> Integer?) -> Integer?
 
     # MemAvailable, at most what the cgroup leaves, or nil.
     def self.linux: (String root) -> Integer?

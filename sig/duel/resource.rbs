@@ -77,7 +77,8 @@ module Duel
 
     # Starts a process (as Process.spawn takes it), its output added to a
     # log in the directory (+log+.log: by default, its program's name), and
-    # stopped with the resource by +stop_signal+. Returns its pid.
+    # stopped with the resource by +stop_signal+ (on Windows, killed).
+    # Returns its pid.
     def spawn: (*untyped command, ?log: String?, ?stop_signal: String, **untyped options) -> Integer
 
     # Runs a command to its end, logged as #spawn's is. Fails, showing its
@@ -97,6 +98,11 @@ module Duel
     # Stops it.
     # @api private
     def stop: () -> void
+
+    # The signal that stops a process whose stop signal is +signal+ (KILL,
+    # on Windows).
+    # @api private
+    def self.stop_signal: (String signal, ?windows: bool) -> String
 
     private
 

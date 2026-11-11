@@ -160,7 +160,7 @@ class NativeTest < DuelTest
     status = File.join(tmpdir, "status")
     File.write(status, "Name:\truby\nVmHWM:\t   99999 kB\nVmRSS:\t   25600 kB\nRssAnon:\t   12 kB\n")
 
-    assert_equal 25_600 * 1024, Duel::Native::Memory.resident(status: status, macos: nil)
+    assert_equal 25_600 * 1024, Duel::Native::Memory.resident(status: status, reader: nil)
   end
 
   # Peak memory is measured in resident memory, but on JRuby, in the
@@ -211,8 +211,8 @@ class NativeTest < DuelTest
   def test_resident_memory_from_macos
     missing = File.join(tmpdir, "none")
 
-    assert_equal 4096, Duel::Native::Memory.resident(status: missing, macos: Struct.new(:resident).new(4096))
-    assert_nil Duel::Native::Memory.resident(status: missing, macos: nil)
+    assert_equal 4096, Duel::Native::Memory.resident(status: missing, reader: Struct.new(:resident).new(4096))
+    assert_nil Duel::Native::Memory.resident(status: missing, reader: nil)
   end
 
   # A child, waited for with wait4(2): how it ended (WIFEXITED,
@@ -272,14 +272,133 @@ class NativeTest < DuelTest
   def test_resident_memory_here
     status = File.join(tmpdir, "status")
     File.write(status, "VmRSS:\t      25 kB\n")
-    from_status = with_constants(Duel::Native::Memory, STATUS: status) { Duel::Native::Memory.resident(macos: nil) }
+    from_status = with_constants(Duel::Native::Memory, STATUS: status) { Duel::Native::Memory.resident(reader: nil) }
 
     assert_equal 25 * 1024, from_status
     from_macos = with_constants(Duel::Native::Memory, STATUS: File.join(tmpdir, "none")) do
-      stub(Duel::Native::Memory, :macos_counter, -> { Struct.new(:resident).new(1) }) { Duel::Native::Memory.resident }
+      stub(Duel::Native::Memory, :opened_reader, -> { Struct.new(:resident).new(1) }) { Duel::Native::Memory.resident }
     end
 
     assert_equal 1, from_macos
+  end
+
+  # A fake K32GetProcessMemoryInfo: writes +working_set+ where
+  # PROCESS_MEMORY_COUNTERS has it (and the peak before it, never read),
+  # or fails.
+  def fake_memory_info(working_set, calls = [])
+    lambda do |process, buffer, size|
+      calls << [process, buffer.unpack1("L"), buffer.byteslice(4..).count("\0"), buffer.encoding, size]
+      buffer[8, 8] = [working_set * 2].pack("Q")
+      buffer[Duel::Native::Windows::WORKING_SET, 8] = [working_set].pack("Q")
+      working_set ? 1 : 0
+    end
+  end
+
+  def test_windows_reads_the_processes_working_set
+    calls = []
+    windows = Duel::Native::Windows.open(platform: "x64-mingw-ucrt", memory_info: fake_memory_info(8192, calls))
+
+    assert_equal 8192, windows.resident
+    assert_equal [-1, 72, 68, Encoding::BINARY, 72], calls.first, "this process's counters, a struct's worth of zeros, saying its size"
+    assert_equal [-1, 72], calls.last.first(2), "into the same struct, read again"
+  end
+
+  def test_windows_finds_k32_get_process_memory_info
+    found = []
+    memory_info = fake_memory_info(5)
+    windows = stub(Duel::Native, :function, ->(*args, **options) { (found << [args, options]) && memory_info }) do
+      with_constants(Duel::Native, OS: "mswin64_140") { Duel::Native::Windows.open }
+    end
+
+    assert_equal [[["K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT], {library: "kernel32"}]], found
+    assert_equal 5, windows.resident
+  end
+
+  def test_windows_unavailable
+    assert_nil Duel::Native::Windows.open(platform: "x86_64-linux-gnu", memory_info: fake_memory_info(5))
+    failing = ->(*) { 0 }
+
+    assert_nil Duel::Native::Windows.open(platform: "mingw32", memory_info: failing), "the call fails"
+    missing = ->(*) { raise Fiddle::DLError, "no such function" }
+
+    assert_nil Duel::Native::Windows.open(platform: "mingw32", memory_info: missing)
+  end
+
+  # GlobalMemoryStatusEx's ullAvailPhys, in a MEMORYSTATUSEX that says
+  # its size.
+  def test_windows_memory_available
+    calls = []
+    status = lambda do |buffer|
+      calls << [buffer.unpack1("L"), buffer.byteslice(4..).count("\0"), buffer.encoding]
+      buffer[8, 8] = [99].pack("Q")
+      buffer[Duel::Native::Windows::AVAILABLE, 8] = [4 << 30].pack("Q")
+      1
+    end
+
+    assert_equal 4 << 30, Duel::Native::Windows.available(platform: "x64-mingw-ucrt", status: status)
+    assert_equal [[64, 60, Encoding::BINARY]], calls, "a struct's worth of zeros, saying its size"
+    found = []
+    available = stub(Duel::Native, :function, ->(*args, **options) { (found << [args, options]) && status }) do
+      with_constants(Duel::Native, OS: "mswin64_140") { Duel::Native::Windows.available }
+    end
+
+    assert_equal [4 << 30, [[["GlobalMemoryStatusEx", %i[VOIDP], :INT], {library: "kernel32"}]]], [available, found]
+  end
+
+  def test_windows_memory_available_unknown
+    assert_nil Duel::Native::Windows.available(platform: "arm64-darwin24", status: ->(_) { 1 })
+    assert_nil Duel::Native::Windows.available(platform: "mingw32", status: ->(_) { 0 }), "the call fails"
+    missing = ->(*) { raise Fiddle::DLError, "no such function" }
+
+    assert_nil Duel::Native::Windows.available(platform: "mingw32", status: missing)
+  end
+
+  def test_windows_platforms
+    assert_match Duel::Native::WINDOWS_OS, "mingw32"
+    assert_match Duel::Native::WINDOWS_OS, "mswin64_140"
+    refute_match Duel::Native::WINDOWS_OS, "darwin24"
+    assert_equal RUBY_PLATFORM.match?(/mingw|mswin/), Duel::Native::WINDOWS
+  end
+
+  # A function of a library of its own (a DLL, on Windows).
+  def test_a_libraries_function
+    library = if Duel::Native::WINDOWS then "msvcrt"
+    elsif Duel::Native::OS.include?("darwin") then "/usr/lib/libSystem.B.dylib"
+    else "libc.so.6"
+    end
+    opened = []
+    dlopen = Fiddle.method(:dlopen)
+    found = stub(Fiddle, :dlopen, ->(name) { (opened << name) && dlopen.call(name) }) do
+      Duel::Native.function("strlen", [:VOIDP], :LONG, library: library)
+    end
+
+    assert_equal [library], opened
+    assert_equal Fiddle.dlopen(library)["strlen"], found.ptr
+    assert_equal 5, found.call("hello")
+  end
+
+  # Windows has no wait4: Process.wait2's, without peak memory.
+  def test_waiting_on_windows
+    exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
+    wait4 = ->(*) { raise "no wait4 on Windows" }
+
+    assert_equal [4, nil, nil], Duel::Native::Child.wait(exited, fiddle: true, platform: "x64-mingw-ucrt", wait4: wait4)
+  end
+
+  # Windows's reader, where it's neither Linux nor macOS, and none
+  # without Fiddle.
+  def test_the_reader_on_windows
+    reader = Duel::Native::Memory.instance_variable_get(:@reader)
+    opened = [true, false].map do |fiddle|
+      Duel::Native::Memory.remove_instance_variable(:@reader) if Duel::Native::Memory.instance_variable_defined?(:@reader)
+      stub(Duel::Native::MacOS, :open, -> {}) do
+        stub(Duel::Native::Windows, :open, -> { :windows }) { with_constants(Duel::Native, FIDDLE: fiddle) { Duel::Native::Memory.opened_reader } }
+      end
+    end
+
+    assert_equal [:windows, nil], opened
+  ensure
+    Duel::Native::Memory.instance_variable_set(:@reader, reader)
   end
 end
 

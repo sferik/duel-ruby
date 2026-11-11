@@ -263,6 +263,24 @@ class ResourceTest < DuelTest
     assert_equal 3, status.exitstatus, "another child, still there to wait for"
   end
 
+  # Windows can send another process no signal but KILL: what it spawned
+  # is killed.
+  def test_stopped_on_windows
+    assert_equal %w[INT KILL], [false, true].map { |windows| Duel::Resource.stop_signal("INT", windows: windows) }
+    r = resource
+    ready = r.path("ready")
+    r.spawn(*ruby("File.write(ARGV[0], ''); sleep", ready))
+    r.wait_until { File.exist?(ready) }
+    signals = []
+    kill = Process.method(:kill)
+    with_constants(Duel::Native, WINDOWS: true) do
+      assert_equal "KILL", Duel::Resource.stop_signal("TERM"), "by default, on Windows"
+      stub(Process, :kill, ->(signal, pid) { (signals << signal) && kill.call(signal, pid) }) { r.stop }
+    end
+
+    assert_equal ["KILL"], signals
+  end
+
   # A log of its own name, and a signal of its own to stop it (some
   # servers shut down fast on INT, slowly on TERM).
   def test_a_named_log_and_a_stop_signal
