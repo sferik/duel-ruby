@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The generator's comment workflow posts a report from a fork's pull
+  request as Markdown, like any other, instead of as text in a code
+  block.
+
 ## [0.1.7] - 2026-11-10
 
 No changes of its own: released in step with the other Duel gems.

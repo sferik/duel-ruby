@@ -201,8 +201,8 @@ at the API.
    - `.github/workflows/perf-comment.yml` comments on a pull request
      with Duel's report once the first has run (`c.comment` in
      `.duel.rb` chooses when, and Duel also adds the report to the
-     job's summary). It runs none of the pull request's code, and shows
-     a fork's report as text. Keep it as it is.
+     job's summary). It runs none of the pull request's code. Keep it as
+     it is.
    - `duel init` writes the jobs for pushes (a comment on a pushed
      commit, and a `duel/passed/` branch that marks the last commit
      Duel passed) only where `.duel.rb` sets `c.fail_on =
