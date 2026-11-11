@@ -59,13 +59,15 @@ class RunnerTest < DuelTest
   # A run whose memory readings are +readings+, one after another: the
   # first before a worker of each version starts, the next with them
   # started. And the run's settings, and the readings left.
-  def fitted(workers, readings, **overrides)
+  def fitted(workers, readings, memory: 0, **overrides)
     readings = readings.dup
     stub(Duel::Memory, :available, -> { readings.shift }) do
       workers.benchmark("a")
       run = settings(jobs: 2, processes: 8, fit: %i[jobs processes], **overrides)
       out = StringIO.new
-      elsewhere { Duel::Runner.new(Duel::Config.new(candidate), run, File.join(tmpdir, "base"), out:).run }
+      config = Duel::Config.new(candidate)
+      config.instance_variable_set(:@worker_memory, memory)
+      elsewhere { Duel::Runner.new(config, run, File.join(tmpdir, "base"), out:).run }
       [out.string.lines(chomp: true), run, readings]
     end
   end
@@ -143,6 +145,28 @@ class RunnerTest < DuelTest
       _, run, = fitted(workers, [(11 * GB) - 1, (10 * GB) - 1], processes: 4)
 
       assert_equal [1, 4], [run.jobs, run.processes], "a byte less is 7"
+    end
+  end
+
+  # Where the plugins say a worker's resources take more than starting
+  # them did (a server takes more as it's used), every pair is taken to
+  # need that: 2 GB, so of 16 GB, less RESERVE, 7 pairs. Where starting
+  # them took more, that, as ever.
+  def test_what_the_plugins_say
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [16 * GB, 16 * GB], memory: GB)
+
+      assert_equal "A worker of each version takes 2.0 GB, with its resources, as its plugins say, of 16.0 GB available, so to fit: " \
+        "1 benchmark at a time (not 2), and 7 workers of each version (not 8)", lines.first
+      assert_equal [1, 7], [run.jobs, run.processes]
+      lines, run, = fitted(workers, [16 * GB, 15 * GB], memory: GB / 4)
+
+      assert_equal "A worker of each version takes 1.0 GB, with its resources, of 16.0 GB available, so to fit: 1 benchmark at a time (not 2)",
+        lines.first
+      assert_equal [1, 8], [run.jobs, run.processes]
+      _, run, = fitted(workers, [16 * GB, 17 * GB], memory: GB / 4)
+
+      assert_equal [2, 8], [run.jobs, run.processes], "16 GB (less RESERVE) is 30 pairs of 0.5 GB"
     end
   end
 

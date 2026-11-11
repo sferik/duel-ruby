@@ -62,7 +62,9 @@ never on noise, so that it can gate every pull request:
   Running out would make the machine swap, or stop a CI runner from
   answering, so its job is lost. To find what they take, Duel starts
   one worker of each version first, and allows each pair a quarter
-  more than that, and 1 GB for everything else. Its first line says
+  more than that, or what its plugins say each worker's resources
+  take at most, if that's more (a server takes more as it's used), and
+  1 GB for everything else. Its first line says
   when it lowered either. A `--jobs` or `--processes` you give is
   kept as it is.
 - **Measured again before failing.** Duel measures whatever looks

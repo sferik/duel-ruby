@@ -255,7 +255,8 @@ class ConfigTest < DuelTest
   end
 
   # A plugin, by name: required (duel/<name>), and configured with its
-  # options, once (using it again returns what that did), and listed.
+  # options, once (using it again returns what that did), and listed,
+  # and what it says each worker's resources take (if it says) counted.
   # Its DSL module's methods (its own, not one it includes) are the
   # DSL's from then on, however many configurations use it.
   def test_use
@@ -276,6 +277,8 @@ class ConfigTest < DuelTest
           config.measure("cpu", limit: size)
           [:installed, size, ttl, config.use(:fake_store)]
         end
+
+        def self.worker_memory = 100
       end
       Duel.plugin(:fake_cache, FakeCache)
     RUBY
@@ -303,6 +306,7 @@ class ConfigTest < DuelTest
 
     assert_equal [:installed, 2, nil, nil], config.use(:fake_cache), "once"
     assert_equal [:installed, 2, nil, nil], config.use(:fake_cache, size: 2), "with the same options"
+    assert_equal [100, 0], [config.worker_memory, Duel::Config.new.worker_memory], "what a plugin says each worker's resources take, once"
     error = assert_raises(Duel::Error) { config.use(:fake_cache, size: 3, ttl: 4) }
 
     assert_equal "c.use :fake_cache: used already, without size: 3, ttl: 4: give a plugin's options the first time it's used", error.message

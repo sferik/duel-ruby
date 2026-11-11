@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Says each worker's server takes at most 450 MB
+  (`Duel::MySQL.worker_memory`), so Duel 0.1.8 or later fits no more
+  workers than that leaves room for, even where a server takes less as
+  it starts.
+
 ## [0.1.7] - 2026-11-10
 
 No changes of its own: released in step with the other Duel gems.

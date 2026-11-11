@@ -52,6 +52,7 @@ class MySQLTest < PluginTest
     connection = config.use(:mysql)
 
     assert_same Duel::MySQL, Duel.plugins.fetch(:mysql)
+    assert_equal 450 << 20, config.worker_memory, "what each worker's server takes, for Duel to fit them"
     assert_instance_of Duel::InWorker, connection
     assert_same connection, config.use(:mysql)
     assert_equal [1, 1, [:mysql]], [config.prepares.fetch(:worker).size, config.metrics.size, config.plugins]

@@ -54,6 +54,9 @@ module Duel
     # Loads Trilogy, as the first connection is made.
     def self.require_trilogy: () -> bool
 
+    # The most memory a worker's server takes.
+    def self.worker_memory: () -> Integer
+
     def self.run: (String socket, String sql) -> ::Trilogy::Result
 
     # What the worker's server has done so far, but for the plugin's own

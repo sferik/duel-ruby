@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A plugin can say how much memory what it starts for each worker
+  takes at most (`def self.worker_memory`), and Duel counts at least
+  that much for each worker as it fits them in the memory available. A
+  server takes more as it's used than as it starts, when Duel measures
+  it.
+
 ### Changed
 
 - The Perf comment workflow posts a report from a fork's pull request

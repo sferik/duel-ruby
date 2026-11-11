@@ -36,6 +36,7 @@ module Duel
     @in_workers: Array[^(Stops stops) -> void]
     @hooks: Hash[Symbol, Array[hook]]
     @used: Hash[Symbol, Used]
+    @worker_memory: Integer
     @measures: Hash[String, Hash[Symbol, untyped]]
     @loader: (^(String version_root) -> void)?
 
@@ -124,6 +125,10 @@ module Duel
     # Each measure's settings changed, by name.
     # @api private
     attr_reader measures: Hash[String, Hash[Symbol, untyped]]
+
+    # The memory that what the plugins used start for each worker takes at
+    # most, as they say, in bytes.
+    attr_reader worker_memory: Integer
 
     # A configuration of the conventions, for the project at +root+.
     def initialize: (?String root) -> void

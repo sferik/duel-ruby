@@ -1297,15 +1297,18 @@ module Duel
     # available: more than that and the machine swaps, or a CI runner
     # stops answering and its job is lost. What one worker of each
     # version takes is found by starting them (a lane of them), and every
-    # pair is taken to need that, HEADROOM over.
+    # pair is taken to need that, HEADROOM over, or what the plugins say
+    # each worker's resources take at most (Config#worker_memory), if
+    # that's more: a database server takes more as it's used.
     def fit
       return if @settings.fit.empty?
 
       available = Memory.available or return
       taken = Lane.open(@config, @settings, @sides, processes: 1) { available - (Memory.available || available) }
-      return unless taken.positive?
+      said = 2 * @config.worker_memory
+      pair = [(taken * HEADROOM).ceil, said].max
+      return unless pair.positive?
 
-      pair = (taken * HEADROOM).ceil
       pairs = [(available - RESERVE) / pair, 1].max
       processes = @settings.fit.include?(:processes) ? [@settings.processes, pairs].min : @settings.processes
       # (More jobs than the settings' are never taken: only fewer are.)
@@ -1314,8 +1317,8 @@ module Duel
         ("#{Runner.count(processes, "worker")} of each version (not #{@settings.processes})" if processes < @settings.processes)].compact
       return if fewer.empty?
 
-      @out.puts "A worker of each version takes #{gigabytes(taken)} GB, with its resources, of #{gigabytes(available)} GB available, " \
-        "so to fit: #{fewer.join(", and ")}"
+      takes = (said == pair) ? "#{gigabytes(said)} GB, with its resources, as its plugins say" : "#{gigabytes(taken)} GB, with its resources"
+      @out.puts "A worker of each version takes #{takes}, of #{gigabytes(available)} GB available, so to fit: #{fewer.join(", and ")}"
       @settings.jobs = jobs
       @settings.processes = processes
     end

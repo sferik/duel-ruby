@@ -52,6 +52,11 @@ module Duel
     # what's in it is thrown away).
     RUNNING = %w[--innodb-fast-shutdown=2].freeze
 
+    # The most memory a worker's server takes (see Duel.plugin), even with
+    # OPTIONS: some 450 MB, measured on a GitHub runner, more than it
+    # takes as it starts, before it's used.
+    def self.worker_memory = 450 << 20
+
     # Configures Duel for the plugin (c.use :mysql): the server and its
     # metrics. +server+ is the program, +args+ more of its options,
     # +setup+ SQL each worker's database runs when it's started (a

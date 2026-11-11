@@ -196,6 +196,14 @@ module Duel
     #     end
     #   end
     #
+    # Where what it starts for each worker (a database server, say) takes
+    # more memory than Duel can see as it starts, its module says how much
+    # at most, in bytes, as +worker_memory+: Runner#fit counts that much
+    # for each worker, at least, as it fits the workers in the memory
+    # available. (A version of Duel before it asked ignores it.)
+    #
+    #   def self.worker_memory = 450 << 20
+    #
     # Its own kinds of benchmark, if it has any, are the methods of its
     # module's DSL module, which files of benchmarks get as .duel.rb uses
     # it (see DSL.add):

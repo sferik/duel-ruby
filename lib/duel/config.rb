@@ -186,6 +186,11 @@ module Duel
     # @api private
     attr_reader :prepares, :in_workers, :hooks, :measures
 
+    # The memory that what the plugins used start for each worker takes at
+    # most, as they say (see Duel.plugin), in bytes: 0 where none says.
+    # @api private
+    attr_reader :worker_memory
+
     # A configuration of the conventions, for the project at +root+ (a
     # plugin's tests make one to use it in).
     def initialize(root = Dir.pwd)
@@ -203,6 +208,7 @@ module Duel
       @in_workers = []
       @hooks = HOOKS.to_h { |hook| [hook, []] }
       @used = {}
+      @worker_memory = 0
       @measures = Hash.new do |all, name|
         all[name] = {} #: Hash[Symbol, untyped]
       end
@@ -290,6 +296,8 @@ module Duel
       DSL.add(plugin::DSL) if plugin.const_defined?(:DSL, false)
       used = @used[name] = Used.new(options)
       used.value = plugin.configure(self, **options)
+      @worker_memory += plugin.worker_memory if plugin.respond_to?(:worker_memory)
+      used.value
     end
 
     # The plugins used (see #use), by name, in the order they were first

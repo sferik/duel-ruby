@@ -77,6 +77,13 @@ When you write a plugin, follow these guidelines:
 - Set up what a whole version needs once, such as its bundle, with
   `c.prepare(:version)`, not in each worker's `c.prepare(:worker)`. Run
   its commands on the version's Ruby: `v.env` puts it first on `PATH`.
+- If each worker's `c.prepare(:worker)` starts something that takes a
+  lot of memory once it's used, such as a database server, say how much
+  at most, in bytes, as the module's `worker_memory`, for example
+  `def self.worker_memory = 450 << 20`. Duel fits its workers in the
+  memory available by what one of each version takes as it starts, and
+  a server takes more as it's used, so Duel counts at least this much
+  for each worker. A version of Duel before 0.1.8 ignores it.
 
 > [!IMPORTANT]
 > A helper that's meant for setup, such as one that runs a query, must
