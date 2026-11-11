@@ -11,7 +11,10 @@ module Duel
     # What Duel says in comment.env, as each line must have it.
     SAID: Hash[String, Regexp]
 
-    # The jq that lists the comments GitHub Actions' token posted.
+    # The comments on a pull request, a page at a time.
+    COMMENTS: String
+
+    # The jq that picks GitHub Actions' token's comments.
     LISTED: String
 
     @argv: Array[String]
@@ -40,7 +43,7 @@ module Duel
     def said: (String name) -> String?
 
     # Duel's comments on the pull request, oldest first, or nil.
-    def earlier: (String pr) -> Array[Hash[String, String]]?
+    def earlier: (String pr) -> Array[Hash[String, untyped]]?
 
     # Hides an earlier comment as outdated.
     def hide: (String id) -> void

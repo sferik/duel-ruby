@@ -11,7 +11,7 @@ class CommentTest < DuelTest
   ENV_TEXT = "pr=12\ncomment=post\nstatus=failed\n"
 
   # A comment of Duel's, as the listing has it.
-  def ours(id, marked = "<!-- duel status=failed -->") = JSON.generate({"node_id" => id, "marked" => marked})
+  def ours(id, marked = "<!-- duel status=failed -->", hidden: false) = JSON.generate({"id" => id, "hidden" => hidden, "marked" => marked})
 
   def report
     FileUtils.mkdir_p(File.join(tmpdir, "report")).first
@@ -29,11 +29,10 @@ class CommentTest < DuelTest
       out: (@out = StringIO.new), err: (@err = StringIO.new))
     command.define_singleton_method(:gh) do |*args|
       calls << args
-      next if failing.include?(args.first) || (failing.include?("POST") && args.include?("POST"))
+      next if failing.include?(args.first) || failing.any? { |arg| args.include?(arg) }
 
-      case args.first
-      when "repos/me/my_gem/pulls/12" then "#{head}\n"
-      when "repos/me/my_gem/issues/12/comments" then args.include?("POST") ? "{}" : listed.map { |line| "#{line}\n" }.join
+      if args.first == "repos/me/my_gem/pulls/12" then "#{head}\n"
+      elsif args.include?("--paginate") then listed.map { |line| "#{line}\n" }.join
       else "{}"
       end
     end
@@ -44,7 +43,7 @@ class CommentTest < DuelTest
   def posted(calls) = calls.select { |call| call.include?("POST") }.map { |call| call.last.delete_prefix("body=") }
 
   # The comments it hid: their ids.
-  def hidden(calls) = calls.select { |call| call.first == "graphql" }.map { |call| call.last.delete_prefix("id=") }
+  def hidden(calls) = calls.select { |call| call.first == "graphql" && !call.include?("--paginate") }.map { |call| call.last.delete_prefix("id=") }
 
   # With nothing before it, it posts the report, with its marker and
   # status on the first line: a new comment, as Markdown.
@@ -54,22 +53,27 @@ class CommentTest < DuelTest
     assert_equal 0, status
     assert_equal ["<!-- duel status=failed -->\n**Slower**, says @someone\n"], posted(calls)
     assert_equal [["repos/me/my_gem/pulls/12", "--jq", ".head.sha"],
-      ["repos/me/my_gem/issues/12/comments", "--paginate", "--jq", Duel::Comment::LISTED],
+      ["graphql", "--paginate", "-f", "query=#{Duel::Comment::COMMENTS}", "-F", "pr=12", "-f", "owner=me", "-f", "name=my_gem", "--jq",
+        Duel::Comment::LISTED],
       ["repos/me/my_gem/issues/12/comments", "--method", "POST", "-f", "body=#{posted(calls).first}"]], calls
     assert_equal "duel comment: commented on pull request 12\n", @out.string
     assert_empty @err.string
   end
 
   # Once it has posted, it hides each of Duel's earlier comments as
-  # outdated, and says so where GitHub wouldn't (which doesn't fail it).
+  # outdated (but those hidden already), and says so where GitHub wouldn't
+  # (which doesn't fail it).
   def test_hiding_earlier_comments
     status, calls = comment(listed: [ours("A"), ours("B", "<!-- duel status=passed -->")])
 
     assert_equal [0, %w[A B]], [status, hidden(calls)]
     query = "query=mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { clientMutationId } }"
 
-    assert_equal ["graphql", "-f", query, "-f", "id=A"], calls.find { |call| call.first == "graphql" }
-    status, calls = comment(listed: [ours("A")], failing: ["graphql"])
+    assert_equal ["graphql", "-f", query, "-f", "id=A"], calls.find { |call| call.first == "graphql" && !call.include?("--paginate") }
+    _, calls = comment(listed: [ours("A", hidden: true), ours("B")])
+
+    assert_equal %w[B], hidden(calls), "not one hidden already"
+    status, calls = comment(listed: [ours("A")], failing: ["id=A"])
 
     assert_equal [0, %w[A]], [status, hidden(calls)]
     assert_equal "duel comment: couldn't hide an earlier comment\n", @err.string
@@ -126,28 +130,37 @@ class CommentTest < DuelTest
   # Where GitHub won't say what it needs, or take the comment, it fails.
   def test_github_failing
     assert_equal [1, 1], comment(failing: ["repos/me/my_gem/pulls/12"]).then { |status, calls| [status, calls.size] }
-    assert_equal [1, 2], comment(failing: ["repos/me/my_gem/issues/12/comments"]).then { |status, calls| [status, calls.size] }
+    assert_equal [1, 2], comment(failing: ["--paginate"]).then { |status, calls| [status, calls.size] }
     status, calls = comment(listed: [ours("A")], failing: ["POST"])
 
     assert_equal [1, 3], [status, calls.size], "nothing hidden"
     assert_empty @out.string
   end
 
-  # The jq that lists Duel's comments: github-actions[bot]'s, each with
-  # its id and the first line of its body.
+  # The jq that lists Duel's comments: github-actions', each with its id,
+  # whether it's hidden, and the first line of its body.
   def test_the_listing
     skip "no jq" unless system("jq", "--version", out: File::NULL, err: File::NULL)
-    comments = [{"user" => {"login" => "github-actions[bot]"}, "node_id" => "A", "body" => "<!-- duel status=failed -->\r\n### Duel"},
-      {"user" => {"login" => "someone"}, "node_id" => "B", "body" => "<!-- duel status=failed -->"},
-      {"user" => {"login" => "github-actions[bot]"}, "node_id" => "C", "body" => "plain"}]
+    nodes = [{"id" => "A", "isMinimized" => false, "author" => {"login" => "github-actions"}, "body" => "<!-- duel status=failed -->\r\n### Duel"},
+      {"id" => "B", "isMinimized" => false, "author" => {"login" => "someone"}, "body" => "<!-- duel status=failed -->"},
+      {"id" => "C", "isMinimized" => true, "author" => {"login" => "github-actions"}, "body" => "plain"},
+      {"id" => "D", "isMinimized" => false, "author" => nil, "body" => "ghost"}]
+    page = {"data" => {"repository" => {"pullRequest" => {"comments" => {"nodes" => nodes}}}}}
     listed = IO.popen(["jq", "-c", Duel::Comment::LISTED], "r+") do |io|
-      io.write(JSON.generate(comments))
+      io.write(JSON.generate(page))
       io.close_write
       io.read
     end
 
-    assert_equal [{"node_id" => "A", "marked" => "<!-- duel status=failed -->"}, {"node_id" => "C", "marked" => "plain"}],
+    assert_equal [{"id" => "A", "hidden" => false, "marked" => "<!-- duel status=failed -->"}, {"id" => "C", "hidden" => true, "marked" => "plain"}],
       listed.lines.map { |line| JSON.parse(line) }
+  end
+
+  # The query pages through the comments as gh api graphql --paginate does.
+  def test_the_query
+    assert_includes Duel::Comment::COMMENTS, "$endCursor: String"
+    assert_includes Duel::Comment::COMMENTS, "comments(first: 100, after: $endCursor)"
+    assert_includes Duel::Comment::COMMENTS, "pageInfo { hasNextPage endCursor }"
   end
 
   # gh api: what it prints, or nil

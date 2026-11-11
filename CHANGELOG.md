@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow. `duel init --check` shows how a project's workflows differ
   from what the installed Duel writes.
 - Once the Perf comment workflow posts a comment, it hides Duel's
-  earlier ones on the pull request as outdated, which GitHub collapses,
-  so the newest is the one in view.
+  earlier ones on the pull request as outdated (those not hidden
+  already), which GitHub collapses, so the newest is the one in view.
 - `duel init` offers to create the label that `c.accept_label` names,
   with `gh`, where it can (at a terminal, in a GitHub repository that
   hasn't the label). Where it doesn't, its next steps say to.

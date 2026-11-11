@@ -15,9 +15,9 @@ module Duel
   # (post or change: see CLI.comment) and a status (see CLI::MARKED) that
   # Duel says. The report itself is the comment, as Markdown. It never
   # edits or deletes a comment: once it has posted one, it hides Duel's
-  # earlier ones as outdated, which GitHub collapses, so the newest is the
-  # one in view. It talks to GitHub with gh, which GH_TOKEN signs in, in
-  # GITHUB_REPOSITORY.
+  # earlier ones that aren't hidden yet as outdated, which GitHub
+  # collapses, so the newest is the one in view. It talks to GitHub with
+  # gh, which GH_TOKEN signs in, in GITHUB_REPOSITORY.
   # @api private
   class Comment
     USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT]\n\n" \
@@ -32,9 +32,27 @@ module Duel
     # What Duel says in comment.env, as each line must have it.
     SAID = {"pr" => /\A[0-9]+\z/, "comment" => /\A(?:post|change)\z/, "status" => /\A(?:passed|failed|neutral)\z/}.freeze
 
-    # The jq that lists the comments GitHub Actions' token posted, each
-    # with its node_id and its marker (its body's first line).
-    LISTED = '.[] | select(.user.login == "github-actions[bot]") | {node_id, marked: (.body | split("\n")[0] | rtrimstr("\r"))}'
+    # The comments on a pull request, a page at a time (gh api graphql
+    # --paginate follows endCursor): GraphQL's, which say whether each is
+    # hidden, as REST's don't.
+    COMMENTS = <<~GRAPHQL
+      query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $pr) {
+            comments(first: 100, after: $endCursor) {
+              nodes { id isMinimized author { login } body }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }
+      }
+    GRAPHQL
+
+    # The jq that picks, of COMMENTS, the ones GitHub Actions' token
+    # posted, each with its id, whether it's hidden, and its marker (its
+    # body's first line).
+    LISTED = '.data.repository.pullRequest.comments.nodes[] | select(.author.login == "github-actions") | ' \
+      '{id, hidden: .isMinimized, marked: (.body | split("\n")[0] | rtrimstr("\r"))}'
 
     def initialize(argv, env:, out:, err:)
       @argv = argv
@@ -91,7 +109,7 @@ module Duel
       body = "#{marker} status=#{status} -->\n#{File.read(File.join(report, "duel.md"))}"
       gh("repos/#{repository}/issues/#{pr}/comments", "--method", "POST", "-f", "body=#{body}") or return 1
       @out.puts "duel comment: commented on pull request #{pr}"
-      ours.each { |earlier| hide(earlier.fetch("node_id")) }
+      ours.reject { |earlier| earlier.fetch("hidden") }.each { |earlier| hide(earlier.fetch("id")) }
       0
     end
 
@@ -104,11 +122,13 @@ module Duel
       lines.map { |line| line[/\A#{name}=(.*)\z/, 1] }.grep(SAID.fetch(name)).last
     end
 
-    # Duel's comments on the pull request, oldest first, each with its
-    # node_id and its marker (its first line), or nil where GitHub
-    # wouldn't list them.
+    # Duel's comments on the pull request, oldest first, each with its id,
+    # whether it's hidden, and its marker (its first line), or nil where
+    # GitHub wouldn't list them.
     def earlier(pr)
-      listed = gh("repos/#{repository}/issues/#{pr}/comments", "--paginate", "--jq", LISTED) or return
+      owner, name = repository.split("/")
+      listed = gh("graphql", "--paginate", "-f", "query=#{COMMENTS}", "-F", "pr=#{pr}", "-f", "owner=#{owner}", "-f", "name=#{name}",
+        "--jq", LISTED) or return
       listed.lines.map { |line| JSON.parse(line) }.select { |c| c.fetch("marked").start_with?("#{marker} status=") || c.fetch("marked") == "#{marker} -->" }
     end
 
