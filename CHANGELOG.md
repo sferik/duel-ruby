@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A run whose failures `c.accept_label` accepted says so in its
+  heading, under 🟡 instead of 🔻: "1 benchmark failed, accepted".
 - The Perf comment workflow posts a report from a fork's pull request
   as Markdown, like any other, instead of as text in a code block. Run
   `duel init --force` (or `bin/rails generate duel:install --force`)

@@ -27,9 +27,11 @@ module Duel
     FAILED = %w[regressed error].freeze
 
     # What the heading starts with: a run that passed, one that failed (or
-    # couldn't compare), and one with nothing compared.
+    # couldn't compare), one that failed but was accepted (see
+    # Config#accept_label), and one with nothing compared.
     PASSED_MARK = "🟢"
     FAILED_MARK = "🔻"
+    ACCEPTED_MARK = "🟡"
     NEUTRAL_MARK = "⬜"
 
     # What an unsettled timing means.
@@ -91,9 +93,11 @@ module Duel
     # +runner+ ran, and made +results+, comparing +baseline+ with
     # +candidate+ (each a description, in Markdown, whose commit stands
     # bare, so GitHub links it) as +settings+ say, with a +note+ (in
-    # Markdown) under the heading, if there's one.
-    def initialize(runner, results, settings:, baseline:, candidate:, note: nil)
+    # Markdown) under the heading, if there's one, and whether what failed
+    # was +accepted+ (see Config#accept_label).
+    def initialize(runner, results, settings:, baseline:, candidate:, note: nil, accepted: nil)
       @note = note
+      @accepted = accepted
       @runner = runner
       @results = results
       @settings = settings
@@ -120,14 +124,16 @@ module Duel
     end
 
     # The verdict: what failed (benchmarks, or a metric across the board),
-    # or that every benchmark compared passed, and those skipped.
+    # and whether that was accepted, or that every benchmark compared
+    # passed, and those skipped.
     def heading
       skipped = @results.count(&:skipped)
       compared = @results.size > skipped
       slower = @runner.regressed_across
       said = [("#{Runner.count(@failed.size, "benchmark")} failed" unless @failed.empty?),
         ("slower across the board in #{slower.join(", ")}" unless slower.empty?)].compact
-      mark = if said.any? then FAILED_MARK
+      said << "accepted" if @accepted && said.any?
+      mark = if said.any? then @accepted ? ACCEPTED_MARK : FAILED_MARK
       elsif compared then PASSED_MARK
       else NEUTRAL_MARK
       end

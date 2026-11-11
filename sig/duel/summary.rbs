@@ -17,6 +17,7 @@ module Duel
     # What the heading starts with.
     PASSED_MARK: String
     FAILED_MARK: String
+    ACCEPTED_MARK: String
     NEUTRAL_MARK: String
 
     # What an unsettled timing means.
@@ -26,6 +27,7 @@ module Duel
     DECIDES: String
 
     @note: String?
+    @accepted: bool?
     @runner: Runner
     @results: Array[Result]
     @settings: Settings
@@ -53,7 +55,7 @@ module Duel
     def self.changed_counts: (Result result) -> Hash[String, [Float, Float]]
 
     def initialize: (Runner runner, Array[Result] results, settings: Settings, baseline: String, candidate: String,
-                    ?note: String?) -> void
+                    ?note: String?, ?accepted: bool?) -> void
 
     # The Markdown.
     def markdown: () -> String

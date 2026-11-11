@@ -183,6 +183,18 @@ class SummaryTest < DuelTest
     end
   end
 
+  # A run whose failures were accepted (see Config#accept_label) says so
+  # in its heading, which is marked as neither passed nor failed. One that
+  # passed anyway, or failed without being accepted, is marked as ever.
+  def test_an_accepted_failure
+    results = [errored("broken", "boom"), result("a")]
+    accepted = ->(list, **options) { Duel::Summary.new(runner, list, settings: settings, baseline: BASELINE, candidate: "def5678", **options).markdown.lines.first }
+
+    assert_equal "### 🟡 Duel: 1 benchmark failed, accepted\n", accepted.call(results, accepted: true)
+    assert_equal "### 🔻 Duel: 1 benchmark failed\n", accepted.call(results)
+    assert_equal "### 🟢 Duel: 100% of benchmarks passed\n", accepted.call([result("a")], accepted: true)
+  end
+
   # A timing too close to call doesn't fail the run: it's only in the
   # details, which say what it means.
   def test_a_run_that_passed_unsettled

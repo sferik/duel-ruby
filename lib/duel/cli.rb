@@ -171,7 +171,7 @@ module Duel
         passed ? "passed" : "failed",
         -> {
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
-            candidate: described_candidate(config, settings), note: @note).markdown
+            candidate: described_candidate(config, settings), note: @note, accepted: @accepted).markdown
         },
         ->(comment) {
           JSONReport.new(runner, results, settings: settings, exit: status, comment: comment,

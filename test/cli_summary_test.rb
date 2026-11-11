@@ -259,9 +259,9 @@ class CLISummaryTest < DuelTest
   def test_accepting_a_regression_with_a_label
     outcome = lambda do |labels, env: {}|
       run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => labels, "GITHUB_EVENT_NAME" => "pull_request"}.merge(env))
-      [@summarized.first.last.fetch(:note), @out.string.lines.grep(/warning/).join]
+      [@summarized.first.last.fetch(:note), @summarized.first.last.fetch(:accepted), @out.string.lines.grep(/warning/).join]
     end
-    accepted = ["Accepted with the `duel: accept` label.", "::warning::Duel: slower, but accepted with the duel: accept label\n"]
+    accepted = ["Accepted with the `duel: accept` label.", true, "::warning::Duel: slower, but accepted with the duel: accept label\n"]
 
     assert_equal 1, run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => %(["duel: accept"])}), "without c.accept_label"
     assert_nil @summarized.first.last.fetch(:note)
@@ -272,7 +272,7 @@ class CLISummaryTest < DuelTest
     assert_equal accepted, outcome.call(%(["bug", "duel: accept"]))
     assert_equal accepted, outcome.call(%(["duel: accept"]), env: {"GITHUB_EVENT_NAME" => "push"}), "a push, by its pull request's"
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug"])}), "not the label"
-    assert_equal [nil, ""], outcome.call(%(["bug"]))
+    assert_equal [nil, nil, ""], outcome.call(%(["bug"]))
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => %("duel: accept")}), "not an array"
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[duel: accept"}), "not JSON"
     assert_equal 1, run_faked(passed: false), "no labels"
