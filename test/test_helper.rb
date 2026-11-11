@@ -166,6 +166,22 @@ class DuelTest < Minitest::Test
     @tmpdir ||= Dir.mktmpdir("duel-test").tap { |dir| Minitest.after_run { FileUtils.rm_rf(dir) } }
   end
 
+  # A child of the test's that has ended (with 3), and not been waited
+  # for: once ps says it's a zombie. Windows has no zombies (nor ps -o),
+  # so there, once it says it's exiting, and a moment more.
+  def ended_child
+    if TestDirs::WINDOWS
+      exiting = File.join(tmpdir, "exiting-#{Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond)}")
+      other = Process.spawn(RbConfig.ruby, "-e", "File.write(ARGV[0], ''); exit 3", exiting)
+      sleep 0.01 until File.exist?(exiting)
+      sleep 0.2
+    else
+      other = Process.spawn(RbConfig.ruby, "-e", "exit 3")
+      sleep 0.01 until `ps -o stat= -p #{other}`.start_with?("Z")
+    end
+    other
+  end
+
   # Runs the block in a directory of the test's own, so whatever a
   # mutation of the code writes in the working directory lands there.
   def elsewhere(&) = Dir.chdir(tmpdir, &)

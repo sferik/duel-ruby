@@ -431,13 +431,6 @@ class ResourceTest < DuelTest
     assert_equal 3, Process.wait2(other).last.exitstatus, "another child, still there to wait for"
   end
 
-  # A child of the test's that has ended, and not been waited for.
-  def ended_child
-    other = Process.spawn(*ruby("exit 3"))
-    sleep 0.01 until `ps -o stat= -p #{other}`.start_with?("Z")
-    other
-  end
-
   def test_stopping_a_process_already_gone
     r = resource
     pid = r.spawn(*ruby("exit"))

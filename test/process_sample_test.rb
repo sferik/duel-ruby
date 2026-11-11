@@ -47,13 +47,6 @@ class ProcessSampleTest < DuelTest
 
   def ruby(code) = [RbConfig.ruby, "-e", code]
 
-  # A child of the test's that has ended, and not been waited for.
-  def ended_child
-    other = Process.spawn(RbConfig.ruby, "-e", "exit 3")
-    sleep 0.01 until `ps -o stat= -p #{other}`.start_with?("Z")
-    other
-  end
-
   # Its Ruby process, out of the runner's bundle (its RUBYOPT and RUBYLIB
   # unset), with Duel's load path, given nothing else: started with the
   # first run, kept for the rest, and waited for once it's stopped.

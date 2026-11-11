@@ -257,8 +257,7 @@ class NativeTest < DuelTest
   # Without Fiddle, Process.wait2's (for that child alone): no peak
   # memory.
   def test_waiting_without_fiddle
-    other = Process.spawn(RbConfig.ruby, "-e", "exit 3")
-    sleep 0.01 until `ps -o stat= -p #{other}`.start_with?("Z")
+    other = ended_child
     exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
 
     assert_equal [4, nil, nil], Duel::Native::Child.wait(exited, fiddle: false)
