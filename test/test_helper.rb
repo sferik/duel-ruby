@@ -17,12 +17,15 @@ require "tmpdir"
 
 # Every directory a run of the tests makes (the workers they start too) is
 # under one root of its own, tmp/test/<pid>, reached by a path short enough
-# for Unix sockets, /tmp/duel-test-<pid>, which is TMPDIR. A run that was
-# interrupted (mutant's, say) leaves its root: the next run removes it.
+# for Unix sockets, /tmp/duel-test-<pid>, which is TMPDIR. (On Windows,
+# which has no /tmp, the root itself: a checkout's is short there, as CI
+# makes it.) A run that was interrupted (mutant's, say) leaves its root:
+# the next run removes it.
 module TestDirs
   ROOTS = File.expand_path("../tmp/test", __dir__)
+  WINDOWS = RUBY_PLATFORM.match?(/mingw|mswin/)
 
-  def self.short(pid) = "/tmp/duel-test-#{pid}"
+  def self.short(pid) = WINDOWS ? File.join(ROOTS, pid.to_s) : "/tmp/duel-test-#{pid}"
 
   def self.alive?(pid)
     Process.kill(0, pid)
@@ -40,7 +43,7 @@ module TestDirs
       next if pid && alive?(pid)
 
       FileUtils.rm_rf(root)
-      FileUtils.rm_f(short(pid)) if pid
+      FileUtils.rm_f(short(pid)) if pid && !WINDOWS
     end
   end
 
@@ -49,8 +52,10 @@ module TestDirs
     clear
     root = File.join(ROOTS, Process.pid.to_s)
     FileUtils.mkdir_p(root)
-    FileUtils.rm_f(short(Process.pid))
-    File.symlink(root, short(Process.pid))
+    unless WINDOWS
+      FileUtils.rm_f(short(Process.pid))
+      File.symlink(root, short(Process.pid))
+    end
     ENV["TMPDIR"] = short(Process.pid)
     # (Git looks for a repository no higher than the roots: a test's
     # project, under them, is never taken for a part of Duel's own, even
@@ -62,7 +67,7 @@ module TestDirs
       next unless Process.pid == run # (not in a process forked from it)
 
       FileUtils.rm_rf(root)
-      FileUtils.rm_f(short(run))
+      FileUtils.rm_f(short(run)) unless WINDOWS
     end
   end
 end
