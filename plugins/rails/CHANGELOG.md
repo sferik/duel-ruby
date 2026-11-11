@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The generator's comment workflow is Duel's: it posts a report from a
   fork's pull request as Markdown, like any other, instead of as text in
-  a code block, and runs `duel comment`, from RubyGems.
+  a code block, and runs `duel comment`, from RubyGems, which also hides
+  Duel's earlier comments as outdated.
 
 ## [0.1.7] - 2026-11-10
 

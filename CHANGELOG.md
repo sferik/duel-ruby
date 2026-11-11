@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments comes with a release of Duel, without a change to the
   workflow. `duel init --check` shows how a project's workflows differ
   from what the installed Duel writes.
+- Once the Perf comment workflow posts a comment, it hides Duel's
+  earlier ones on the pull request as outdated, which GitHub collapses,
+  so the newest is the one in view.
 - A plugin can say how much memory what it starts for each worker
   takes at most (`def self.worker_memory`), and Duel counts at least
   that much for each worker as it fits them in the memory available. A

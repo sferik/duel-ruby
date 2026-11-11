@@ -3,14 +3,15 @@ name: Perf comment<%= " (#{working_directory})" if working_directory %>
 # Duel's report, as a new comment on the pull request, when Duel says to:
 # always (post), or only when its last comment's status differs from the
 # run's (change), so the latest comment is never stale. It never edits or
-# deletes a comment. It runs once the Perf workflow has, with this
-# repository's own workflow and a token that can write, so a pull request
-# from a fork gets a comment too. It checks nothing out and runs none of
-# the pull request's code, only `duel comment` (see Duel's docs/ci.md),
-# which trusts only what the Duel job could have said in what it kept:
-# the pull request's number, if it names the pull request the run
-# compared, and the comment and the status, if they're ones Duel says.
-# Its report, a fork's too, is the comment, as Markdown.
+# deletes a comment, but hides Duel's earlier ones as outdated, so the
+# newest is the one in view. It runs once the Perf workflow has, with
+# this repository's own workflow and a token that can write, so a pull
+# request from a fork gets a comment too. It checks nothing out and runs
+# none of the pull request's code, only `duel comment` (see Duel's
+# docs/ci.md), which trusts only what the Duel job could have said in
+# what it kept: the pull request's number, if it names the pull request
+# the run compared, and the comment and the status, if they're ones Duel
+# says. Its report, a fork's too, is the comment, as Markdown.
 <% if accept_label -%>
 #
 # And when the label that accepts a regression (c.accept_label in

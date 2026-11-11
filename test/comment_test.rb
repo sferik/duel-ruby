@@ -43,6 +43,9 @@ class CommentTest < DuelTest
   # The comments it posted: their bodies.
   def posted(calls) = calls.select { |call| call.include?("POST") }.map { |call| call.last.delete_prefix("body=") }
 
+  # The comments it hid: their ids.
+  def hidden(calls) = calls.select { |call| call.first == "graphql" }.map { |call| call.last.delete_prefix("id=") }
+
   # With nothing before it, it posts the report, with its marker and
   # status on the first line: a new comment, as Markdown.
   def test_a_comment
@@ -55,6 +58,21 @@ class CommentTest < DuelTest
       ["repos/me/my_gem/issues/12/comments", "--method", "POST", "-f", "body=#{posted(calls).first}"]], calls
     assert_equal "duel comment: commented on pull request 12\n", @out.string
     assert_empty @err.string
+  end
+
+  # Once it has posted, it hides each of Duel's earlier comments as
+  # outdated, and says so where GitHub wouldn't (which doesn't fail it).
+  def test_hiding_earlier_comments
+    status, calls = comment(listed: [ours("A"), ours("B", "<!-- duel status=passed -->")])
+
+    assert_equal [0, %w[A B]], [status, hidden(calls)]
+    query = "query=mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { clientMutationId } }"
+
+    assert_equal ["graphql", "-f", query, "-f", "id=A"], calls.find { |call| call.first == "graphql" }
+    status, calls = comment(listed: [ours("A")], failing: ["graphql"])
+
+    assert_equal [0, %w[A]], [status, hidden(calls)]
+    assert_equal "duel comment: couldn't hide an earlier comment\n", @err.string
   end
 
   # It trusts only what Duel could have said, on a line of its own: a
@@ -100,10 +118,9 @@ class CommentTest < DuelTest
 
   # --marker names the project, in a monorepo.
   def test_a_marker
-    change = "pr=12\ncomment=change\nstatus=failed\n"
-    _, calls = comment(change, "--marker", "duel gems/parser", listed: [ours("A"), ours("B", "<!-- duel gems/parser -->")])
+    _, calls = comment(ENV_TEXT, "--marker", "duel gems/parser", listed: [ours("A"), ours("B", "<!-- duel gems/parser -->")])
 
-    assert_equal ["<!-- duel gems/parser status=failed -->\n**Slower**, says @someone\n"], posted(calls)
+    assert_equal [["<!-- duel gems/parser status=failed -->\n**Slower**, says @someone\n"], %w[B]], [posted(calls), hidden(calls)]
   end
 
   # Where GitHub won't say what it needs, or take the comment, it fails.
@@ -112,7 +129,7 @@ class CommentTest < DuelTest
     assert_equal [1, 2], comment(failing: ["repos/me/my_gem/issues/12/comments"]).then { |status, calls| [status, calls.size] }
     status, calls = comment(listed: [ours("A")], failing: ["POST"])
 
-    assert_equal [1, 3], [status, calls.size]
+    assert_equal [1, 3], [status, calls.size], "nothing hidden"
     assert_empty @out.string
   end
 

@@ -14,8 +14,10 @@ module Duel
   # names the pull request whose head the run compared, and a comment
   # (post or change: see CLI.comment) and a status (see CLI::MARKED) that
   # Duel says. The report itself is the comment, as Markdown. It never
-  # edits or deletes a comment. It talks to GitHub with gh, which GH_TOKEN
-  # signs in, in GITHUB_REPOSITORY.
+  # edits or deletes a comment: once it has posted one, it hides Duel's
+  # earlier ones as outdated, which GitHub collapses, so the newest is the
+  # one in view. It talks to GitHub with gh, which GH_TOKEN signs in, in
+  # GITHUB_REPOSITORY.
   # @api private
   class Comment
     USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT]\n\n" \
@@ -89,6 +91,7 @@ module Duel
       body = "#{marker} status=#{status} -->\n#{File.read(File.join(report, "duel.md"))}"
       gh("repos/#{repository}/issues/#{pr}/comments", "--method", "POST", "-f", "body=#{body}") or return 1
       @out.puts "duel comment: commented on pull request #{pr}"
+      ours.each { |earlier| hide(earlier.fetch("node_id")) }
       0
     end
 
@@ -107,6 +110,13 @@ module Duel
     def earlier(pr)
       listed = gh("repos/#{repository}/issues/#{pr}/comments", "--paginate", "--jq", LISTED) or return
       listed.lines.map { |line| JSON.parse(line) }.select { |c| c.fetch("marked").start_with?("#{marker} status=") || c.fetch("marked") == "#{marker} -->" }
+    end
+
+    # Hides an earlier comment as outdated, which GitHub collapses, or
+    # says it couldn't (it's still there, and that's all).
+    def hide(id)
+      query = "mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { clientMutationId } }"
+      gh("graphql", "-f", "query=#{query}", "-f", "id=#{id}") || @err.puts("duel comment: couldn't hide an earlier comment")
     end
 
     # What gh api prints, given +args+, or nil where it fails (or isn't

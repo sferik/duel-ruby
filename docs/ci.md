@@ -193,7 +193,9 @@ check, because `duel` exits with a nonzero status, and the job's
 summary has the report.
 
 The workflow never edits or deletes a comment, so the pull request
-keeps every report that it posted. Each comment starts with a hidden
+keeps every report that it posted. Once it posts one, it hides its
+earlier ones as outdated, which GitHub collapses, so the newest is the
+one in view. Each comment starts with a hidden
 marker that records the run's status: `<!-- duel status=passed -->`,
 `status=failed` (a run that couldn't compare too), or `status=neutral`
 (nothing to compare). When a run's outcome wouldn't get a comment of
@@ -247,14 +249,15 @@ name: Perf comment
 # Duel's report, as a new comment on the pull request, when Duel says to:
 # always (post), or only when its last comment's status differs from the
 # run's (change), so the latest comment is never stale. It never edits or
-# deletes a comment. It runs once the Perf workflow has, with this
-# repository's own workflow and a token that can write, so a pull request
-# from a fork gets a comment too. It checks nothing out and runs none of
-# the pull request's code, only `duel comment` (see Duel's docs/ci.md),
-# which trusts only what the Duel job could have said in what it kept:
-# the pull request's number, if it names the pull request the run
-# compared, and the comment and the status, if they're ones Duel says.
-# Its report, a fork's too, is the comment, as Markdown.
+# deletes a comment, but hides Duel's earlier ones as outdated, so the
+# newest is the one in view. It runs once the Perf workflow has, with
+# this repository's own workflow and a token that can write, so a pull
+# request from a fork gets a comment too. It checks nothing out and runs
+# none of the pull request's code, only `duel comment` (see Duel's
+# docs/ci.md), which trusts only what the Duel job could have said in
+# what it kept: the pull request's number, if it names the pull request
+# the run compared, and the comment and the status, if they're ones Duel
+# says. Its report, a fork's too, is the comment, as Markdown.
 #
 # And when the label that accepts a regression (c.accept_label in
 # .duel.rb) is added to a pull request, or taken off, it runs the Duel

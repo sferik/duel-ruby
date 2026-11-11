@@ -42,6 +42,9 @@ module Duel
     # Duel's comments on the pull request, oldest first, or nil.
     def earlier: (String pr) -> Array[Hash[String, String]]?
 
+    # Hides an earlier comment as outdated.
+    def hide: (String id) -> void
+
     # What gh api prints, or nil where it fails.
     def gh: (*String args) -> String?
 
