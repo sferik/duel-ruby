@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "erb"
 require "open3"
 require "pathname"
 require "rails/generators"
@@ -22,6 +23,8 @@ module Duel
         desc: "Each worker's database (default: as the app's own)"
       class_option :badge, type: :boolean, default: false,
         desc: "Write a job that keeps a badge for the README (it needs contents: write)"
+      class_option :check, type: :boolean, default: false,
+        desc: "Say how the workflows differ from what it writes (with the same options), and write nothing"
 
       # The adapters each worker's database can stand in for, by the
       # database duel-rails calls it.
@@ -37,28 +40,23 @@ module Duel
       # Controllers of Rails's own (its health check, Active Storage...).
       FRAMEWORK = %r{\A(rails|active_storage|action_mailbox|turbo)/}
 
-      def create_config = template("duel.rb.tt", ".duel.rb")
+      def create_config = (template("duel.rb.tt", ".duel.rb") unless checking?)
 
-      def create_environment = template("benchmark.rb.tt", "config/environments/benchmark.rb")
+      def create_environment = (template("benchmark.rb.tt", "config/environments/benchmark.rb") unless checking?)
 
-      def create_benchmarks = template("requests_duel.rb.tt", "duel/requests_duel.rb")
+      def create_benchmarks = (template("requests_duel.rb.tt", "duel/requests_duel.rb") unless checking?)
 
-      def create_boot_benchmark = template("boot_duel.rb.tt", "duel/boot_duel.rb")
+      def create_boot_benchmark = (template("boot_duel.rb.tt", "duel/boot_duel.rb") unless checking?)
 
-      # The workflows, at the repository's root: perf.yml, and
-      # perf-comment.yml, which comments on a pull request with the
-      # report, or, for an app in a subdirectory, perf-<its path>.yml
-      # (perf-apps-blog.yml) and perf-<its path>-comment.yml, so that each
-      # of a monorepo's apps can have its own.
+      # The workflows, at the repository's root (see #workflows).
       def create_workflow
-        dir = working_directory
-        name = dir ? "perf-#{dir.tr("/", "-")}" : "perf"
-        template("perf.yml.tt", File.join(repository, ".github", "workflows", "#{name}.yml"))
-        template("perf-comment.yml.tt", File.join(repository, ".github", "workflows", "#{name}-comment.yml"))
+        workflows.each { |source, path| template(source, path) } unless checking?
       end
 
       # The plugin that gives each worker its database's server.
       def add_plugin
+        return if checking?
+
         plugin = PLUGINS[database]
         gem(plugin, group: :development) if plugin && !gemfile.include?(plugin)
       end
@@ -66,10 +64,55 @@ module Duel
       # StackProf, for profiles of regressions: it runs on CRuby only, so
       # it's left out of JRuby's and TruffleRuby's bundles.
       def add_stackprof
-        gem("stackprof", platforms: :mri, group: :development) unless gemfile.include?("stackprof")
+        gem("stackprof", platforms: :mri, group: :development) unless checking? || gemfile.include?("stackprof")
+      end
+
+      # With --check, says whether each workflow is what it writes, or how
+      # it differs (as diff -u has it), or that it's missing, as `duel init
+      # --check` does, and exits with 1 where one isn't (a generator's
+      # failure doesn't change its exit status otherwise).
+      def check_workflows
+        return unless checking?
+
+        differ = workflows.count { |source, path| !same?(source, path) }
+        exit(1) if differ.positive?
       end
 
       private
+
+      def checking? = options.fetch(:check)
+
+      # The workflows' templates, by where they're written: perf.yml, and
+      # perf-comment.yml, which comments on a pull request with the
+      # report, or, for an app in a subdirectory, perf-<its path>.yml
+      # (perf-apps-blog.yml) and perf-<its path>-comment.yml, so that each
+      # of a monorepo's apps can have its own.
+      def workflows
+        dir = working_directory
+        name = dir ? "perf-#{dir.tr("/", "-")}" : "perf"
+        {"perf.yml.tt" => File.join(repository, ".github", "workflows", "#{name}.yml"),
+         "perf-comment.yml.tt" => File.join(repository, ".github", "workflows", "#{name}-comment.yml")}
+      end
+
+      # Whether the workflow at +path+ is what the template +source+ makes,
+      # saying so, or how it differs, or that it's missing.
+      def same?(source, path)
+        shown = Pathname(path).relative_path_from(destination_root).to_s
+        unless File.file?(path)
+          say_status :missing, shown
+          return false
+        end
+
+        content = ERB.new(File.read(find_in_source_paths(source)), trim_mode: "-").result(template_binding)
+        differences, = Open3.capture2("diff", "-u", "-L", shown, "-L", "#{shown} (duel:install)", path, "-", stdin_data: content)
+        say_status(differences.empty? ? :identical : :differs, shown)
+        say differences unless differences.empty?
+        differences.empty?
+      end
+
+      # A binding for a template, as Thor's: of the generator, and none of
+      # a method's variables.
+      def template_binding = binding
 
       # The app's settings, which decide the workflow's jobs, as for
       # `duel init` (see Duel::Init#settings): its .duel.rb's, which

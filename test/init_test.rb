@@ -872,6 +872,8 @@ class InitTest < DuelTest
       "and run `bin/rails generate duel:install` instead\n", @err.string
     assert_empty @out.string
     assert_equal %w[config], Dir.children(root)
+    assert_equal 1, init("--check").run
+    assert_includes @err.string, "and run `bin/rails generate duel:install --check` instead\n", "its own --check"
   end
 
   # In a subdirectory, the baseline's bundle is installed there too.

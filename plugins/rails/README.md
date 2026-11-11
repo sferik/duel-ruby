@@ -80,7 +80,9 @@ production does, with everything of its own:
    [duel-mysql](https://github.com/sferik/duel-ruby/tree/main/plugins/mysql) too.
    Run `bundle install` again.
 
-4. Review the generated files, and commit them.
+4. Review the generated files, and commit them. After you upgrade
+   duel-rails, `bin/rails generate duel:install --check` shows how your
+   workflows differ from what it writes now, and writes nothing.
 
 5. Run the benchmarks against your main branch:
 

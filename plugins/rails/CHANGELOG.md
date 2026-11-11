@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `bin/rails generate duel:install --check` says how the app's
+  workflows differ from what the generator writes, as a diff, writes
+  nothing, and exits with 1 where one does.
+
 ### Changed
 
 - The generator's comment workflow is Duel's: it posts a report from a

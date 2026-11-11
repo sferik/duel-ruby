@@ -45,6 +45,74 @@ class GeneratorTest < PluginTest
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
 
+  # Runs it with --check: its exit status (nil where it didn't exit), and
+  # what it said.
+  def checked(*args)
+    status = nil
+    out, = capture_io do
+      Duel::Generators::InstallGenerator.start(["--check", *args], destination_root: @dir)
+    rescue SystemExit => e
+      status = e.status
+    end
+    [status, out]
+  end
+
+  # --check says whether each workflow is what it writes, or how it
+  # differs, or that it's missing, as `duel init --check` does, and
+  # writes nothing. Where one isn't, it exits with 1.
+  def test_check
+    generate
+    files = -> { Dir.glob("**/*", File::FNM_DOTMATCH, base: @dir).sort.to_h { |f| [f, File.file?(File.join(@dir, f)) && File.read(File.join(@dir, f))] } }
+    before = files.call
+    status, out = checked
+
+    assert_nil status
+    assert_equal [%w[identical .github/workflows/perf.yml], %w[identical .github/workflows/perf-comment.yml]], out.lines.map(&:split)
+    assert_equal before, files.call, "nothing written"
+    File.write(File.join(@dir, ".github/workflows/perf.yml"), read(".github/workflows/perf.yml").sub("name: Perf\n", "name: Mine\n"))
+
+    assert_equal 1, checked.first, "one that differs"
+    File.delete(File.join(@dir, ".github/workflows/perf-comment.yml"))
+    before = files.call
+    status, out = checked
+
+    assert_equal 1, status
+    assert_equal <<~OUT, out.gsub(/^ +/, "")
+      differs  .github/workflows/perf.yml
+      --- .github/workflows/perf.yml
+      +++ .github/workflows/perf.yml (duel:install)
+      @@ -1,4 +1,4 @@
+      -name: Mine
+      +name: Perf
+
+      on:
+      pull_request:
+      missing  .github/workflows/perf-comment.yml
+    OUT
+    assert_equal before, files.call, "nothing written: not .duel.rb, the Gemfile, or the workflows"
+    assert_equal 1, checked("--badge").first, "with other options, other workflows"
+    generate
+
+    File.delete(File.join(@dir, ".github/workflows/perf-comment.yml"))
+
+    assert_equal 1, checked.first, "one that's missing"
+  end
+
+  # --check writes nothing even where nothing's set up: no .duel.rb, and
+  # nothing added to the Gemfile, the plugin for its database's server
+  # or StackProf. Without it, it says nothing of the workflows but what it
+  # wrote.
+  def test_check_writes_nothing
+    File.write(File.join(@dir, "Gemfile"), "source \"https://rubygems.org\"\n")
+
+    assert_equal 1, checked("--database", "postgresql").first
+    assert_equal ["Gemfile"], Dir.children(@dir)
+    assert_equal "source \"https://rubygems.org\"\n", read("Gemfile")
+    out, = capture_io { Duel::Generators::InstallGenerator.start(["--force"], destination_root: @dir) }
+
+    assert_equal 1, out.lines.grep(/perf-comment\.yml/).size, out
+  end
+
   def test_the_files_it_makes
     generate
 

@@ -28,6 +28,10 @@ module Rails
 
       def say_status: (Symbol status, String message) -> nil
 
+      def say: (String message) -> void
+
+      def find_in_source_paths: (String file) -> String
+
       def gem: (String name, **untyped options) -> void
     end
   end

@@ -8,6 +8,6 @@ target :lib do
   # for checking the plugin, so not in the gem.
   signature "steep"
   check "lib"
-  library "duel", "duel-activerecord", "digest", "json", "open3", "pathname"
+  library "duel", "duel-activerecord", "digest", "erb", "json", "open3", "pathname"
   configure_code_diagnostics(D::Ruby.strict)
 end

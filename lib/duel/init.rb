@@ -105,7 +105,7 @@ module Duel
     # Says to use duel-rails's generator instead.
     def rails
       @err.puts "duel init: this is a Rails app (config/application.rb). Add duel-rails to the Gemfile's development group, " \
-        "and run `bin/rails generate duel:install` instead"
+        "and run `bin/rails generate duel:install#{" --check" if @check}` instead"
       1
     end
 

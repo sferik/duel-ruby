@@ -227,7 +227,22 @@ module Duel
       def add_plugin: () -> void
       def add_stackprof: () -> void
 
+      # With --check, says how each workflow differs, and exits with 1
+      # where one does.
+      def check_workflows: () -> void
+
       private
+
+      def checking?: () -> bool
+
+      # The workflows' templates, by where they're written.
+      def workflows: () -> Hash[String, String]
+
+      # Whether the workflow at +path+ is what +source+ makes, saying so.
+      def same?: (String source, String path) -> bool
+
+      # A binding for a template, of the generator.
+      def template_binding: () -> Binding
 
       @settings: Config?
 

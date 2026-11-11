@@ -732,6 +732,12 @@ It says whether each workflow is the same, differs (and shows how, as
 `diff -u` does), or is missing, and writes nothing. It exits with 1
 where one isn't the same. Copy in the changes you want, so that steps
 you added to the Duel job (to install a database server, say) stay.
+With `--gitlab`, it checks the GitLab CI jobs. In a Rails app, run
+duel-rails's generator with `--check` instead:
+
+```sh
+bin/rails generate duel:install --check
+```
 
 ## Run Duel on GitLab CI
 
