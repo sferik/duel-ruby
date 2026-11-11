@@ -175,6 +175,24 @@ class CLISummaryTest < DuelTest
     assert_predicate Duel::CLI::MARKED, :frozen?
   end
 
+  # A regression the label accepts is commented on as a run that passed
+  # would be: by default, only where the last comment's status isn't its
+  # own, since whoever added the label knows.
+  def test_commenting_on_an_accepted_regression
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
+    output = File.join(tmpdir, "output")
+    outputs = lambda do |*argv, labels:|
+      File.write(output, "")
+      run_faked(*argv, passed: false, env: {"DUEL_LABELS" => labels, "GITHUB_EVENT_NAME" => "pull_request", "GITHUB_OUTPUT" => output})
+      File.read(output)
+    end
+
+    assert_equal "comment=change\nstatus=failed\n", outputs.call(labels: %(["duel: accept"]))
+    assert_equal "comment=post\nstatus=failed\n", outputs.call(labels: %(["bug"])), "not accepted"
+    assert_equal "comment=post\nstatus=failed\n", outputs.call("--comment", "results", labels: %(["duel: accept"])), "as a pass would be"
+    assert_equal "comment=none\nstatus=failed\n", outputs.call("--comment", "never", labels: %(["duel: accept"]))
+  end
+
   # On GitHub Actions, the step's outputs say whether the workflow
   # comments, and the run's status, as --comment says, or c.comment, and
   # the JSON report says whether too.

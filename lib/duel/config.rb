@@ -88,8 +88,9 @@ module Duel
     # keeps them all. Once it has commented, a run that it wouldn't
     # comment on still does, but :never's, when its status differs from
     # the last comment's, so the last comment is never stale: after a
-    # failure, the first run that passes says so. Duel tells the workflow
-    # which to do (see CLI.comment).
+    # failure, the first run that passes says so. A regression that
+    # #accept_label accepts counts as a run that passed. Duel tells the
+    # workflow which to do (see CLI.comment).
     #
     #   c.comment = :results
     attr_reader :comment

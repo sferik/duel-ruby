@@ -421,7 +421,10 @@ label is added to a pull request or taken off. For the label `.duel.rb`
 names, it waits for the Perf run of the pull request's head commit to
 finish. Then it runs the failed jobs again where the label was added
 to a run that failed, or the whole run again where the label was
-taken off one that passed. It checks nothing out and runs none of the
+taken off one that passed. The run the label accepts is commented on
+as one that passed would be: with the default `c.comment = :failures`,
+only where the last comment's status isn't its own, so the report that
+failed isn't posted again. It checks nothing out and runs none of the
 pull request's code, and its only permission is `actions: write`. The
 workflows name the label as `.duel.rb` did when `duel init` wrote them,
 so if you rename it, rename it in both workflows too.

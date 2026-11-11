@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as Markdown, like any other, instead of as text in a code block. Run
   `duel init --force` (or `bin/rails generate duel:install --force`)
   again to update `.github/workflows/perf-comment.yml`.
+- A regression that `c.accept_label` accepts is commented on as a run
+  that passed would be. With the default `c.comment = :failures`, Duel
+  no longer posts the report again when the label is added, since the
+  last comment already showed it failing.
 
 ## [0.1.7] - 2026-11-10
 

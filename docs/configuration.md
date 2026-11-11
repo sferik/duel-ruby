@@ -139,7 +139,9 @@ end
 On GitHub Actions, the [workflow](ci.md#accept-a-regression-with-a-label)
 that `duel init` writes passes Duel the pull request's labels. With
 that label, a regression passes, with a warning, and the report says
-that the label accepted it. The labels are read when the workflow runs,
+that the label accepted it. It comments on that run as it would on one
+that passed, so by default, after a comment on the run that failed, it
+doesn't comment again. The labels are read when the workflow runs,
 so the comment workflow runs the Duel job again when you add the label
 to a pull request whose run failed, or take it off one whose run
 passed. For a push, Duel reads the labels of the pull request that

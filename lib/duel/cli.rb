@@ -190,6 +190,7 @@ module Duel
       if accepted?(config)
         # (Set: see #accepted?.)
         label = config.accept_label #: String
+        @accepted = true
         return passing("accepted with the #{label} label", "Accepted with the #{Summary.code(label)} label.")
       end
       return 1 unless pull_requests_only?(config, settings)
@@ -303,14 +304,17 @@ module Duel
     # JSON report's: as --comment says, or else the configuration, or the
     # default where the configuration didn't load. It comments on a push
     # only where a regression in one passes (Config#fail_on), so the
-    # comment says what the check doesn't.
+    # comment says what the check doesn't. A regression the label
+    # accepts (Config#accept_label) is commented on as a run that passed
+    # would be: whoever added the label knows, so by default it posts
+    # only where the last comment's status isn't its own.
     def commenting(status)
       # (Parsed, so set: see #run.)
       settings = @settings #: Settings
       config = @config || Config.new
       return "none" if pushed? && !pull_requests_only?(config, settings)
 
-      CLI.comment(settings.comment || config.comment, status)
+      CLI.comment(settings.comment || config.comment, @accepted ? "passed" : status)
     end
 
     # Writes the reports of a run whose +status+ is the JSON report's

@@ -54,6 +54,7 @@ module Duel
     @config: Config?
     @passed: bool?
     @note: String?
+    @accepted: bool?
 
     def initialize: (Array[String] argv, ?env: _Env, ?out: _Output, ?err: _Output) -> void
 
