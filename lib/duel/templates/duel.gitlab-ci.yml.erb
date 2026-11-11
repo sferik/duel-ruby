@@ -64,9 +64,11 @@
 # The report, as a new comment on the merge request, when Duel says to:
 # always (post), or only when its last comment's status differs from this
 # run's (change), so the latest comment is never stale. It never edits or
-# deletes a comment.
+# deletes a comment. It runs `duel comment`, from RubyGems (none of the
+# merge request's code), so a fix to how it comments comes with a release
+# of Duel.
 <%= gitlab_job %>:comment:
-  image: alpine:3
+  image: ruby:slim
   stage: .post
   needs: [<%= gitlab_job %>]
   rules:
@@ -75,23 +77,10 @@
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl jq
-    - |
-      case "$DUEL_COMMENT" in post|change) ;; *) exit 0 ;; esac
-      report=<%= working_directory ? "#{working_directory}/" : "" %>duel.md
-      [ -f "$report" ] || exit 0
-      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
-      token="PRIVATE-TOKEN: $DUEL_COMMENT_TOKEN"
-      marker="<!-- <%= marker %>"
-      me=$(curl -sf -H "$token" "$CI_API_V4_URL/user" | jq .id)
-      # The first line of the last comment Duel posted here: its marker,
-      # with its status.
-      last=$(curl -sf -H "$token" "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes?sort=desc&order_by=created_at&per_page=100" |
-        jq -r --argjson me "$me" --arg marker "$marker status=" '.[] | select(.author.id == $me) | .body | split("\n")[0] | rtrimstr("\r") | select(startswith($marker))' | head -n 1)
-      if [ "$DUEL_COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$DUEL_STATUS -->" ]; }; then
-        { echo "$marker status=$DUEL_STATUS -->"; cat "$report"; } | jq -Rs '{body: .}' |
-          curl -sf -H "$token" -H "Content-Type: application/json" --data @- "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes" > /dev/null
-      fi
+    - gem install duel --version '~> <%= Duel::Comment::SINCE %>' --no-document
+    # (The merge request's head: in a merged results pipeline, not the
+    # commit that merges it.)
+    - duel comment --gitlab --report <%= working_directory || "." %> --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker '<%= marker.gsub("'") { "'\\''" } %>'
 
 # The report, as a new comment on a pushed commit, when Duel says to, as
 # for a merge request: only where a regression in a push passes (see

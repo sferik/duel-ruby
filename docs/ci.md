@@ -783,9 +783,22 @@ log and its `duel.md` artifact have the report.
   protected, so only your protected branches' pipelines have it, to
   comment on a pushed commit and to mark a push passed.
 
-The comment on a pushed commit looks only at the comments on the commit
-before it for its last status. A merge request from a fork runs its
-pipeline in the fork, without your variables, so it gets no comment.
+The comment on a merge request comes from `duel comment --gitlab`,
+installed from RubyGems in a `ruby:slim` image, as on GitHub, so a fix
+to it comes with a release of Duel. It trusts only a `DUEL_COMMENT` and
+a `DUEL_STATUS` that Duel says, and comments only if the merge
+request's head is still the one the pipeline compared. In a merged
+results pipeline, the report names the merge request's own commit,
+"merged with `main`", as it does on GitHub.
+
+Three things GitLab does differently. Duel can't collapse its earlier
+comments there, because only the Developer role can resolve a thread,
+and the merge request's token has the Reporter role. Adding the label
+that accepts a regression doesn't run the pipeline again, as GitLab has
+no pipeline for a label, so run it again yourself (or push). And a
+merge request from a fork runs its pipeline in the fork, without your
+variables, so it gets no comment. The comment on a pushed commit looks
+only at the comments on the commit before it for its last status.
 
 ```yaml
 # .gitlab/duel.gitlab-ci.yml
@@ -852,9 +865,11 @@ duel:
 # The report, as a new comment on the merge request, when Duel says to:
 # always (post), or only when its last comment's status differs from this
 # run's (change), so the latest comment is never stale. It never edits or
-# deletes a comment.
+# deletes a comment. It runs `duel comment`, from RubyGems (none of the
+# merge request's code), so a fix to how it comments comes with a release
+# of Duel.
 duel:comment:
-  image: alpine:3
+  image: ruby:slim
   stage: .post
   needs: [duel]
   rules:
@@ -863,23 +878,10 @@ duel:comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl jq
-    - |
-      case "$DUEL_COMMENT" in post|change) ;; *) exit 0 ;; esac
-      report=duel.md
-      [ -f "$report" ] || exit 0
-      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
-      token="PRIVATE-TOKEN: $DUEL_COMMENT_TOKEN"
-      marker="<!-- duel"
-      me=$(curl -sf -H "$token" "$CI_API_V4_URL/user" | jq .id)
-      # The first line of the last comment Duel posted here: its marker,
-      # with its status.
-      last=$(curl -sf -H "$token" "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes?sort=desc&order_by=created_at&per_page=100" |
-        jq -r --argjson me "$me" --arg marker "$marker status=" '.[] | select(.author.id == $me) | .body | split("\n")[0] | rtrimstr("\r") | select(startswith($marker))' | head -n 1)
-      if [ "$DUEL_COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$DUEL_STATUS -->" ]; }; then
-        { echo "$marker status=$DUEL_STATUS -->"; cat "$report"; } | jq -Rs '{body: .}' |
-          curl -sf -H "$token" -H "Content-Type: application/json" --data @- "$api/merge_requests/$CI_MERGE_REQUEST_IID/notes" > /dev/null
-      fi
+    - gem install duel --version '~> 0.1.8' --no-document
+    # (The merge request's head: in a merged results pipeline, not the
+    # commit that merges it.)
+    - duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
 
 # The report, as a new comment on a pushed commit, when Duel says to, as
 # for a merge request: only where a regression in a push passes (see

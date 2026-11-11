@@ -7,6 +7,8 @@ module Duel
       def reject: () { (String name, String value) -> boolish } -> _Variables
 
       def fetch: (String name) -> String
+
+      def []: (String name) -> String?
     end
 
     # What's left of it.
@@ -157,6 +159,8 @@ module Duel
     def described_candidate: (Config config, Settings settings) -> String
 
     def merged: (String dir) -> String?
+
+    def merge_request: () -> Hash[String, untyped]
 
     def pull_request: () -> Hash[String, untyped]?
 

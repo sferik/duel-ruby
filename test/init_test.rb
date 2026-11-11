@@ -997,6 +997,9 @@ class InitTest < DuelTest
       assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
+    assert_equal ["ruby:slim", ["gem install duel --version '~> 0.1.8' --no-document",
+      %(duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
+      jobs.fetch("duel:comment").values_at("image", "script"), "Duel's own code, from RubyGems"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
     assert_equal "duel/passed", jobs.dig("duel:passed", "resource_group"), "one at a time"
   end
@@ -1067,6 +1070,7 @@ class InitTest < DuelTest
     assert_equal ["ruby:#{ruby_version}", "cd gems/parser"], [jobs.dig("duel:gems/parser", "image"), jobs.dig("duel:gems/parser", "before_script", 0)]
     assert_equal ["gems/parser/duel.md", "gems/parser/duel.env"], jobs.dig("duel:gems/parser", "artifacts").values_at("paths", "reports").map { |v| v.is_a?(Array) ? v.first : v.fetch("dotenv") }
     assert_includes text, %(marker="<!-- duel gems/parser"\n)
+    assert_includes text, %(--report gems/parser --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel gems/parser'\n)
     assert_includes text, %(branch="duel/passed-gems-parser/$CI_COMMIT_BRANCH"\n)
     assert_equal "duel/gems/parser/passed", jobs.dig("duel:gems/parser:passed", "resource_group"), "its own, with no colon, which GitLab doesn't take"
   end
@@ -1109,36 +1113,36 @@ class InitTest < DuelTest
     StringIO.new(answer).tap { |io| io.define_singleton_method(:tty?) { true } }
   end
 
-  # Runs `duel init` (with +argv+), its input +input+, with gh faked: it
-  # answers as +answers+ say (by its first two arguments), and nil to
-  # anything else. Returns the calls it made to gh.
+  # Runs `duel init` (with +argv+), its input +input+, with gh and glab
+  # faked: they answer as +answers+ say (by the program and its first two
+  # arguments), and nil to anything else. Returns the calls it made.
   def labeled(*argv, input: terminal, answers: {})
     gem
     calls = []
     command = init(*argv, input: input)
-    command.define_singleton_method(:gh) do |*args|
+    command.define_singleton_method(:cli) do |*args|
       calls << args
-      answers[args.first(2)]
+      answers[args.first(3)]
     end
     command.run
     calls
   end
 
-  REPO = {%w[repo view] => "me/my_gem\n"}.freeze
+  REPO = {%w[gh repo view] => "me/my_gem\n"}.freeze
 
-  LISTED = %w[label list --repo me/my_gem --search duel:\ accept --limit 100 --json name --jq .[].name].freeze
+  LISTED = %w[gh label list --repo me/my_gem --search duel:\ accept --limit 100 --json name --jq .[].name].freeze
 
   # At a terminal, with a GitHub repository that hasn't the label that
   # accepts a regression, it asks whether to create it, with gh.
   def test_creating_the_label
-    calls = labeled(input: terminal("y\n"), answers: REPO.merge(%w[label list] => "duel\nduel: accepted\n", %w[label create] => ""))
+    calls = labeled(input: terminal("y\n"), answers: REPO.merge(%w[gh label list] => "duel\nduel: accepted\n", %w[gh label create] => ""))
 
-    assert_equal [%w[repo view --json nameWithOwner --jq .nameWithOwner], LISTED,
-      ["label", "create", "duel: accept", "--repo", "me/my_gem", "--color", "FBCA04", "--description", "Accepts a regression that Duel found"]], calls
+    assert_equal [%w[gh repo view --json nameWithOwner --jq .nameWithOwner], LISTED,
+      ["gh", "label", "create", "duel: accept", "--color", "FBCA04", "--repo", "me/my_gem", "--description", "Accepts a regression that Duel found"]], calls
     assert_includes @out.string, %(Create the label "duel: accept" in me/my_gem with gh, so a pull request can accept a regression? [y/N]   create    label duel: accept (me/my_gem)\n)
     refute_includes @out.string, "Create the label \"duel: accept\" in your repository"
-    %W[yes\n Y\n YES].each do |answer|
-      assert_equal 3, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[label list] => "", %w[label create] => "")).size, answer
+    %W[yes\n Y\n YES #{" y\n"}].each do |answer|
+      assert_equal 3, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[gh label list] => "", %w[gh label create] => "")).size, answer
     end
   end
 
@@ -1146,10 +1150,10 @@ class InitTest < DuelTest
   def test_not_creating_the_label
     step = %(Create the label "duel: accept" in your repository, so a pull request can accept a regression (c.accept_label).\n)
     [["n\n", "no"], ["", "no answer"], ["yes, sure\n", "not a yes"]].each do |answer, why|
-      assert_equal 2, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[label list] => "")).size, why
+      assert_equal 2, labeled("--force", input: terminal(answer), answers: REPO.merge(%w[gh label list] => "")).size, why
       assert_includes @out.string, step, why
     end
-    assert_equal 3, labeled("--force", input: terminal("y\n"), answers: REPO.merge(%w[label list] => "")).size
+    assert_equal 3, labeled("--force", input: terminal("y\n"), answers: REPO.merge(%w[gh label list] => "")).size
     assert_includes @out.string, step, "gh didn't"
     refute_includes @out.string, "  create    label"
     assert_equal [LISTED], labeled("--force", answers: REPO).drop(1), "it couldn't list them"
@@ -1161,7 +1165,7 @@ class InitTest < DuelTest
 
   # With the label already, it says so.
   def test_a_label_that_exists
-    assert_equal 2, labeled(answers: REPO.merge(%w[label list] => "bug\nduel: accept\n")).size
+    assert_equal 2, labeled(answers: REPO.merge(%w[gh label list] => "bug\nduel: accept\n")).size
     assert_includes @out.string, "  skip      label duel: accept (me/my_gem has it)\n"
     refute_includes @out.string, "[y/N]"
     refute_includes @out.string, "Create the label"
@@ -1172,8 +1176,6 @@ class InitTest < DuelTest
   def test_when_it_asks_about_the_label
     assert_empty labeled(input: StringIO.new("y\n"), answers: REPO)
     assert_includes @out.string, "Create the label \"duel: accept\" in your repository"
-    assert_empty labeled("--force", "--gitlab", answers: REPO)
-    assert_includes @out.string, "Create the label \"duel: accept\" in your repository", "GitLab's too"
     assert_empty labeled("--force", "--dry-run", answers: REPO)
     write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
 
@@ -1181,9 +1183,9 @@ class InitTest < DuelTest
     refute_includes @out.string, "Create the label"
   end
 
-  # gh, run in the project: what it prints, or nil where it fails (which
-  # it says) or isn't there.
-  def test_gh
+  # gh (or glab), run in the project: what it prints, or nil where it
+  # fails (which it says) or isn't there.
+  def test_cli
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
     File.write(File.join(bin, "gh"), "#!/bin/sh\n[ \"$2\" = fail ] && { echo ' no ' >&2; exit 1; }\necho \"$*\"; pwd -P\n")
     FileUtils.chmod(0o755, File.join(bin, "gh"))
@@ -1191,14 +1193,68 @@ class InitTest < DuelTest
     original = ENV.fetch("PATH")
     ENV["PATH"] = "#{bin}:#{original}"
 
-    assert_equal "a b\n#{File.realpath(root)}\n", command.send(:gh, "a", "b")
-    assert_nil command.send(:gh, "a", "fail", "c")
+    assert_equal "a b\n#{File.realpath(root)}\n", command.send(:cli, "gh", "a", "b")
+    assert_nil command.send(:cli, "gh", "a", "fail", "c")
     assert_equal "duel init: gh a fail: no\n", @err.string
     ENV["PATH"] = File.join(tmpdir, "nothing")
 
-    assert_nil command.send(:gh, "a")
+    assert_nil command.send(:cli, "gh", "a")
   ensure
     ENV["PATH"] = original
+  end
+
+  GITLAB_REPO = {%w[glab repo view] => %({"path_with_namespace": "me/my_gem", "id": 7})}.freeze
+
+  # A page of GitLab labels, named +names+.
+  def gitlab_labels(*names) = JSON.generate(names.map { |name| {"name" => name, "color" => "#fff"} })
+
+  # On GitLab, it asks the same, with glab, of every page of the labels.
+  def test_creating_a_gitlab_label
+    pages = [gitlab_labels(*Array.new(100) { |i| "label #{i}" }), gitlab_labels("bug", "duel: accept")]
+    answers = GITLAB_REPO.merge(%w[glab label list] => gitlab_labels("bug"), %w[glab label create] => "")
+    calls = labeled("--gitlab", input: terminal("y\n"), answers: answers)
+
+    assert_equal [%w[glab repo view --output json],
+      %w[glab label list --repo me/my_gem --output json --per-page 100 --page 1],
+      ["glab", "label", "create", "--name", "duel: accept", "--color", "#FBCA04", "--repo", "me/my_gem", "--description",
+        "Accepts a regression that Duel found"]], calls
+    assert_includes @out.string, %(Create the label "duel: accept" in me/my_gem with glab, so a merge request can accept a regression? [y/N] )
+    assert_includes @out.string, "  create    label duel: accept (me/my_gem)\n"
+    command = init("--force", "--gitlab", input: terminal("y\n"))
+    listed = []
+    command.define_singleton_method(:cli) do |*args|
+      next %({"path_with_namespace": "me/my_gem"}) if args.first(3) == %w[glab repo view]
+
+      listed << args
+      pages[Integer(args.last) - 1] if args.first(3) == %w[glab label list]
+    end
+
+    assert_equal 0, command.run
+    assert_equal [%w[1 2], []], [listed.map(&:last), listed.reject { |args| args[2] == "list" }],
+      "past the first page, a hundred labels long, to the last, which has it"
+    assert_includes @out.string, "  skip      label duel: accept (me/my_gem has it)\n"
+  end
+
+  # On GitLab, a label that's there already, on any page, isn't made again.
+  def test_a_gitlab_label_that_exists
+    calls = labeled("--gitlab", answers: GITLAB_REPO.merge(%w[glab label list] => gitlab_labels("bug", "duel: accept")))
+
+    assert_equal 2, calls.size
+    assert_includes @out.string, "  skip      label duel: accept (me/my_gem has it)\n"
+  end
+
+  # Where glab can't say the project, or its labels, it asks nothing, and
+  # the next steps say to make the label.
+  def test_no_gitlab_label
+    step = %(Create the label "duel: accept" in your repository, so a merge request can accept a regression (c.accept_label).\n)
+    ["", "{", "[]", %({"id": 7}), nil].each do |project|
+      assert_equal 1, labeled("--force", "--gitlab", answers: {%w[glab repo view] => project}).size
+      assert_includes @out.string, step
+    end
+    ["{", nil].each do |labels|
+      assert_equal 2, labeled("--force", "--gitlab", answers: GITLAB_REPO.merge(%w[glab label list] => labels)).size
+      refute_includes @out.string, "[y/N]"
+    end
   end
 
   def test_help

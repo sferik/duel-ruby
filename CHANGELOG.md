@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that much for each worker as it fits them in the memory available. A
   server takes more as it's used than as it starts, when Duel measures
   it.
+- `duel comment --gitlab`, which the GitLab CI jobs' comment job now
+  runs instead of a shell script, as the GitHub workflow runs `duel
+  comment`: it trusts only what Duel said, comments only if the merge
+  request's head is still the run's, and comes from RubyGems, so a fix
+  comes with a release. In a merged results pipeline, the report names
+  the merge request's own commit, as on GitHub, and `duel init --gitlab`
+  offers to create the accept label with `glab`.
 
 ### Changed
 

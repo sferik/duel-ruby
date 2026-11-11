@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "erb"
+require "json"
 require "fileutils"
 require "tmpdir"
 require "open3"
@@ -134,40 +135,76 @@ module Duel
     end
 
     # Creates the label that accepts a regression (Config#accept_label) in
-    # the project's GitHub repository, with gh, if it's missing and the
-    # answer to whether to is yes: it asks only at a terminal, and not on
-    # a dry run, or for GitLab. Where it doesn't, the next steps say to.
+    # the project's GitHub repository, with gh (or with --gitlab, its
+    # GitLab project, with glab), if it's missing and the answer to
+    # whether to is yes: it asks only at a terminal, and not on a dry run.
+    # Where it doesn't, the next steps say to.
     def create_label
       label = accept_label
-      return unless label && !@gitlab && !@dry_run && @input.tty?
+      return unless label && !@dry_run && @input.tty?
 
-      repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")&.chomp or return
-      names = gh("label", "list", "--repo", repo, "--search", label, "--limit", "100", "--json", "name", "--jq", ".[].name") or return
-      if names.lines(chomp: true).include?(label)
+      repo = (@gitlab ? gitlab_project : cli("gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")&.chomp) or return
+      names = (@gitlab ? gitlab_labels(repo) : github_labels(repo, label)) or return
+      if names.include?(label)
         said("skip", "label #{label} (#{repo} has it)")
         return @label = true
       end
 
-      @out.print "Create the label #{label.inspect} in #{repo} with gh, so a pull request can accept a regression? [y/N] "
+      @out.print "Create the label #{label.inspect} in #{repo} with #{@gitlab ? "glab" : "gh"}, so a #{request} can accept a regression? [y/N] "
       return unless @input.gets.to_s.strip.match?(/\Ay(?:es)?\z/i)
 
-      created = gh("label", "create", label, "--repo", repo, "--color", LABEL_COLOR, "--description", "Accepts a regression that Duel found")
+      described = ["--repo", repo, "--description", "Accepts a regression that Duel found"]
+      created = @gitlab ? cli("glab", "label", "create", "--name", label, "--color", "##{LABEL_COLOR}", *described) :
+        cli("gh", "label", "create", label, "--color", LABEL_COLOR, *described)
       return unless created
 
       said("create", "label #{label} (#{repo})")
       @label = true
     end
 
-    # What gh prints, run in the project, or nil where it fails (which it
-    # says) or isn't there.
-    def gh(*args)
-      out, err, status = Open3.capture3("gh", *args, chdir: @root)
+    # The names of the GitHub repository +repo+'s labels that gh finds by
+    # +label+, or nil.
+    def github_labels(repo, label) = cli("gh", "label", "list", "--repo", repo, "--search", label, "--limit", "100", "--json", "name",
+      "--jq", ".[].name")&.lines(chomp: true)
+
+    # The project's GitLab project, as glab has it (group/project), or nil.
+    def gitlab_project
+      project = cli("glab", "repo", "view", "--output", "json") or return
+      parsed = JSON.parse(project)
+      parsed["path_with_namespace"] if parsed.instance_of?(Hash)
+    rescue JSON::ParserError
+      nil
+    end
+
+    # The names of the GitLab project +repo+'s labels, every page of them,
+    # or nil where glab can't list a page.
+    def gitlab_labels(repo)
+      names = [] #: Array[String]
+      page = 1
+      while (listed = cli("glab", "label", "list", "--repo", repo, "--output", "json", "--per-page", "100", "--page", page.to_s))
+        labels = JSON.parse(listed)
+        names.concat(labels.map { |label| label.fetch("name") })
+        return names if labels.size < 100
+
+        page += 1
+      end
+    rescue JSON::ParserError
+      nil
+    end
+
+    # What +program+ (gh, or glab) prints, run in the project, or nil where
+    # it fails (which it says) or isn't there.
+    def cli(program, *args)
+      out, err, status = Open3.capture3(program, *args, chdir: @root)
       return out if status.success?
 
-      @err.puts "duel init: gh #{args.first(2).join(" ")}: #{err.strip}"
+      @err.puts "duel init: #{program} #{args.first(2).join(" ")}: #{err.strip}"
     rescue SystemCallError
       nil
     end
+
+    # What Duel compares: a pull request, or on GitLab, a merge request.
+    def request = @gitlab ? "merge request" : "pull request"
 
     # Writes +content+ to +path+, unless it exists (without --force), and
     # says what it did.
@@ -238,7 +275,7 @@ module Duel
       end
       steps << "Set c.library in .duel.rb to what each version's workers require." unless required
       steps << "Replace the example in #{benchmark_file} with benchmarks of your own code."
-      steps << "Create the label #{accept_label.inspect} in your repository, so a pull request can accept a regression (c.accept_label)." if
+      steps << "Create the label #{accept_label.inspect} in your repository, so a #{request} can accept a regression (c.accept_label)." if
         accept_label && !@label
       steps << "Run `bundle exec duel --force`. It compares the code with itself, and passes when the benchmarks are sound."
       steps << if @gitlab

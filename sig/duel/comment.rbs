@@ -8,6 +8,9 @@ module Duel
     # The first release whose `duel comment` the workflow can run.
     SINCE: String
 
+    # Where GitLab CI has what Duel said.
+    GITLAB: Hash[String, String]
+
     # What Duel says in comment.env, as each line must have it.
     SAID: Hash[String, Regexp]
 
@@ -24,6 +27,7 @@ module Duel
     @marker: String
     @report: String?
     @head: String?
+    @gitlab: bool?
 
     def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
 
@@ -37,13 +41,28 @@ module Duel
 
     # Comments, if Duel said to, and the pull request's head is still the
     # run's.
-    def comment: () -> Integer
+    def comment: (String report) -> Integer
+
+    # Posts +body+ as a new comment, or nil.
+    def post: (String pr, String body) -> untyped
 
     # What Duel said in comment.env, or nil.
-    def said: (String name) -> String?
+    def said: (String name, String report) -> String?
 
     # Duel's comments on the pull request, oldest first, or nil.
     def earlier: (String pr) -> Array[Hash[String, untyped]]?
+
+    # The merge request, as GitLab's API has it, or nil.
+    def merge_request: (String pr) -> untyped
+
+    # The token's notes on the merge request, or nil.
+    def notes: (String pr) -> Array[Hash[String, untyped]]?
+
+    # What GitLab's API says, or nil.
+    def gitlab: (Symbol verb, String path, ?Hash[String, String]? body, ?pages: bool) -> untyped
+
+    # A connection to +uri+'s host, not yet started.
+    def connection: (URI::Generic uri) -> Net::HTTP
 
     # Hides an earlier comment as outdated.
     def hide: (String id) -> void
@@ -57,5 +76,7 @@ module Duel
     def marker: () -> String
 
     def repository: () -> String
+
+    def project: () -> String
   end
 end

@@ -603,6 +603,27 @@ class CLISummaryTest < DuelTest
     assert_equal short(repo), described.call(pull), "not a merge"
   end
 
+  # So does a GitLab merge request's merged results pipeline.
+  def test_the_candidate_described_as_a_merge_requests_head
+    repo = git_repo
+    config = Duel::Config.new(repo)
+    base = short(repo)
+    @git.call("checkout", "-qb", "topic")
+    @git.call("commit", "-q", "--allow-empty", "-m", "topic")
+    head = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    @git.call("checkout", "-q", "--detach", base)
+    @git.call("merge", "-q", "--no-ff", "-m", "merge", "topic")
+    merged = {"GITLAB_CI" => "true", "CI_PIPELINE_SOURCE" => "merge_request_event", "CI_MERGE_REQUEST_SOURCE_BRANCH_SHA" => head,
+              "CI_MERGE_REQUEST_TARGET_BRANCH_NAME" => "main"}
+    described = ->(env) { cli(env: env).send(:described_candidate, config, settings) }
+
+    assert_equal "#{head[0, base.size]} (merged with `main`)", described.call(merged)
+    assert_equal short(repo), described.call(merged.except("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA")), "not merged results"
+    assert_equal short(repo), described.call(merged.except("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")), "no branch"
+    assert_equal short(repo), described.call(merged.except("GITLAB_CI")), "not GitLab's"
+    assert_equal short(repo), described.call(merged.merge("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA" => base)), "not the commit merged"
+  end
+
   # A comparison with a commit: the Summary's given both described.
   def test_a_comparison_with_a_commit
     repo = git_repo

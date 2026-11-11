@@ -408,14 +408,21 @@ module Duel
     # On GitHub Actions, a pull request's run checks out the commit that
     # merges it with the branch it targets, which isn't in the pull
     # request, so its head is named instead, as merged (or nil, where HEAD
-    # is no such commit).
+    # is no such commit). So does a merge request's merged results
+    # pipeline, on GitLab CI.
     def merged(dir)
-      pull = pull_request or return
+      pull = (gitlab? ? merge_request : pull_request) or return
       sha, branch = pull.dig("head", "sha"), pull.dig("base", "ref")
       return unless branch.instance_of?(String) && git(dir, "rev-parse", "HEAD^2").first.chomp == sha
 
       "#{git(dir, "rev-parse", "--short", sha).first.chomp} (merged with #{Summary.code(branch)})"
     end
+
+    # A GitLab merge request's merged results pipeline's head and the
+    # branch it targets, as #pull_request has a pull request's (each nil
+    # in a merge request's other pipelines, whose HEAD is its head).
+    def merge_request = {"head" => {"sha" => variable("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA")},
+                         "base" => {"ref" => variable("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")}}
 
     # The pull request a pull_request event's run is for, as GitHub
     # Actions describes it (GITHUB_EVENT_PATH), or nil.

@@ -42,7 +42,7 @@ end
 
 desc "Check the RBS signatures (sig/), and lib/ against them with Steep (CRuby)"
 task :typecheck do
-  sh "rbs", "-I", "sig", "-I", "steep", "-r", "open3", "-r", "optparse", "-r", "socket", "validate"
+  sh "rbs", "-I", "sig", "-I", "steep", "-r", "net-http", "-r", "open3", "-r", "openssl", "-r", "optparse", "-r", "socket", "-r", "timeout", "-r", "uri", "validate"
   sh "steep", "check"
 end
 

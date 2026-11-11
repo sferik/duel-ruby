@@ -61,8 +61,20 @@ module Duel
     # and the answer to whether to is yes.
     def create_label: () -> void
 
-    # What gh prints, run in the project, or nil.
-    def gh: (*String args) -> String?
+    # The names of the GitHub repository's labels gh finds, or nil.
+    def github_labels: (String repo, String label) -> Array[String]?
+
+    # The project's GitLab project, as glab has it, or nil.
+    def gitlab_project: () -> String?
+
+    # The names of the GitLab project's labels, or nil.
+    def gitlab_labels: (String repo) -> Array[String]?
+
+    # What gh (or glab) prints, run in the project, or nil.
+    def cli: (String program, *String args) -> String?
+
+    # A pull request, or on GitLab, a merge request.
+    def request: () -> String
 
     # Says to use duel-rails's generator instead.
     def rails: () -> Integer
