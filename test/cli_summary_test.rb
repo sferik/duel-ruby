@@ -565,6 +565,44 @@ class CLISummaryTest < DuelTest
     assert_equal "`#{other}`", described.call(candidate_dir: other)
   end
 
+  # A pull request's run on GitHub Actions checks out a commit that merges
+  # it, which isn't in the pull request, so its head is named, as merged.
+  def test_the_candidate_described_as_a_pull_requests_head
+    repo = git_repo
+    config = Duel::Config.new(repo)
+    base = short(repo)
+    @git.call("checkout", "-qb", "topic")
+    @git.call("commit", "-q", "--allow-empty", "-m", "topic")
+    head = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    @git.call("checkout", "-q", "--detach", base)
+    @git.call("merge", "-q", "--no-ff", "-m", "merge", "topic")
+    event = File.join(tmpdir, "event.json")
+    described = lambda do |pull, name: "pull_request"|
+      File.write(event, JSON.generate(pull))
+      cli(env: {"GITHUB_EVENT_NAME" => name, "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings)
+    end
+    pull = {"pull_request" => {"head" => {"sha" => head}, "base" => {"ref" => "main"}}}
+
+    assert_equal "#{head[0, short(repo).size]} (merged with `main`)", described.call(pull)
+    assert_equal short(repo), described.call(pull, name: "push"), "not a pull request's run"
+    assert_equal short(repo), described.call({"pull_request" => {"head" => {"sha" => base}, "base" => {"ref" => "main"}}}),
+      "not the commit merged"
+    assert_equal short(repo), described.call({"pull_request" => {"head" => {"sha" => head}}}), "no branch"
+    assert_equal short(repo), described.call({"pull_request" => {"base" => {"ref" => "main"}}}), "no head"
+    assert_equal short(repo), described.call({"pull_request" => {"head" => {"sha" => head}, "base" => {"ref" => 1}}})
+    assert_equal short(repo), described.call({})
+    assert_equal short(repo), described.call({"pull_request" => []})
+    assert_equal short(repo), described.call([])
+    File.write(event, "{")
+
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings)
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => tmpdir}).send(:described_candidate, config, settings)
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request"}).send(:described_candidate, config, settings)
+    @git.call("checkout", "-q", "topic")
+
+    assert_equal short(repo), described.call(pull), "not a merge"
+  end
+
   # A comparison with a commit: the Summary's given both described.
   def test_a_comparison_with_a_commit
     repo = git_repo

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- On a pull request's run on GitHub Actions, the report names the pull
+  request's own commit, "merged with `main`", instead of the commit
+  that merges it, which GitHub makes for the run and isn't in the pull
+  request.
 - A run whose failures `c.accept_label` accepted says so in its
   heading, under 🟡 instead of 🔻: "1 benchmark failed, accepted".
 - The Perf comment workflow posts a report from a fork's pull request

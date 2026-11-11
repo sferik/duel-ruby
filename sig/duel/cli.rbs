@@ -154,6 +154,10 @@ module Duel
     # The candidate, in Markdown.
     def described_candidate: (Config config, Settings settings) -> String
 
+    def merged: (String dir) -> String?
+
+    def pull_request: () -> Hash[String, untyped]?
+
     # What chose a baseline of the last release: the release, or a change
     # since it accepted with the label.
     def last_release: (Config config, Baseline baseline) -> String

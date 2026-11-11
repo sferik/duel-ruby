@@ -314,7 +314,10 @@ the heading counts it. A run that has nothing to compare, or no release
 to compare against, says so under ⬜, and one that couldn't compare
 says why under 🔻. One whose failures the pull request's label accepted
 (see [`c.accept_label`](docs/configuration.md#accept-a-regression-with-a-label))
-says so under 🟡.
+says so under 🟡. On a pull request, GitHub Actions checks out a commit
+that merges it with the branch it targets, which isn't in the pull
+request, so the report names the pull request's own commit, "merged
+with `main`".
 
 The workflow that `duel init` writes posts this report as a comment on
 the pull request when a benchmark fails, or when Duel couldn't compare.

@@ -396,7 +396,34 @@ module Duel
       return Summary.code(dir) unless found.success?
 
       _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
-      "#{head.chomp}#{" (with changes not committed)" unless clean.success?}"
+      return "#{head.chomp} (with changes not committed)" unless clean.success?
+
+      merged(dir) || head.chomp
+    end
+
+    # On GitHub Actions, a pull request's run checks out the commit that
+    # merges it with the branch it targets, which isn't in the pull
+    # request, so its head is named instead, as merged (or nil, where HEAD
+    # is no such commit).
+    def merged(dir)
+      pull = pull_request or return
+      sha, branch = pull.dig("head", "sha"), pull.dig("base", "ref")
+      return unless branch.instance_of?(String) && git(dir, "rev-parse", "HEAD^2").first.chomp == sha
+
+      "#{git(dir, "rev-parse", "--short", sha).first.chomp} (merged with #{Summary.code(branch)})"
+    end
+
+    # The pull request a pull_request event's run is for, as GitHub
+    # Actions describes it (GITHUB_EVENT_PATH), or nil.
+    def pull_request
+      path = variable("GITHUB_EVENT_PATH") if event == "pull_request"
+      return unless path && File.file?(path)
+
+      payload = JSON.parse(File.read(path))
+      pull = payload["pull_request"] if payload.instance_of?(Hash)
+      pull if pull.instance_of?(Hash)
+    rescue JSON::ParserError
+      nil
     end
 
     # The baseline, for JSON: the ref that named it (the main branch,
