@@ -103,7 +103,7 @@ class MySQLTest < PluginTest
   def test_a_server_that_doesnt_start
     error = assert_raises(Duel::Failed) { prepare(config(args: ["--no-such-option"])) { flunk "started" } }
 
-    assert_match(/\Ahead-1's resource: mysqld exited before it was ready\n.*no-such-option/m, error.message)
+    assert_match(/\Ahead-1's resource: mysqld(\.exe)? exited before it was ready\n.*no-such-option/m, error.message)
   end
 
   def test_no_server
