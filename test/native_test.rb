@@ -520,7 +520,7 @@ class NativeTest < DuelTest
   # Windows's reader, where it's neither Linux nor macOS, and none
   # without Fiddle.
   def test_the_reader_on_windows
-    opened = Duel::Native::Memory.instance_variable_defined?(:@reader)
+    was_opened = Duel::Native::Memory.instance_variable_defined?(:@reader)
     reader = Duel::Native::Memory.instance_variable_get(:@reader)
     opened = [true, false].map do |fiddle|
       Duel::Native::Memory.remove_instance_variable(:@reader) if Duel::Native::Memory.instance_variable_defined?(:@reader)
@@ -532,7 +532,7 @@ class NativeTest < DuelTest
     assert_equal [:windows, nil], opened
   ensure
     # (As it was: none opened yet, if none was, rather than none to open.)
-    if opened
+    if was_opened
       Duel::Native::Memory.instance_variable_set(:@reader, reader)
     elsif Duel::Native::Memory.instance_variable_defined?(:@reader)
       Duel::Native::Memory.remove_instance_variable(:@reader)

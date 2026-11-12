@@ -80,12 +80,14 @@ class LockTest < DuelTest
     removed = []
     rm_f = FileUtils.method(:rm_f)
     [false, true].each do |windows|
-      stub(FileUtils, :rm_f, ->(target) { (removed << [windows, target, File.exist?(target)]) && rm_f.call(target) }) do
+      stub(FileUtils, :rm_f, ->(target) { (removed << [windows, target]) && rm_f.call(target) }) do
         Duel::Lock.hold(@dir, windows: windows) { nil }
       end
+
+      refute_path_exists path
     end
 
-    assert_equal [[false, path, true], [true, path, true], [true, path, false]], removed.select { |_, target| target == path }
+    assert_equal [[false, path], [true, path], [true, path]], removed.select { |_, target| target == path }, "while held, and on Windows, once closed"
     removed.clear
     stub(FileUtils, :rm_f, ->(target) { (removed << target) && rm_f.call(target) }) do
       with_constants(Duel::Native, WINDOWS: true) { Duel::Lock.hold(@dir) { nil } }

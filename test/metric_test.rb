@@ -503,8 +503,11 @@ class MetricTest < DuelTest
     process = Duel::Clock.process
     200_000.times { Math.sqrt(2) }
 
-    assert_kind_of Integer, thread, "nanoseconds"
-    assert_kind_of Integer, process
+    # (On Windows, Floats: see CycleClock.)
+    clock = windows? ? Float : Integer
+
+    assert_kind_of clock, thread, "nanoseconds"
+    assert_kind_of clock, process
 
     assert_operator Duel::Clock.thread, :>, thread
     assert_operator Duel::Clock.process, :>, process
