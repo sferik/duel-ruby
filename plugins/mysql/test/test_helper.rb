@@ -29,9 +29,6 @@ end
 Process.singleton_class.prepend(OwnDataDir)
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-# (The tests use Trilogy themselves: the plugin loads it only once it
-# connects.)
-require "trilogy"
 require "duel/mysql"
 require "duel/testing"
 # Mutant runs the tests itself (and autorun, at exit, would run them all
@@ -103,7 +100,7 @@ module SharedServer
   # Gives a test its server as it started: its database empty (made
   # again), and the statements it ran so far forgotten.
   def self.clean(env)
-    db = Trilogy.new(socket: env.fetch(Duel::MySQL::SOCKET), username: Duel::MySQL::USER)
+    db = Duel::MySQL::Connection.new(Duel::MySQL.address(env), database: "mysql")
     begin
       db.query("DROP DATABASE IF EXISTS #{Duel::MySQL::DATABASE}")
       db.query("CREATE DATABASE #{Duel::MySQL::DATABASE}")
@@ -135,9 +132,6 @@ class PluginTest < Minitest::Test
   end
 
   def setup
-    # (trilogy's extension installs and loads there, but a connection
-    # that has run a thousand or so queries takes TruffleRuby down.)
-    skip "TruffleRuby 40.0 fails inside Trilogy#query (a dead handle)" if RUBY_ENGINE == "truffleruby"
     skip "MySQL isn't installed" unless MYSQLD
     @dir = Dir.mktmpdir("dm", Duel::Lane.short_tmp)
     # (In the test's directory: what a mutation makes a relative path,
@@ -207,18 +201,21 @@ class PluginTest < Minitest::Test
   end
 
   # A connection to the worker's server, as a benchmark's would be.
-  def client = Trilogy.new(socket: Duel::MySQL.socket, username: "root", database: "duel")
+  def client = Duel::MySQL::Connection.new(Duel::MySQL.address)
 
   # The rows a query returns, on a connection of its own to the worker's
-  # server.
+  # server, closed as a benchmark's client closes it: with a QUIT (a
+  # COM_QUIT packet, which the server counts), which the plugin's own
+  # connections never send.
   def query(sql)
     db = client
     db.query(sql).rows
   ensure
+    db&.instance_variable_get(:@socket)&.write("\x01\x00\x00\x00\x01")
     db&.close
   end
 
-  # Waits until +connection+ (the plugin's, or a Trilogy) is the only
+  # Waits until +connection+ (the plugin's, or the test's) is the only
   # client of the worker's server (those that closed are gone, a QUIT
   # they sent read: the server reads it after its client's moved on);
   # returns how many others there are, [[0]] (or more, after 10s).
@@ -241,7 +238,7 @@ class PluginTest < Minitest::Test
       "duel/find_duel.rb" => <<~RUBY,
         require "sample"
 
-        setup { @db = Trilogy.new(socket: Duel::MySQL.socket, username: "root", database: "duel") }
+        setup { @db = Duel::MySQL::Connection.new(Duel::MySQL.address) }
         teardown { @db.close }
 
         duel("find") { Sample.find(@db) }
