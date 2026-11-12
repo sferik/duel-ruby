@@ -61,8 +61,7 @@ jobs:
         run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"
 
   # The tests on macOS and Windows, on the latest CRuby, and on macOS on
-  # JRuby 10.0 and 10.1 too. Windows's are advisory until they pass
-  # there, as are JRuby's on macOS, new here.
+  # JRuby 10.0 and 10.1 too.
   os:
     # (CRuby's named for the system alone, as they were.)
     name: ${{ matrix.ruby-version == '4.0' && matrix.os || format('{0} {1}', matrix.os, matrix.ruby-version) }}
@@ -81,32 +80,22 @@ jobs:
             ruby-version: jruby-10.0
           - os: windows-latest
             ruby-version: jruby-10.1
-    env:
-      ADVISORY: ${{ matrix.os == 'windows-latest' || startsWith(matrix.ruby-version, 'jruby') }}
     steps:
       - uses: actions/checkout@v7
-      - id: ruby
-        uses: ruby/setup-ruby@v1
-        continue-on-error: ${{ env.ADVISORY == 'true' }}
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
       # (On Windows, in one process, each test named as it runs, so that
-      # one that hangs shows which, until they pass there. Elsewhere, the
-      # skipped tests are named, as what a system can't measure shows
-      # there.)
+      # one that hangs shows which. Elsewhere, the skipped tests are
+      # named, as what a system can't measure shows there.)
       - name: Run tests
-        id: tests
-        continue-on-error: ${{ env.ADVISORY == 'true' }}
         env:
           COVERAGE: "false"
           TESTOPTS: ${{ matrix.os == 'windows-latest' && '-v' || '--show-skips' }}
           # JRuby's --dev starts each process faster, and the tests start many
           JRUBY_OPTS: ${{ startsWith(matrix.ruby-version, 'jruby') && '--dev' || '' }}
         run: bundle exec rake ${{ matrix.os == 'windows-latest' && 'test' || 'test:parallel' }}
-      - name: Note an advisory failure
-        if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
-        run: echo "::warning title=${{ matrix.os }} ${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.os }}, ${{ matrix.ruby-version }}, which Duel's tests don't pass on yet"
 
   coverage:
     name: Coverage (100% line, branch and method)
