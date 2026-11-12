@@ -9,6 +9,11 @@ gemspec
 gem "duel", path: "../.."
 # For Duel's profiles of a regression (duel/: the plugin's own benchmarks).
 gem "stackprof", platforms: :mri
+# For the benchmarks' baseline where it's a release before the plugin's
+# own client (0.1.8, say), whose connection was Trilogy's. (Not on
+# Windows, which Trilogy has no build for, and the benchmarks don't run
+# on.)
+gem "trilogy", platforms: :ruby
 
 gem "rake"
 gem "minitest"

@@ -7,10 +7,6 @@
 # given (Canned), so the server's timing (and its settling) isn't in
 # them.
 
-# (The plugin loads Trilogy as it first connects, which a canned
-# connection never does: see Duel::MySQL.require_trilogy.)
-require "trilogy"
-
 # A worker's server, as performance_schema has it after a suite's
 # statements ran: +size+ statements by digest, each one's [queries,
 # rows, rows examined, time (ps)] so far, the same for every run.
@@ -34,7 +30,7 @@ end
 # A connection to a worker's server, as the plugin uses one, that answers
 # its queries from +tables+ (the server's statements, by digest, as
 # #digest_table makes them, at each reading in turn, round and round,
-# the last one's first) with Trilogy's own results, made once: no other
+# the last one's first) with results of its own, made once: no other
 # connection running a statement, the server's totals, the statements
 # (all of them, or those run since the reading before, as the server
 # has them), their digests and their texts (a typical one's, from an
@@ -88,7 +84,15 @@ class Canned
 
   def statements(statements) = result(statements.map { |digest, numbers| [digest, *numbers] })
 
-  def result(rows) = Trilogy::Result.new([], rows, 0.0, false, 0, 0)
+  def result(rows) = Result.new(rows)
+
+  # A query's result, as the plugin reads one (of any version: its own
+  # client's, or before it, Trilogy's): its rows, and each of them.
+  Result = Struct.new(:rows) do
+    include Enumerable
+
+    def each(&) = rows.each(&)
+  end
 end
 
 # Statements read over a Canned connection to +tables+, read once (the
