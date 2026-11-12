@@ -107,11 +107,6 @@ jobs:
       - name: Note an advisory failure
         if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.os }} ${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.os }}, ${{ matrix.ruby-version }}, which Duel's tests don't pass on yet"
-      # (For now: what each piece of a sample's CPU reading allocates on
-      # Windows, where samples count some that aren't the benchmark's.)
-      - name: Check what measuring allocates
-        if: matrix.os == 'windows-latest' && matrix.ruby-version == '4.0'
-        run: bundle exec ruby -Ilib tasks/allocations_check.rb
 
   coverage:
     name: Coverage (100% line, branch and method)
