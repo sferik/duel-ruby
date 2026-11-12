@@ -225,7 +225,8 @@ module Duel
     # space in it (C:/Program Files/PostgreSQL/17/bin/initdb, say).
     def log_path(command, name)
       words = command.grep(String)
-      program = (words.size > 1) ? words.fetch(0) : words.fetch(0).split.fetch(0)
+      program = words.fetch(0)
+      program = program.split.fetch(0) if words.size == 1
       path("#{name || File.basename(program)}.log")
     end
 
