@@ -267,7 +267,7 @@ class RubiesTest < DuelTest
     assert_includes Duel::Rubies::VARIABLES, "GEM_HOME"
     ENV["PATH"] = "/x"
 
-    assert_equal "#{File.dirname(other)}:/x", Duel::Rubies.environment(other).fetch("PATH"), "this process's, by default"
+    assert_equal path_with(File.dirname(other), "/x"), Duel::Rubies.environment(other).fetch("PATH"), "this process's, by default"
     ENV.delete("PATH")
 
     assert_equal File.dirname(other), Duel::Rubies.environment(other).fetch("PATH"), "or none"

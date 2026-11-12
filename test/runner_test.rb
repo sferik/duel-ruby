@@ -454,10 +454,7 @@ class RunnerTest < DuelTest
       {"BUNDLE_GEMFILE" => File.join(v.root, "Gemfile")}
     end
     config.prepare(:version) { |v| (given << v.dir) && {"SECOND" => v.cached("t") { |_| nil }} }
-    ruby = File.join(tmpdir, "bin", "ruby")
-    FileUtils.mkdir_p(File.dirname(ruby))
-    File.write(ruby, "")
-    File.chmod(0o755, ruby)
+    ruby = fake_command(File.join(tmpdir, "bin", "ruby"), "")
     config.ruby = ->(root) { root.end_with?("base") ? ruby : RbConfig.ruby }
     with_fake_workers do |workers|
       workers.benchmark("a")

@@ -40,6 +40,8 @@ class LockTest < DuelTest
   def end_holder(pid) = end_group(pid)
 
   def test_holds_it_and_says_whose_it_is
+    skip "Windows keeps a locked file from being read" if windows?
+
     held = Duel::Lock.hold(@dir) { [File.read(File.join(@dir, "lock")), :done] }
 
     assert_equal [Process.pid.to_s, :done], held
@@ -56,9 +58,40 @@ class LockTest < DuelTest
     ran = false
     error = assert_raises(Duel::Error) { Duel::Lock.hold(@dir) { ran = true } }
 
-    assert_equal "another duel run (pid #{pid}) is using #{@dir}: wait for it to end, or stop it", error.message
+    assert_equal "another duel run#{" (pid #{pid})" unless windows?} is using #{@dir}: wait for it to end, or stop it", error.message
     refute ran
-    assert_equal pid.to_s, File.read(File.join(@dir, "lock")), "its, as it was"
+    assert_equal pid.to_s, File.read(File.join(@dir, "lock")), "its, as it was" unless windows?
+  end
+
+  # On Windows, which keeps a locked file from being read, another run's
+  # isn't named.
+  def test_another_run_on_windows
+    file = Struct.new(:read).new(nil)
+    def file.read = raise(Errno::EACCES, "lock")
+
+    assert_equal "", Duel::Lock.whose(file)
+    assert_equal "123", Duel::Lock.whose(StringIO.new("123"))
+  end
+
+  # And a run removes its lock once it has closed it, Windows removing
+  # none that's open.
+  def test_removed_once_closed_on_windows
+    path = File.join(@dir, "lock")
+    removed = []
+    rm_f = FileUtils.method(:rm_f)
+    [false, true].each do |windows|
+      stub(FileUtils, :rm_f, ->(target) { (removed << [windows, target, File.exist?(target)]) && rm_f.call(target) }) do
+        Duel::Lock.hold(@dir, windows: windows) { File.write(path, "kept") }
+      end
+    end
+
+    assert_equal [[false, path, true], [true, path, true], [true, path, false]], removed.select { |_, target| target == path }
+    removed.clear
+    stub(FileUtils, :rm_f, ->(target) { (removed << target) && rm_f.call(target) }) do
+      with_constants(Duel::Native, WINDOWS: true) { Duel::Lock.hold(@dir) { nil } }
+    end
+
+    assert_equal [path, path], removed.select { |target| target == path }, "on Windows, by default"
   end
 
   # One that's still writing its pid isn't named.
@@ -174,7 +207,7 @@ class LockTest < DuelTest
     status = Dir.chdir(tmpdir) { Duel::CLI.new(["--base", tmpdir], env: {}, out: StringIO.new, err: err).run }
 
     assert_equal 2, status
-    assert_equal "duel: another duel run (pid #{pid}) is using #{File.realpath(@dir)}: wait for it to end, or stop it\n",
+    assert_equal "duel: another duel run#{" (pid #{pid})" unless windows?} is using #{File.realpath(@dir)}: wait for it to end, or stop it\n",
       err.string
   end
 end

@@ -22,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GlobalMemoryStatusEx`, a process benchmark's process that hangs is
   killed with what it started by `taskkill /T`, and a resource's
   processes are killed as it stops, as Windows can send them no other
-  signal (an `at_stop` block can ask one to stop first). There are no
-  instructions there. The tests run on macOS and Windows in CI too,
+  signal (an `at_stop` block can ask one to stop first). A run's lock
+  works there too, though Windows can't read a held lock, so another
+  run's isn't named. There are no instructions there. The tests run on macOS and Windows in CI too,
   Windows's advisory until they pass there.
 
 - `duel comment`, which the Perf comment workflow now runs instead of

@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "../duel"
+require_relative "native"
 
 module Duel
   # One run at a time in a project: two would share its tmp/duel and its
@@ -10,7 +11,10 @@ module Duel
   # however that ends, so a run that crashed leaves nothing to clear. The
   # file says whose it is, for a run that finds it taken. A run that ends
   # removes it, and the directories that leaves empty: tmp/duel, and tmp
-  # if Duel made it.
+  # if Duel made it. Windows locks the whole file, and removes none
+  # that's open: there, another run's pid can't be read while it holds
+  # the lock, and a run removes its lock once it has closed it (unless
+  # another has opened it meanwhile, which keeps it).
   # @api private
   module Lock
     # An exclusive lock, or none if another holds it.
@@ -18,7 +22,7 @@ module Duel
 
     # Runs the block holding +dir+'s lock. Fails, naming the run that
     # holds it, if another does.
-    def self.hold(dir)
+    def self.hold(dir, windows: Native::WINDOWS)
       made = missing(dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, "lock")
@@ -33,6 +37,7 @@ module Duel
         # one. `duel --clean` may have removed it already.)
         FileUtils.rm_f(path)
         file.close
+        FileUtils.rm_f(path) if windows
         tidy(dir, made)
       end
     end
@@ -45,7 +50,7 @@ module Duel
         file = File.new(path, "a+")
         unless file.flock(EXCLUSIVE)
           # (Empty for a moment, while its run writes its pid.)
-          pid = file.read
+          pid = whose(file)
           file.close
           raise Error, "another duel run#{" (pid #{pid})" unless pid.empty?} is using #{dir}: wait for it to end, or stop it"
         end
@@ -53,6 +58,14 @@ module Duel
 
         file.close
       end
+    end
+
+    # The pid another run wrote in its lock, +file+, or "": none yet, or
+    # on Windows, which keeps a locked file from being read.
+    def self.whose(file)
+      file.read
+    rescue Errno::EACCES
+      ""
     end
 
     # The directories, +dir+ and those it's in, that aren't there yet,

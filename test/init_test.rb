@@ -1192,7 +1192,7 @@ class InitTest < DuelTest
   # fails (which it says) or isn't there.
   def test_cli
     bin = File.join(tmpdir, "bin")
-    fake_command(File.join(bin, "gh"), %([ "$2" = fail ] && { echo ' no ' >&2; exit 1; }\necho "$*"; pwd -P))
+    fake_command(File.join(bin, "gh"), %([ "$2" = fail ] && { echo ' no ' >&2; exit 1; }\necho "$*"; pwd -W 2>/dev/null || pwd -P))
     command = init
     original = ENV.fetch("PATH")
     ENV["PATH"] = path_with(bin, original)

@@ -27,6 +27,11 @@ module TestDirs
 
   def self.short(pid) = WINDOWS ? File.join(ROOTS, pid.to_s) : "/tmp/duel-test-#{pid}"
 
+  # Git's sh, on Windows, by the PATH.
+  def self.sh
+    @sh ||= ENV.fetch("PATH").split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "sh.exe") }.find { |sh| File.file?(sh) }
+  end
+
   def self.alive?(pid)
     Process.kill(0, pid)
     true
@@ -176,15 +181,16 @@ class DuelTest < Minitest::Test
 
   # Writes a command at +path+, +script+ for sh, and returns what runs
   # it: +path+, or on Windows, which runs no script by its #!, a .cmd
-  # beside it, which runs it with Git's sh (on the PATH of Windows's
-  # runners). Spawning a command by name finds the .cmd there.
+  # beside it, which runs it with Git's sh (found on the PATH of
+  # Windows's runners now, as the command may run without it).
+  # Spawning a command by name finds the .cmd there.
   def fake_command(path, script)
     FileUtils.mkdir_p(File.dirname(path))
     File.write(path, "#!/bin/sh\n#{script}\n")
     FileUtils.chmod(0o755, path)
     return path unless windows?
 
-    File.write("#{path}.cmd", %(@sh "%~dpn0" %*\r\n))
+    File.write("#{path}.cmd", %(@"#{TestDirs.sh}" "%~dpn0" %*\r\n))
     "#{path}.cmd"
   end
 

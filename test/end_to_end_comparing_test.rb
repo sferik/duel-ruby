@@ -26,7 +26,7 @@ class EndToEndComparingTest < DuelTest
     assert_equal 0, duel.call(candidate).first
     status, out = duel.call(slower)
 
-    assert_equal 1, status
+    assert_equal 1, status, out
     assert_includes out, "REGRESSION work"
   end
 
@@ -58,7 +58,7 @@ class EndToEndComparingTest < DuelTest
     assert_equal worse, result.regressed, "and instructions, where they're counted"
     assert_equal Duel::Runner::CONFIRM, result.confirmations.size
     assert_includes out, "REGRESSION work: worse #{worse.join(", ")} in every measurement"
-    if RUBY_ENGINE == "ruby"
+    if stackprof?
       assert_includes out, "where the extra CPU went"
       grew = result.profile.fetch("grew")
 

@@ -300,7 +300,7 @@ class BaselineTest < DuelTest
 
   def test_root_checks_out_and_builds_the_commit_once
     builds = File.join(tmpdir, "builds.log")
-    @config.build = "pwd >> #{builds}"
+    @config.build = append_pwd(builds)
     root = baseline(base: "v1.0").root
 
     assert_equal baseline.checkout, root
@@ -333,6 +333,10 @@ class BaselineTest < DuelTest
   def test_root_without_a_build
     assert_path_exists File.join(baseline(base: "v1.0").root, "lib", "sample.rb")
   end
+
+  # A build command that adds the directory it ran in to +file+, as sh
+  # and cmd (Windows's shell) both run it.
+  def append_pwd(file) = %(#{RbConfig.ruby} -e "File.write(ARGV[0], Dir.pwd + 10.chr, mode: 'a')" #{file})
 
   # A build command that fails, saying why, as sh and cmd (Windows's
   # shell) both run it.
@@ -465,7 +469,7 @@ class BaselineTest < DuelTest
     File.write(File.join(app, "lib", "sample.rb"), "module Sample; def self.work = 3; end\n")
     config = Duel::Config.new(app)
     config.main_branch = "main"
-    config.build = "pwd >> #{builds}"
+    config.build = append_pwd(builds)
     of_app = ->(**overrides) { Duel::Baseline.new(config, settings(**overrides)) }
     root = of_app.call(base: "main").root
     checkout = of_app.call.checkout
