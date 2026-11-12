@@ -241,7 +241,8 @@ class RedisTest < PluginTest
       redis
     end
 
-    assert_raises(IOError, Errno::EPIPE) { redis.call("PING") }
+    # (Over TCP, as on Windows, the stopped server's end resets.)
+    assert_raises(IOError, Errno::EPIPE, Errno::ECONNRESET, Errno::ECONNABORTED) { redis.call("PING") }
     refute Duel::Redis::Connection.ping(File.join(@dir, "nothing.sock"))
   end
 
