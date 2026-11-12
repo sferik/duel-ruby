@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A process benchmark's Ruby process takes what it runs with (the
+  environment, the directory, the log) as its input's first line, not
+  as an argument: on Windows, an environment could be longer than a
+  command may be, and JRuby's spawn there split the argument at its
+  spaces.
 - On a Mac that counts no instructions (a virtual machine, say),
   resident memory, and so peak memory, is measured all the same: it
   was left out with the instructions.

@@ -196,8 +196,8 @@ module Duel
       @server: String
 
       # The server program: +server+ if it's a path, or the one by that
-      # name on +path+; nil if there's none.
-      def self.find_server: (String server, ?String path) -> String?
+      # name on +path+ (either may end with +exe+ too); nil if there's none.
+      def self.find_server: (String server, ?String path, ?exe: String) -> String?
 
       # The options the server's run with, initializing a data directory
       # or not.

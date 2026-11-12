@@ -34,7 +34,7 @@ module Duel
 
     # Runs a process for each line of +input+, and reports each on
     # +output+.
-    def self.main: (String spec, ?input: IO, ?output: IO) -> void
+    def self.main: (?input: IO, ?output: IO) -> void
 
     # Runs +command+ once, and returns what it took.
     def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log, ?windows: bool) -> ended

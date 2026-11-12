@@ -3,6 +3,7 @@
 require "duel"
 require "digest"
 require "fileutils"
+require "rbconfig"
 require_relative "mysql/version"
 
 module Duel
@@ -427,10 +428,11 @@ module Duel
     # database created in it.
     class DataDir
       # The server program: +server+ if it's a path, or the one by that
-      # name on +path+; nil if there's none.
-      def self.find_server(server, path = ENV.fetch("PATH", ""))
+      # name on +path+; nil if there's none. Either may end with +exe+ too
+      # (on Windows, .exe: mysqld.exe, for mysqld).
+      def self.find_server(server, path = ENV.fetch("PATH", ""), exe: RbConfig::CONFIG["EXEEXT"])
         files = server.include?(File::SEPARATOR) ? [server] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
-        files.find { |file| File.executable?(file) }
+        files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.executable?(file) }
       end
 
       # The options the server's run with, initializing +data+ or not.

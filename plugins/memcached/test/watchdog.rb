@@ -2,6 +2,12 @@
 
 require "rbconfig"
 
+# (Not on Windows, whose processes lead no groups, and which has no kill
+# to kill one with: there, a test process that's killed may leave its
+# servers running. The watchdog is for mutant, which kills them, and
+# doesn't run there.)
+return if RbConfig::CONFIG["host_os"].match?(/mingw|mswin/)
+
 # Every process the tests start (a memcached server, a comparison's
 # workers, and through them their servers) leads a process group of its
 # own, which a watchdog kills when the test process ends, however it

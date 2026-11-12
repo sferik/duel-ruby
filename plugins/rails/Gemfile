@@ -15,6 +15,9 @@ gem "stackprof", platforms: :mri
 # on SQLite.
 gem "rails", ENV.fetch("RAILS", ">= 7.2")
 gem "sqlite3", ">= 2.0"
+# (Windows has no time zone data of its own for TZInfo, Rails's: this
+# gem has it.)
+gem "tzinfo-data", platforms: %i[windows jruby]
 
 gem "rake"
 gem "minitest"

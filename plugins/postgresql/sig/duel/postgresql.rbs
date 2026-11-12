@@ -161,7 +161,10 @@ module Duel
 
       # The real directory of the postgres on +path+, or of the newest
       # Debian's; nil if there's none.
-      def self.find_bin: (?String path, ?debian: String) -> String?
+      # A program's file ends with +EXE+ (.exe, on Windows).
+      EXE: String
+
+      def self.find_bin: (?String path, ?debian: String, ?exe: String) -> String?
 
       def initialize: (Resource resource, String bin) -> void
 
