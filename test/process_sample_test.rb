@@ -67,17 +67,19 @@ class ProcessSampleTest < DuelTest
     assert_equal({"env" => ENV.to_h, "chdir" => tmpdir, "log" => @log}, JSON.parse(rest.last))
     (input, requests), (replies, output) = pipes
 
-    assert_equal [input, output, true, true], options.values_at(:in, :out, :pgroup, :close_others), "a pipe each way"
+    assert_equal [input, output, true], options.values_at(:in, :out, :close_others), "a pipe each way"
+    assert_equal Duel::ProcessSample.group, options.slice(:pgroup, :new_pgroup), "in a group of its own"
     assert_equal [true, false, false, true], [input, requests, replies, output].map(&:closed?), "its ends, not this process's"
     assert_empty @waited
     noting { runs.stop }
+    waits = @waited.size
 
-    assert_equal [[pid]], @waited, "waited for"
+    assert_equal [[pid, Process::WNOHANG]], @waited.uniq, "waited for, as it ended"
     assert_equal [true, true], [requests, replies].map(&:closed?)
     assert_equal 3, Process.wait2(other).last.exitstatus, "and only it"
     noting { runs.stop }
 
-    assert_equal [[pid]], @waited, "once"
+    assert_equal waits, @waited.size, "once"
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "and started again"
@@ -123,8 +125,8 @@ class ProcessSampleTest < DuelTest
   def test_where_and_with_what
     ENV["DUEL_TEST_KEPT"] = "kept"
     ENV["DUEL_TEST_UNSET"] = "set"
-    run_once("echo $DUEL_TEST_GIVEN $DUEL_TEST_KEPT ${DUEL_TEST_UNSET:-unset} in $(pwd -P); echo err >&2",
-      env: {"DUEL_TEST_GIVEN" => "given", "DUEL_TEST_UNSET" => nil})
+    run_once(*ruby("$stdout.sync = true; puts [*ENV.values_at('DUEL_TEST_GIVEN', 'DUEL_TEST_KEPT'), ENV.fetch('DUEL_TEST_UNSET', 'unset'), 'in', " \
+      "File.realpath(Dir.pwd)].join(' '); warn 'err'"), env: {"DUEL_TEST_GIVEN" => "given", "DUEL_TEST_UNSET" => nil})
 
     assert_equal "given kept unset in #{File.realpath(tmpdir)}\nerr\n", File.read(@log)
   ensure
@@ -136,7 +138,8 @@ class ProcessSampleTest < DuelTest
   # itself (the process gets the runner's environment, all the same).
   def test_out_of_the_runners_bundle
     ENV["RUBYOPT"] = "-rduel-no-such-library"
-    run_once("echo $RUBYOPT")
+    # (Not Ruby's, which RUBYOPT would stop: the shell's.)
+    run_once(windows? ? "echo %RUBYOPT%" : "echo $RUBYOPT")
 
     assert_equal "-rduel-no-such-library\n", File.read(@log)
   ensure
@@ -151,12 +154,19 @@ class ProcessSampleTest < DuelTest
 
     assert_equal "head-1: #{RbConfig.ruby} -e 12.times { |i| puts i }; exit 3 exited with 3\n#{(2..11).map { |i| "#{i}\n" }.join}",
       error.message
-    error = assert_raises(Duel::Failed) { noting { runs.run(["kill -TERM $$"]) } }
-
-    assert_equal "head-1: kill -TERM $$ was killed by SIGTERM", error.message, "and said nothing"
     noting { runs.run(["true"]) }
 
     assert_equal 1, @spawned.size
+  end
+
+  # One a signal killed says which.
+  def test_a_process_a_signal_killed
+    skip "Windows kills with no signal" if windows?
+
+    runs = sampler
+    error = assert_raises(Duel::Failed) { noting { runs.run(["kill -TERM $$"]) } }
+
+    assert_equal "head-1: kill -TERM $$ was killed by SIGTERM", error.message, "and said nothing"
   end
 
   # One that takes too long is killed, with what it started, and the Ruby
@@ -172,10 +182,11 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     noting { runs.run(["true"]) }
     runs.instance_variable_set(:@timeout, timeout)
-    error = assert_raises(Duel::Failed) { noting { runs.run(["sh", "-c", "sleep 60 & echo $! > #{pids}; touch #{started}; wait"]) } }
+    command = [*ruby("pid = Process.spawn(RbConfig.ruby, '-e', 'sleep 60'); File.write(ARGV[0], pid.to_s); File.write(ARGV[1], ''); " \
+      "Process.wait(pid)"), pids, started]
+    error = assert_raises(Duel::Failed) { noting { runs.run(command) } }
 
-    assert_equal "head-1: sh -c sleep 60 & echo $! > #{pids}; touch #{started}; wait didn't end within #{timeout}s (killed)",
-      error.message
+    assert_equal "head-1: #{command.join(" ")} didn't end within #{timeout}s (killed)", error.message
     assert_path_exists started
     assert_equal [[@spawned.first.first]], @waited, "waited for"
     assert_equal 3, Process.wait2(other).last.exitstatus, "and only it"
@@ -195,13 +206,40 @@ class ProcessSampleTest < DuelTest
   # runs) fails the run, and is waited for: the next run starts another.
   def test_its_ruby_process_ends
     runs = sampler
-    error = assert_raises(Duel::Failed) { noting { runs.run(["sh", "-c", "kill -KILL $PPID"]) } }
+    command = ruby("Process.kill('KILL', Process.ppid); sleep")
+    error = assert_raises(Duel::Failed) { noting { runs.run(command) } }
 
-    assert_equal "head-1: the process running sh -c kill -KILL $PPID exited", error.message
-    assert_equal [[@spawned.first.first]], @waited, "waited for"
+    assert_equal "head-1: the process running #{command.join(" ")} exited", error.message
+    assert_equal [[@spawned.first.first, Process::WNOHANG]], @waited.uniq, "waited for"
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size
+  end
+
+  # One that doesn't end once its input is closed (on Windows, another
+  # process can hold the input's other end) is killed, with what it
+  # started, a while later: stopping never hangs.
+  def test_stopping_one_that_doesnt_end
+    runs = sampler
+    noting { runs.run(["true"]) }
+    held = runs.instance_variable_get(:@requests).dup
+    pid = @spawned.first.first
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    killed = []
+    kill_tree = Duel::ProcessSample.method(:kill_tree)
+    slept = []
+    stub(runs, :sleep, ->(seconds) { (slept << seconds) && Kernel.sleep(seconds) }) do
+      stub(Duel::ProcessSample, :kill_tree, ->(*args) { (killed << args) && kill_tree.call(*args) }) { noting { runs.stop(wait: 0.3) } }
+    end
+
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.3, "given the while"
+    assert_equal [[pid]], killed
+    assert_equal [0.01], slept.uniq, "looking every POLL meanwhile"
+    assert_equal [pid], @waited.last, "and waited for"
+    assert_equal [true, true], %i[@requests @replies].map { |pipe| runs.instance_variable_get(pipe).closed? }
+    assert_equal [10, 0.01], [Duel::ProcessSample::STOP_WAIT, Duel::ProcessSample::POLL]
+  ensure
+    held&.close
   end
 
   # The fastest of a version's runs: their least CPU time, and least peak
@@ -228,7 +266,9 @@ class ProcessSampleTest < DuelTest
     replies, output = IO.pipe
     output.sync = false
     thread = Thread.new { noting { Duel::ProcessSample.main(spec, input: input, output: output) } }
-    reports = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), ["exit 3"], ["kill -TERM $$"]].map do |command|
+    # (A signal's, off Windows, which kills with none.)
+    commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), ruby("exit 3"), *(["kill -TERM $$"] unless windows?)]
+    reports = commands.map do |command|
       requests.puts JSON.generate(command)
 
       assert replies.wait_readable(30), "reported at once"
@@ -241,13 +281,14 @@ class ProcessSampleTest < DuelTest
 
     assert_equal %w[cpu peak failed], ran.keys
     assert_operator ran.fetch("cpu"), :>, 1_000_000
-    assert_operator failed.fetch("cpu"), :<, ran.fetch("cpu"), "a shell's exit, not a Ruby's work too"
+    assert_operator failed.fetch("cpu"), :<, ran.fetch("cpu"), "an exit, not work too"
     assert_nil ran.fetch("failed")
     assert_equal "exited with 3", failed.fetch("failed")
     assert_equal "logged\n", logged, "its output in its log"
-    assert_equal "was killed by SIGTERM", killed.fetch("failed")
+    assert_equal "was killed by SIGTERM", killed.fetch("failed") unless windows?
+
     assert_nil replies.gets, "nothing else"
-    assert_equal 3, @spawned.size
+    assert_equal commands.size, @spawned.size
     assert_equal 3, Process.wait2(other).last.exitstatus, "only its own waited for"
   ensure
     [input, requests, replies, output].compact.each(&:close)
@@ -255,20 +296,22 @@ class ProcessSampleTest < DuelTest
 
   # A run: the CPU time of what this process waited for meanwhile, the
   # child's peak memory, in its environment as given, alone, where it's
-  # told, reading nothing.
+  # told, reading nothing. (Off Windows: see test_once_on_windows.)
   def test_once
     ENV["DUEL_TEST_OTHER"] = "not given"
     env = {"PATH" => ENV.fetch("PATH"), "X" => "x"}
     FileUtils.mkdir_p(File.join(tmpdir, "in"))
     before = Duel::ProcessSample.cpu
-    ran = noting do
-      Duel::ProcessSample.once(ruby("x = 0; 1_000_000.times { |i| x ^= i }; p ENV.values_at('X', 'DUEL_TEST_OTHER'), " \
-        "File.basename(Dir.pwd), $stdin.read; warn :err"), env, File.join(tmpdir, "in"), @log)
+    ran = stub(Duel::Native::Windows::Spawned, :open, ->(_) { flunk "a handle, off Windows" }) do
+      noting do
+        Duel::ProcessSample.once(ruby("x = 0; 1_000_000.times { |i| x ^= i }; p ENV.values_at('X', 'DUEL_TEST_OTHER'), " \
+          "File.basename(Dir.pwd), $stdin.read; warn :err"), env, File.join(tmpdir, "in"), @log, windows: false)
+      end
     end
 
     assert_equal Duel::ProcessSample.cpu - before, ran.fetch("cpu")
     assert_nil ran.fetch("failed")
-    if Duel::Native::FIDDLE
+    if Duel::Native::FIDDLE && !windows?
       assert_operator ran.fetch("peak"), :>, 1_000_000
     else
       assert_nil ran.fetch("peak")
@@ -284,9 +327,53 @@ class ProcessSampleTest < DuelTest
     ENV.delete("DUEL_TEST_OTHER")
   end
 
+  # On Windows, whose children's CPU time Process.times doesn't have,
+  # what a handle of its own on the child says: its cycles, in
+  # nanoseconds, and its peak working set. The handle is closed, however
+  # the wait ends.
+  def test_once_on_windows
+    rate = Duel::CycleClock.instance_variable_get(:@rate)
+    Duel::CycleClock.instance_variable_set(:@rate, 2.0)
+    spawned = Struct.new(:cycles, :peak, :closed) { def close = self.closed = true }.new(3_000_000, 4096, false)
+    opened = []
+    ran = stub(Duel::Native::Windows::Spawned, :open, ->(pid) { (opened << pid) && spawned }) do
+      noting { Duel::ProcessSample.once(ruby("exit 3"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log, windows: true) }
+    end
+
+    assert_equal [@spawned.first.first], opened
+    assert_equal({"cpu" => 1_500_000, "peak" => 4096, "failed" => "exited with 3"}, ran)
+    assert spawned.closed
+    spawned.closed = false
+    stub(Duel::Native::Child, :wait, ->(_) { raise Interrupt }) do
+      stub(Duel::Native::Windows::Spawned, :open, ->(_) { spawned }) do
+        assert_raises(Interrupt) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log, windows: true) } }
+      end
+    end
+
+    assert spawned.closed, "however it ends"
+    by_default = stub(Duel::Native::Windows::Spawned, :open, ->(_) { spawned }) do
+      with_constants(Duel::Native, WINDOWS: true) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) } }
+    end
+
+    assert_equal [1_500_000, 4096], by_default.values_at("cpu", "peak"), "on Windows, by default"
+  ensure
+    Duel::CycleClock.instance_variable_set(:@rate, rate)
+  end
+
+  # Without a handle (it couldn't be opened), what Process.times says.
+  def test_once_on_windows_without_a_handle
+    ran = stub(Duel::Native::Windows::Spawned, :open, ->(_) {}) do
+      noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log, windows: true) }
+    end
+
+    assert_nil ran.fetch("failed")
+    assert_kind_of Integer, ran.fetch("cpu")
+  end
+
   # What it starts gets no other file descriptors.
   def test_once_gives_nothing_else
     skip "JRuby's spawn ignores close_others" if RUBY_ENGINE == "jruby"
+    skip "Windows's spawn ignores close_others: only a handle made inheritable is passed on" if windows?
 
     done = File.join(tmpdir, "done")
     IO.pipe do |reader, writer|
@@ -306,7 +393,7 @@ class ProcessSampleTest < DuelTest
 
   # Its own input and output, unless it's given others.
   def test_main_on_its_own_input_and_output
-    spec = JSON.generate({"env" => {}, "chdir" => tmpdir, "log" => @log})
+    spec = JSON.generate({"env" => {"PATH" => ENV.fetch("PATH")}, "chdir" => tmpdir, "log" => @log})
     reader, writer = IO.pipe
     writer.puts JSON.generate(["true"])
     writer.close

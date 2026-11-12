@@ -22,18 +22,15 @@ class RubiesTest < DuelTest
 
   # An executable at +path+ (a Ruby's, or a manager's command, by its
   # shell script).
-  def executable(path, script = "")
-    FileUtils.mkdir_p(File.dirname(path))
-    File.write(path, "#!/bin/sh\n#{script}\n")
-    File.chmod(0o755, path)
-    path
-  end
+  def executable(path, script = "") = fake_command(path, script)
 
   # rbenv, mise and asdf, each with Rubies of its own (and chruby's,
   # under @root/rubies), on a PATH with nothing else of theirs. None is
   # one the runner could be (Duel needs Ruby 3.4, which JRuby 9.4 isn't),
   # so a version file that asks for one is looked up with the managers.
   def managers
+    skip "the managers (rbenv, chruby, mise, asdf) are Unix's" if windows?
+
     bin = File.join(@root, "bin")
     executable(File.join(bin, "rbenv"), %([ "$1" = prefix ] && [ -d "#{@root}/rbenv/$2" ] && echo "#{@root}/rbenv/$2" && exit; exit 1))
     executable(File.join(bin, "mise"), %{case "$1 $2" in "where ruby@3.1") echo "#{@root}/mise/3.1.7";; *) exit 1;; esac})
@@ -206,9 +203,7 @@ class RubiesTest < DuelTest
   # say.
   def test_engine
     assert_equal RUBY_ENGINE, stub(IO, :popen, ->(*) { flunk "asked the runner's" }) { Duel::Rubies.engine(RbConfig.ruby) }, "its own"
-    jruby = File.join(tmpdir, "jruby")
-    File.write(jruby, %(#!/bin/sh\necho noise >&2\n[ -z "$RUBYOPT" ] && [ "$*" = "--disable-gems -e print RUBY_ENGINE" ] && printf jruby\n))
-    FileUtils.chmod(0o755, jruby)
+    jruby = fake_command(File.join(tmpdir, "jruby"), %(echo noise >&2\n[ -z "$RUBYOPT" ] && [ "$*" = "--disable-gems -e print RUBY_ENGINE" ] && printf jruby))
 
     found = nil
     _, err = capture_subprocess_io do
@@ -217,9 +212,7 @@ class RubiesTest < DuelTest
 
     assert_equal "jruby", found
     assert_empty err, "what it says on stderr isn't shown"
-    failing = File.join(tmpdir, "failing")
-    File.write(failing, "#!/bin/sh\nprintf jruby\nexit 1\n")
-    FileUtils.chmod(0o755, failing)
+    failing = fake_command(File.join(tmpdir, "failing"), "printf jruby\nexit 1")
 
     assert_equal "ruby", Duel::Rubies.engine(failing), "it failed"
     assert_equal "ruby", Duel::Rubies.engine(File.join(tmpdir, "missing")), "it isn't there"
@@ -269,7 +262,7 @@ class RubiesTest < DuelTest
     other = executable(File.join(tmpdir, "other", "bin", "ruby"))
     env = Duel::Rubies.environment(other, path: "/usr/bin:/bin")
 
-    assert_equal "#{File.dirname(other)}:/usr/bin:/bin", env.fetch("PATH")
+    assert_equal path_with(File.dirname(other), "/usr/bin:/bin"), env.fetch("PATH")
     assert_equal Duel::Rubies::VARIABLES.to_h { |variable| [variable, nil] }, env.except("PATH")
     assert_includes Duel::Rubies::VARIABLES, "GEM_HOME"
     ENV["PATH"] = "/x"

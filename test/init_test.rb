@@ -1084,6 +1084,11 @@ class InitTest < DuelTest
 
     assert_equal 0, init("--check").run
     assert_equal "  same      .github/workflows/perf.yml\n  same      .github/workflows/perf-comment.yml\n", @out.string
+    assert_equal read(".github/workflows/perf.yml"), File.binread(File.join(root, ".github/workflows/perf.yml")), "written with LF, as it is"
+    crlf = File.join(root, ".github/workflows/perf-comment.yml")
+    File.binwrite(crlf, File.binread(crlf).gsub("\n", "\r\n"))
+
+    assert_equal 0, init("--check").run, "with CRLF line endings, as git can check it out on Windows"
     File.write(File.join(root, ".github/workflows/perf.yml"), read(".github/workflows/perf.yml").sub("name: Perf\n", "name: Mine\n"))
 
     assert_equal 1, init("--check").run, "one that differs"
@@ -1186,12 +1191,11 @@ class InitTest < DuelTest
   # gh (or glab), run in the project: what it prints, or nil where it
   # fails (which it says) or isn't there.
   def test_cli
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    File.write(File.join(bin, "gh"), "#!/bin/sh\n[ \"$2\" = fail ] && { echo ' no ' >&2; exit 1; }\necho \"$*\"; pwd -P\n")
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    bin = File.join(tmpdir, "bin")
+    fake_command(File.join(bin, "gh"), %([ "$2" = fail ] && { echo ' no ' >&2; exit 1; }\necho "$*"; pwd -P))
     command = init
     original = ENV.fetch("PATH")
-    ENV["PATH"] = "#{bin}:#{original}"
+    ENV["PATH"] = path_with(bin, original)
 
     assert_equal "a b\n#{File.realpath(root)}\n", command.send(:cli, "gh", "a", "b")
     assert_nil command.send(:cli, "gh", "a", "fail", "c")

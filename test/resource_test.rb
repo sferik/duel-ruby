@@ -29,7 +29,7 @@ class ResourceTest < DuelTest
     groups = @groups = []
     spawn = @spawn = Process.method(:spawn)
     Process.define_singleton_method(:spawn) do |*command, **options|
-      spawn.call(*command, **options, pgroup: true).tap { |pid| groups << pid }
+      spawn.call(*command, **options, **Duel::ProcessSample.group).tap { |pid| groups << pid }
     end
     return unless defined?(Mutant)
 
@@ -52,13 +52,6 @@ class ResourceTest < DuelTest
   def resource(timeout: 30.0)
     Duel::Resource.new(File.join(short_tmpdir, "head-1-1"), "head-1", "/candidate", timeout: timeout,
       cache: File.join(tmpdir, "cache"))
-  end
-
-  def end_group(pid)
-    Process.kill("KILL", -pid)
-    Process.wait(pid)
-  rescue Errno::ESRCH, Errno::ECHILD, Errno::EPERM # gone, and waited for
-    nil
   end
 
   def ruby(*code) = [RbConfig.ruby, "-e", *code]
@@ -91,9 +84,10 @@ class ResourceTest < DuelTest
 
     assert_equal ["/other/ruby", {"DUEL_TEST_A" => "version", "DUEL_TEST_B" => "version"}], [r.ruby, r.env]
     assert_empty resource.env
-    r.run("echo $DUEL_TEST_A $DUEL_TEST_B", log: "plain")
-    r.run(Class.new(Hash)["DUEL_TEST_B", "its own"], "echo $DUEL_TEST_A $DUEL_TEST_B", log: "own")
-    r.spawn({"DUEL_TEST_B" => "spawned"}, "echo $DUEL_TEST_A $DUEL_TEST_B", log: "spawned")
+    echo = ruby("puts ENV.values_at('DUEL_TEST_A', 'DUEL_TEST_B').join(' ')")
+    r.run(*echo, log: "plain")
+    r.run(Class.new(Hash)["DUEL_TEST_B", "its own"], *echo, log: "own")
+    r.spawn({"DUEL_TEST_B" => "spawned"}, *echo, log: "spawned")
     r.wait_until { File.size?(r.path("spawned.log")) }
 
     assert_equal ["version version\n", "version its own\n", "version spawned\n"], %w[plain own spawned].map { |log| File.read(r.path("#{log}.log")) }
@@ -117,6 +111,7 @@ class ResourceTest < DuelTest
 
   def test_a_spawned_process_gets_no_other_file_descriptors
     skip "JRuby's spawn ignores close_others" if RUBY_ENGINE == "jruby"
+    skip "Windows's spawn ignores close_others: only a handle made inheritable is passed on" if windows?
 
     IO.pipe do |reader, writer|
       writer.close_on_exec = false
@@ -128,6 +123,8 @@ class ResourceTest < DuelTest
   end
 
   def test_spawn_options_and_a_shell_command
+    skip "sh's command: Windows's shell is cmd" if windows?
+
     r = resource
     elsewhere = File.realpath(tmpdir)
     r.spawn({"GREETING" => "hi"}, "echo $GREETING from $0 in $(pwd -P)", chdir: elsewhere)
@@ -245,6 +242,8 @@ class ResourceTest < DuelTest
   # A process that ends when it's asked to (TERM) isn't killed, and only
   # the resource's own processes are waited for.
   def test_a_process_ends_when_asked
+    skip "Windows kills, with no signal to ask it to stop" if windows?
+
     other = ended_child
     r = resource
     ended = r.path("ended")
@@ -284,6 +283,8 @@ class ResourceTest < DuelTest
   # A log of its own name, and a signal of its own to stop it (some
   # servers shut down fast on INT, slowly on TERM).
   def test_a_named_log_and_a_stop_signal
+    skip "Windows kills, with no signal to ask it to stop" if windows?
+
     r = resource
     ended = r.path("ended")
     ready = r.path("ready")
@@ -309,7 +310,13 @@ class ResourceTest < DuelTest
     error = assert_raises(Duel::Failed) { r.run(*ruby("puts 'no space'; exit 4")) }
 
     assert_equal "head-1's resource: #{RUBY} exited with 4\nno space\n", error.message
-    error = assert_raises(Duel::Failed) { r.run("sh", "-c", "kill -TERM $$", log: "killed") }
+  end
+
+  # One a signal killed says which.
+  def test_running_a_command_a_signal_kills
+    skip "Windows kills with no signal" if windows?
+
+    error = assert_raises(Duel::Failed) { resource.run("sh", "-c", "kill -TERM $$", log: "killed") }
 
     assert_equal "head-1's resource: killed was killed by SIGTERM", error.message
   end

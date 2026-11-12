@@ -167,12 +167,11 @@ class CommentTest < DuelTest
   # gh api: what it prints, or nil
   # where it fails or isn't there, which it says.
   def test_gh
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    File.write(File.join(bin, "gh"), "#!/bin/sh\n[ \"$3\" = fail ] && { echo ' no ' >&2; exit 1; }\necho \"$*\"\n")
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    bin = File.join(tmpdir, "bin")
+    fake_command(File.join(bin, "gh"), %([ "$3" = fail ] && { echo ' no ' >&2; exit 1; }\necho "$*"))
     command = Duel::Comment.new([], env: {}, out: StringIO.new, err: (err = StringIO.new))
 
-    with_path("#{bin}:#{ENV.fetch("PATH")}") do
+    with_path(path_with(bin)) do
       assert_equal "api a b\n", command.send(:gh, "a", "b")
       assert_nil command.send(:gh, "a", "fail")
       assert_equal "duel comment: gh api a: no\n", err.string

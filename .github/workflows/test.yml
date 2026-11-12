@@ -79,10 +79,15 @@ jobs:
         with:
           ruby-version: "4.0"
           bundler-cache: true
+      # (On Windows, in one process, each test named as it runs, so that
+      # one that hangs shows which, until they pass there.)
       - name: Run tests
         id: tests
         continue-on-error: ${{ matrix.os == 'windows-latest' }}
-        run: bundle exec rake test:parallel
+        env:
+          COVERAGE: "false"
+          TESTOPTS: ${{ matrix.os == 'windows-latest' && '-v' || '' }}
+        run: bundle exec rake ${{ matrix.os == 'windows-latest' && 'test' || 'test:parallel' }}
       - name: Note an advisory failure
         if: steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.os }} (advisory)::The tests failed on ${{ matrix.os }}, which Duel's tests don't pass on yet"

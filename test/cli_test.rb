@@ -53,11 +53,10 @@ class CLITest < DuelTest
   def test_the_comment_command
     report = FileUtils.mkdir_p(File.join(tmpdir, "report")).first
     File.write(File.join(report, "comment.env"), "pr=12\ncomment=post\nstatus=failed\n")
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    File.write(File.join(bin, "gh"), "#!/bin/sh\nexit 1\n")
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
+    bin = File.join(tmpdir, "bin")
+    fake_command(File.join(bin, "gh"), "exit 1")
     path = ENV.fetch("PATH")
-    ENV["PATH"] = "#{bin}:#{path}"
+    ENV["PATH"] = path_with(bin)
 
     assert_equal 1, cli("comment", "--report", report, "--head", "abc", env: {"GITHUB_REPOSITORY" => "me/mine"}).run
     assert_equal ["", "duel comment: gh api repos/me/mine/pulls/12: \n"], [@out.string, @err.string]
@@ -316,7 +315,9 @@ class CLITest < DuelTest
     run_against(ref: "abc", unchanged: false)
 
     assert_empty @out.string
-    refute_equal File.realpath(tmpdir), tmpdir, "(reached through a symlink)"
+    # (Off Windows, where the tests' directories are reached through a
+    # symlink: see TestDirs.)
+    refute_equal File.realpath(tmpdir), tmpdir, "(reached through a symlink)" unless windows?
     run_against(ref: "abc", unchanged: false, argv: ["--candidate-dir", tmpdir])
 
     assert_empty @out.string, "resolved, as long"

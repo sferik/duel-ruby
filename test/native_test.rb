@@ -110,6 +110,8 @@ class NativeTest < DuelTest
   end
 
   def test_native_function
+    skip "Windows's functions are its DLLs' (see test_a_libraries_function)" if windows?
+
     getpid = Duel::Native.function("getpid", [], :INT)
 
     assert_equal Fiddle.dlopen(nil)["getpid"], getpid.ptr
@@ -248,7 +250,7 @@ class NativeTest < DuelTest
       -1
     end
 
-    error = assert_raises(Errno::ECHILD) { Duel::Native::Child.wait(42, fiddle: true, wait4: wait4) }
+    error = assert_raises(Errno::ECHILD) { Duel::Native::Child.wait(42, fiddle: true, platform: "x86_64-linux-gnu", wait4: wait4) }
 
     assert_equal "No child processes - wait4", error.message
     assert_empty errors, "after one interrupted"
@@ -262,6 +264,12 @@ class NativeTest < DuelTest
 
     assert_equal [4, nil, nil], Duel::Native::Child.wait(exited, fiddle: false)
     assert_equal 3, Process.wait2(other).last.exitstatus
+  end
+
+  # And the signal that killed it.
+  def test_killed_without_fiddle
+    skip "Windows kills with no signal" if windows?
+
     killed = Process.spawn("sleep", "30")
     Process.kill("TERM", killed)
 
@@ -352,6 +360,129 @@ class NativeTest < DuelTest
     assert_nil Duel::Native::Windows.available(platform: "mingw32", status: missing)
   end
 
+  # A fake QueryThreadCycleTime (or QueryProcessCycleTime): writes
+  # +count+ where it's told, as an unsigned 64-bit count.
+  def fake_cycles(count, calls = [])
+    lambda do |handle, address|
+      calls << [handle, address]
+      Fiddle::Pointer.new(address)[0, 8] = [count].pack("Q")
+      1
+    end
+  end
+
+  # The cycles charged to this thread, or this process, read from where
+  # the call wrote them.
+  def test_windows_cycles
+    calls = []
+    thread = Duel::Native::Windows::Cycles.new(:thread, query: fake_cycles(0x0102_0304_0506_0708, calls))
+
+    assert_equal 0x0102_0304_0506_0708, thread.read
+    assert_equal 2**64 - 1, Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(2**64 - 1)).read, "every byte"
+    process_calls = []
+    Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(5, process_calls)).read
+    handle, address = calls.first
+
+    assert_equal [-2, thread.instance_variable_get(:@count).to_i], [handle, address], "this thread's, into its count"
+    assert_equal(-1, process_calls.first.first, "this process's")
+    assert_raises(KeyError) { Duel::Native::Windows::Cycles.new(:machine, query: fake_cycles(1)) }
+    assert_equal Fiddle::RUBY_FREE, thread.instance_variable_get(:@count).free.to_i, "freed with it"
+  end
+
+  # Read without allocating: the CPU metric's readings are inside the
+  # count of allocations.
+  def test_windows_cycles_allocate_nothing
+    skip "CRuby's count of allocations" unless RUBY_ENGINE == "ruby"
+
+    cycles = Duel::Native::Windows::Cycles.new(:thread, query: ->(_, _) { 1 })
+    cycles.instance_variable_get(:@count)[0, 8] = [123_456_789].pack("Q")
+    # (Measured again, once what the first takes, as Ruby warms up, is
+    # taken.)
+    allocated = lambda do
+      before = GC.stat(:total_allocated_objects)
+      100.times { cycles.read }
+      GC.stat(:total_allocated_objects) - before
+    end
+    allocated.call
+
+    assert_equal [123_456_789, 0], [cycles.read, allocated.call]
+  end
+
+  def test_windows_cycles_found_in_kernel32
+    found = []
+    query = fake_cycles(9)
+    cycles = stub(Duel::Native, :function, ->(*args, **options) { (found << [args, options]) && query }) do
+      %i[thread process].map { |scope| Duel::Native::Windows::Cycles.new(scope).read }
+    end
+
+    assert_equal [9, 9], cycles
+    assert_equal %w[QueryThreadCycleTime QueryProcessCycleTime].map { |name| [[name, %i[INTPTR_T INTPTR_T], :INT], {library: "kernel32"}] },
+      found, "taking integers, which Fiddle passes without allocating"
+  end
+
+  # Another process's memory, by its handle: its working set, and the
+  # most it held.
+  def test_windows_another_processes_memory
+    calls = []
+    windows = Duel::Native::Windows.new(fake_memory_info(4096, calls), handle: 77)
+
+    assert_equal [4096, 8192], [windows.resident, windows.peak]
+    assert_equal [77, 77], calls.map(&:first)
+    assert_nil Duel::Native::Windows.new(->(*) { 0 }, handle: 77).peak, "the call fails"
+  end
+
+  def test_windows_another_processes_cycles
+    calls = []
+    Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(3, calls), handle: 77).read
+
+    assert_equal 77, calls.first.first
+  end
+
+  # A child, by a handle of its own: what it took, and closed.
+  def test_windows_spawned
+    opened = []
+    open_process = ->(*args) { (opened << args) && 77 }
+    spawned = stub(Duel::Native::Windows::Spawned, :new, ->(handle) { [:spawned, handle] }) do
+      Duel::Native::Windows::Spawned.open(42, open_process: open_process)
+    end
+
+    assert_equal [[:spawned, 77], [[0x1000, 0, 42]]], [spawned, opened], "for querying, not inherited"
+    made = []
+    unopened = stub(Duel::Native::Windows::Spawned, :new, ->(handle) { made << handle }) do
+      Duel::Native::Windows::Spawned.open(42, open_process: ->(*) { 0 })
+    end
+
+    assert_equal [nil, []], [unopened, made], "it can't be opened"
+    missing = ->(*) { raise Fiddle::DLError, "no such function" }
+
+    assert_nil Duel::Native::Windows::Spawned.open(42, open_process: missing)
+    closed = []
+    spawned = Duel::Native::Windows::Spawned.new(77, cycles: Struct.new(:read).new(12_345), memory_info: fake_memory_info(4096),
+      close: ->(handle) { (closed << handle) && 1 })
+
+    assert_equal [12_345, 8192], [spawned.cycles, spawned.peak]
+    spawned.close
+
+    assert_equal [77], closed
+  end
+
+  def test_windows_spawned_finds_its_functions
+    found = []
+    queried = []
+    measured = []
+    functions = {"OpenProcess" => ->(*) { 77 }, "QueryProcessCycleTime" => fake_cycles(5, queried),
+                 "K32GetProcessMemoryInfo" => fake_memory_info(4096, measured), "CloseHandle" => ->(_) { 1 }}
+    spawned = stub(Duel::Native, :function, ->(name, *args, **options) { (found << [name, args, options]) && functions.fetch(name) }) do
+      Duel::Native::Windows::Spawned.open(42)
+    end
+
+    assert_equal [5, 8192, 1], [spawned.cycles, spawned.peak, spawned.close]
+    assert_equal [77, 77], [queried.first.first, measured.first.first], "the child's, by its handle"
+    assert_equal [["OpenProcess", [%i[INT INT INT], :INTPTR_T], {library: "kernel32"}],
+      ["QueryProcessCycleTime", [%i[INTPTR_T INTPTR_T], :INT], {library: "kernel32"}],
+      ["K32GetProcessMemoryInfo", [%i[VOIDP VOIDP INT], :INT], {library: "kernel32"}],
+      ["CloseHandle", [%i[INTPTR_T], :INT], {library: "kernel32"}]], found
+  end
+
   def test_windows_platforms
     assert_match Duel::Native::WINDOWS_OS, "mingw32"
     assert_match Duel::Native::WINDOWS_OS, "mswin64_140"
@@ -410,7 +541,17 @@ class NativeHereTest < DuelTest
     code, signal, peak = Duel::Native::Child.wait(Process.spawn(RbConfig.ruby, "-e", "'a' * 80_000_000; exit 3"))
 
     assert_equal [3, nil], [code, signal]
-    assert_operator peak, :>, 80_000_000
+    if windows?
+      assert_nil peak, "not on Windows, yet"
+    else
+      assert_operator peak, :>, 80_000_000
+    end
+  end
+
+  def test_killed_child_here
+    skip "no Fiddle here" unless Duel::Native::FIDDLE
+    skip "Windows kills with no signal" if windows?
+
     killed = Process.spawn("sleep", "30")
     Process.kill("KILL", killed)
 

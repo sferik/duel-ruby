@@ -1176,6 +1176,7 @@ module Duel
 
     # Returns the Results.
     def run
+      CycleClock.prepare
       started = @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @dir = Lane.tmpdir
       begin

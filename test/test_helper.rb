@@ -166,6 +166,45 @@ class DuelTest < Minitest::Test
     @tmpdir ||= Dir.mktmpdir("duel-test").tap { |dir| Minitest.after_run { FileUtils.rm_rf(dir) } }
   end
 
+  # Whether the tests run on Windows: where what they'd check is Unix's
+  # alone (a signal, a shell's command), they skip, saying so.
+  def windows? = TestDirs::WINDOWS
+
+  # Whether StackProf is installed: on CRuby, but not on Windows, which
+  # it doesn't run on (the bundle has it on those platforms only).
+  def stackprof? = RUBY_ENGINE == "ruby" && !windows?
+
+  # Writes a command at +path+, +script+ for sh, and returns what runs
+  # it: +path+, or on Windows, which runs no script by its #!, a .cmd
+  # beside it, which runs it with Git's sh (on the PATH of Windows's
+  # runners). Spawning a command by name finds the .cmd there.
+  def fake_command(path, script)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, "#!/bin/sh\n#{script}\n")
+    FileUtils.chmod(0o755, path)
+    return path unless windows?
+
+    File.write("#{path}.cmd", %(@sh "%~dpn0" %*\r\n))
+    "#{path}.cmd"
+  end
+
+  # What Process.spawn takes to start a process leading a group of its
+  # own (on Windows, a console's: see ProcessSample.group), for
+  # end_group to end with what it started.
+  def own_group = Duel::ProcessSample.group
+
+  # Kills the process +pid+ and what it started, and waits for it, if
+  # it's still there.
+  def end_group(pid)
+    Duel::ProcessSample.kill_tree(pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::ECHILD, Errno::EPERM # gone, and waited for
+    nil
+  end
+
+  # The PATH with +dir+ first.
+  def path_with(dir, path = ENV.fetch("PATH")) = [dir, path].join(File::PATH_SEPARATOR)
+
   # A child of the test's that has ended (with 3), and not been waited
   # for: once ps says it's a zombie. Windows has no zombies (nor ps -o),
   # so there, once it says it's exiting, and a moment more.

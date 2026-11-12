@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "native"
+require_relative "metric"
 
 module Duel
   # The runs of a process benchmark (see DSL#duel_process) for one worker:
@@ -17,6 +18,11 @@ module Duel
   class ProcessSample
     # The lines of its output a failure shows.
     LOG_LINES = 10
+    # Seconds the Ruby process of its own may take to end once its input
+    # is closed, before it's killed, with what it started (see #stop),
+    # and between looks at it meanwhile.
+    STOP_WAIT = 10
+    POLL = 0.01
 
     # Runs for the worker +label+, in +chdir+ with +env+ (over the
     # runner's own), each process's output to +log+. A run that takes
@@ -66,13 +72,20 @@ module Duel
     end
 
     # Ends the Ruby process of its own, if it started: closing its input
-    # does.
-    def stop
+    # does. One still running +wait+ seconds later is killed, with what it
+    # started: on Windows, a process started meanwhile (another worker)
+    # can have inherited the input's other end, which keeps it open.
+    def stop(wait: STOP_WAIT)
       pid = @pid
       return unless pid
 
       @requests.close
-      Process.wait(pid)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
+      sleep POLL until (gone = Process.wait(pid, Process::WNOHANG)) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      unless gone
+        ProcessSample.kill_tree(pid)
+        Process.wait(pid)
+      end
       @replies.close
       @pid = nil
     end
@@ -91,12 +104,27 @@ module Duel
 
     # Runs +command+ once, in +chdir+ with +env+ alone, its output to
     # +log+, and returns what it took: its CPU time, its peak memory (or
-    # nil), and how it failed (or nil).
-    def self.once(command, env, chdir, log)
+    # nil), and how it failed (or nil). On Windows, whose children's CPU
+    # time Process.times doesn't have, what its own handle on the process
+    # says (see Native::Windows::Spawned), its cycles in nanoseconds (see
+    # CycleClock).
+    def self.once(command, env, chdir, log, windows: Native::WINDOWS)
       before = cpu
-      code, signal, peak = Native::Child.wait(Process.spawn(env, *command, chdir: chdir, in: File::NULL, out: [log, "w"],
-        err: [:child, :out], unsetenv_others: true, close_others: true))
-      {"cpu" => cpu - before, "peak" => peak, "failed" => (why(code, signal) unless code == 0)}
+      pid = Process.spawn(env, *command, chdir: chdir, in: File::NULL, out: [log, "w"], err: [:child, :out], unsetenv_others: true,
+        close_others: true)
+      spawned = Native::Windows::Spawned.open(pid) if windows
+      begin
+        code, signal, peak = Native::Child.wait(pid)
+        if spawned
+          taken = CycleClock.ns(spawned.cycles)
+          peak = spawned.peak
+        else
+          taken = cpu - before
+        end
+        {"cpu" => taken, "peak" => peak, "failed" => (why(code, signal) unless code == 0)} #: ended
+      ensure
+        spawned&.close
+      end
     end
 
     # The CPU time of the children waited for so far, in nanoseconds.

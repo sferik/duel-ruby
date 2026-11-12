@@ -10,7 +10,7 @@ target :lib do
 
   check "lib"
 
-  library "digest", "erb", "etc", "fileutils", "json", "net-http", "open3", "openssl", "optparse", "pathname", "socket", "timeout", "tmpdir", "uri"
+  library "digest", "erb", "etc", "fileutils", "json", "net-http", "open3", "openssl", "optparse", "pathname", "socket", "tempfile", "timeout", "tmpdir", "uri"
 
   configure_code_diagnostics(D::Ruby.strict)
 end

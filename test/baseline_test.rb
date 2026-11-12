@@ -334,12 +334,16 @@ class BaselineTest < DuelTest
     assert_path_exists File.join(baseline(base: "v1.0").root, "lib", "sample.rb")
   end
 
+  # A build command that fails, saying why, as sh and cmd (Windows's
+  # shell) both run it.
+  def failing_build = %(#{RbConfig.ruby} -e "puts 'nope'; exit 3")
+
   def test_building_the_candidate
-    @config.build = "echo nope; exit 3"
+    @config.build = failing_build
     error = assert_raises(Duel::Error) { Duel::Baseline.new(@config, settings).build(tmpdir, "the candidate") }
 
-    assert_equal "building the candidate (echo nope; exit 3) failed:\nnope\n", error.message
-    @config.build = "pwd > built"
+    assert_equal "building the candidate (#{failing_build}) failed:\nnope\n", error.message
+    @config.build = %(#{RbConfig.ruby} -e "File.write('built', Dir.pwd)")
     # (From another directory: a build run anywhere else writes there, not
     # in Duel's checkout.)
     elsewhere = FileUtils.mkdir_p(File.join(tmpdir, "elsewhere")).first
@@ -349,10 +353,10 @@ class BaselineTest < DuelTest
   end
 
   def test_a_failing_build
-    @config.build = "echo nope; exit 3"
+    @config.build = failing_build
     error = assert_raises(Duel::Error) { baseline(base: "v1.0").root }
 
-    assert_equal "building the baseline (echo nope; exit 3) failed:\nnope\n", error.message
+    assert_equal "building the baseline (#{failing_build}) failed:\nnope\n", error.message
   end
 
   def test_a_base_directory_as_is

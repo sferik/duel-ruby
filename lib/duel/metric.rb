@@ -416,6 +416,65 @@ module Duel
     def self.process = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID, :nanosecond)
   end
 
+  # CPU time on Windows, whose own CPU times (GetThreadTimes's, which
+  # Ruby's clocks read) move in ticks of 15.6 ms, more than a sample
+  # takes: the cycles charged to the thread or the process (see
+  # Native::Windows::Cycles), in nanoseconds at the run's rate. The
+  # runner measures the rate once, and its workers inherit it (as RATE,
+  # in their environment), so that every worker of both versions counts
+  # the same: a version's CPU time against the other's is its cycles'.
+  # @api private
+  module CycleClock
+    RATE = "DUEL_CYCLES_PER_NS"
+    # The nanoseconds of each of CALIBRATIONS spins the rate is measured
+    # over: the fastest is the rate (a spin the thread was taken off for
+    # a while counts fewer cycles).
+    CALIBRATION_NS = 50_000_000
+    CALIBRATIONS = 3
+
+    # mutant:disable -- kept only so as not to open them again: they're
+    # the same counters however often they're opened
+    def self.thread = ns((@thread ||= Native::Windows::Cycles.new(:thread)).read)
+
+    # mutant:disable -- as .thread
+    def self.process = ns((@process ||= Native::Windows::Cycles.new(:process)).read)
+
+    def self.ns(cycles) = (cycles / rate).round
+
+    # The cycles in a nanosecond: what +env+ (RATE) says, or else
+    # measured (see .calibrate), and set there, for the processes this
+    # one starts.
+    def self.rate(env: ENV) = @rate ||= Float(env[RATE] ||= calibrate.to_s)
+
+    # Measures the rate on Windows, once, before a run starts its
+    # workers, which inherit it.
+    def self.prepare(windows: Native::WINDOWS) = (rate if windows)
+
+    # The most cycles +cycles+ (a counter: see Native::Windows::Cycles)
+    # counted in a nanosecond of +clock+'s (monotonic, in nanoseconds),
+    # spinning for CALIBRATION_NS, CALIBRATIONS times.
+    def self.calibrate(cycles: Native::Windows::Cycles.new(:thread), clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond) })
+      Array.new(CALIBRATIONS) do
+        started = clock.call
+        counted = cycles.read
+        elapsed = clock.call - started
+        elapsed = clock.call - started while elapsed < CALIBRATION_NS
+        (cycles.read - counted).fdiv(elapsed)
+      end.max
+    end
+  end
+
+  # simplecov:disable Windows's clock is CycleClock (Windows's test run
+  # covers this).
+  if Native::WINDOWS
+    module Clock
+      def self.thread = CycleClock.thread
+
+      def self.process = CycleClock.process
+    end
+  end
+  # simplecov:enable
+
   # simplecov:disable JRuby has no thread CPU clock of Ruby's, but the JVM's (JRuby's
   # test run covers these).
   if RUBY_ENGINE == "jruby"

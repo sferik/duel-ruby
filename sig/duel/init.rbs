@@ -57,6 +57,10 @@ module Duel
     # Whether the file at +path+ is +content+, saying so, or how it differs.
     def same?: (String path, String content) -> bool
 
+    # How +lines+ (the file at +path+'s) differ from +content+, as diff -u
+    # has it.
+    def diff: (String path, String lines, String content) -> String
+
     # Creates the label that accepts a regression, with gh, if it's missing
     # and the answer to whether to is yes.
     def create_label: () -> void

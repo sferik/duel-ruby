@@ -212,8 +212,9 @@ class LaneTest < DuelTest
     other = stub(Duel::Lane, :short_tmp, -> { elsewhere }) { Duel::Lane.tmpdir }
 
     assert_equal elsewhere, File.dirname(other), "where short_tmp says"
-    assert_equal ["/tmp/x", "/tmp", "/#{"x" * 39}"], ["/tmp/x", "/var/folders/18/4jzcjnnj3kx8x4nwvbjnydnm0000gn/T", "/#{"x" * 39}"].map { |tmp| Duel::Lane.short_tmp(tmp) }
-    assert_equal "/tmp", Duel::Lane.short_tmp("/#{"x" * 40}")
+    assert_equal ["/tmp/x", "/tmp", "/#{"x" * 39}"],
+      ["/tmp/x", "/var/folders/18/4jzcjnnj3kx8x4nwvbjnydnm0000gn/T", "/#{"x" * 39}"].map { |tmp| Duel::Lane.short_tmp(tmp, windows: false) }
+    assert_equal "/tmp", Duel::Lane.short_tmp("/#{"x" * 40}", windows: false)
     long = "C:/Users/#{"x" * 40}/AppData/Local/Temp"
 
     assert_equal [long, "/tmp"], [true, false].map { |windows| Duel::Lane.short_tmp(long, windows: windows) }, "Windows has no /tmp"
@@ -1016,7 +1017,7 @@ class LaneVersionsTest < DuelTest
   def test_the_versions_as_prepared
     given = SharedList.new
     config.prepare(:worker) do |r|
-      r.run("echo $V > #{File.join(tmpdir, r.name)}")
+      r.run(RbConfig.ruby, "-e", "File.write(ARGV[0], ENV.fetch('V'))", File.join(tmpdir, r.name))
       given << [r.name, r.root, r.ruby]
       {"R" => r.name}
     end
@@ -1031,7 +1032,7 @@ class LaneVersionsTest < DuelTest
       assert_equal({env: {"V" => "c", "R" => "head-1"}, ruby: "/ruby-c", engine: "ruby"},
         workers.made.assoc("head-1").last.slice(:env, :ruby, :engine))
       assert_equal [["base-1", "/b", "/ruby-b"], ["head-1", "/c", "/ruby-c"]], given.sort
-      assert_equal ["b\n", "c\n"], %w[base-1 head-1].map { |name| File.read(File.join(tmpdir, name)) }
+      assert_equal %w[b c], %w[base-1 head-1].map { |name| File.read(File.join(tmpdir, name)) }
     end
   end
 

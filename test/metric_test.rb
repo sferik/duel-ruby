@@ -507,6 +507,119 @@ class MetricTest < DuelTest
   end
 end
 
+# Windows's CPU time: its cycles, in nanoseconds at the run's rate.
+class CycleClockTest < DuelTest
+  cover "Duel::CycleClock*"
+
+  def setup
+    super
+    @saved = %i[@rate @thread @process].to_h { |name| [name, Duel::CycleClock.instance_variable_get(name)] }
+    @rate = ENV.delete(Duel::CycleClock::RATE)
+  end
+
+  def teardown
+    @saved.each { |name, value| Duel::CycleClock.instance_variable_set(name, value) }
+    @rate ? ENV[Duel::CycleClock::RATE] = @rate : ENV.delete(Duel::CycleClock::RATE)
+    super
+  end
+
+  # A counter whose reads are +counts+, in turn.
+  def counter(*counts) = Struct.new(:counts) { def read = counts.shift }.new(counts)
+
+  # A rate given in the environment is the rate (a worker's, from its
+  # runner's).
+  def test_the_rate_given
+    Duel::CycleClock.remove_instance_variable(:@rate) if Duel::CycleClock.instance_variable_defined?(:@rate)
+    rate = stub(Duel::CycleClock, :calibrate, -> { raise "measured" }) { Duel::CycleClock.rate(env: {"DUEL_CYCLES_PER_NS" => "2.5"}) }
+
+    assert_in_delta 2.5, rate
+    assert_in_delta 2.5, Duel::CycleClock.rate(env: {}), 0.001, "kept"
+  end
+
+  # Without one, it's measured, and set in the environment, for the
+  # processes this one starts.
+  def test_the_rate_measured
+    Duel::CycleClock.remove_instance_variable(:@rate) if Duel::CycleClock.instance_variable_defined?(:@rate)
+    env = {}
+
+    assert_in_delta 3.25, stub(Duel::CycleClock, :calibrate, -> { 3.25 }) { Duel::CycleClock.rate(env: env) }
+    assert_equal({"DUEL_CYCLES_PER_NS" => "3.25"}, env)
+    assert_in_delta 3.25, stub(Duel::CycleClock, :calibrate, -> { raise "again" }) { Duel::CycleClock.rate }, 0.001, "once"
+  end
+
+  # The environment's, by default.
+  def test_the_rate_from_the_environment
+    Duel::CycleClock.remove_instance_variable(:@rate) if Duel::CycleClock.instance_variable_defined?(:@rate)
+    ENV["DUEL_CYCLES_PER_NS"] = "1.5"
+
+    assert_in_delta 1.5, stub(Duel::CycleClock, :calibrate, -> { raise "measured" }) { Duel::CycleClock.rate }
+  end
+
+  # The fastest of its spins, each at least CALIBRATION_NS long: a spin
+  # the thread was taken off for counts fewer cycles.
+  def test_calibrate
+    ticks = [1_000, 51_000_000, 2_000_000_000, 2_010_000_000, 2_060_000_000, 5_000_000_000, 5_050_000_000].each
+    clock = -> { ticks.next }
+    cycles = counter(500, 100_000_500, 60_000_000, 240_000_000, 7, 50_000_007)
+
+    assert_in_delta 3.0, Duel::CycleClock.calibrate(cycles: cycles, clock: clock), 0.000001, "the second, the fastest"
+    assert_raises(StopIteration, "every tick taken") { ticks.next }
+    assert_equal [50_000_000, 3], [Duel::CycleClock::CALIBRATION_NS, Duel::CycleClock::CALIBRATIONS]
+  end
+
+  def test_calibrate_spins_out_the_time
+    ticks = [0, 49_999_999, 50_000_000] * 3
+    clock = -> { ticks.shift }
+
+    assert_in_delta 1.0, Duel::CycleClock.calibrate(cycles: counter(0, 50_000_000, 0, 50_000_000, 0, 50_000_000), clock: clock)
+    assert_empty ticks, "until each spin is long enough"
+  end
+
+  # By default, this thread's cycles, and the machine's clock.
+  def test_calibrate_by_default
+    made = []
+    clock_ticks = []
+    gettime = Process.method(:clock_gettime)
+    cycles = counter(*([0, 100_000_000] * 3))
+    rate = stub(Duel::Native::Windows::Cycles, :new, ->(scope) { (made << scope) && cycles }) do
+      stub(Process, :clock_gettime, ->(*args) { (clock_ticks << args) && gettime.call(*args) }) { Duel::CycleClock.calibrate }
+    end
+
+    assert_equal [:thread], made
+    assert_operator rate, :>, 0
+    assert_equal [Process::CLOCK_MONOTONIC, :nanosecond], clock_ticks.first
+  end
+
+  def test_nanoseconds
+    Duel::CycleClock.instance_variable_set(:@rate, 2.5)
+
+    assert_equal 400, Duel::CycleClock.ns(1_000)
+    assert_equal 1, Duel::CycleClock.ns(3), "rounded"
+  end
+
+  # The thread's or the process's counter, opened once.
+  def test_thread_and_process
+    Duel::CycleClock.instance_variable_set(:@rate, 2.0)
+    %i[@thread @process].each { |name| Duel::CycleClock.remove_instance_variable(name) if Duel::CycleClock.instance_variable_defined?(name) }
+    made = []
+    counters = {thread: counter(10, 20), process: counter(10)}
+    read = stub(Duel::Native::Windows::Cycles, :new, ->(scope) { (made << scope) && counters.fetch(scope) }) do
+      [Duel::CycleClock.thread, Duel::CycleClock.thread, Duel::CycleClock.process]
+    end
+
+    assert_equal [5, 10, 5], read
+    assert_equal %i[thread process], made
+  end
+
+  # Measured before a run starts its workers, on Windows only.
+  def test_prepare
+    measured = stub(Duel::CycleClock, :rate, -> { 2.0 }) { [true, false].map { |windows| Duel::CycleClock.prepare(windows: windows) } }
+
+    assert_equal [2.0, nil], measured
+    assert_in_delta 2.0, with_constants(Duel::Native, WINDOWS: true) { stub(Duel::CycleClock, :rate, -> { 2.0 }) { Duel::CycleClock.prepare } }
+  end
+end
+
 class InstructionsTest < DuelTest
   cover "Duel::Metrics::Instructions*"
 

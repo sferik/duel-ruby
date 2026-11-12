@@ -130,6 +130,7 @@ module Duel
       # GetCurrentProcess()'s handle, which needs no closing.
       CURRENT_PROCESS = -1
       COUNTERS = 72 # sizeof(PROCESS_MEMORY_COUNTERS), 64-bit
+      PEAK_WORKING_SET = 8 # offsetof(PeakWorkingSetSize)
       WORKING_SET = 16 # offsetof(WorkingSetSize)
       STATUS = 64 # sizeof(MEMORYSTATUSEX)
       AVAILABLE = 16 # offsetof(ullAvailPhys)
@@ -157,13 +158,91 @@ module Duel
         nil
       end
 
-      def initialize(memory_info)
+      # +handle+: the process's whose memory it reads (this one's, by
+      # default).
+      def initialize(memory_info, handle: CURRENT_PROCESS)
         @memory_info = memory_info
+        @handle = handle
         @buffer = [COUNTERS].pack("L").ljust(COUNTERS, "\0")
       end
 
       # The bytes in its working set, or nil where the call fails.
-      def resident = (@buffer.unpack1("Q", offset: WORKING_SET) unless @memory_info.call(CURRENT_PROCESS, @buffer, COUNTERS).zero?)
+      def resident = counter(WORKING_SET)
+
+      # The most bytes its working set has held, or nil where the call
+      # fails.
+      def peak = counter(PEAK_WORKING_SET)
+
+      # The CPU cycles charged to this thread (QueryThreadCycleTime) or
+      # this process (QueryProcessCycleTime), counted as they run: CPU
+      # time at full resolution, where Windows's own CPU times move in
+      # ticks of 15.6 ms. Read without allocating, as the CPU metric's
+      # readings are inside the count of allocations: the call takes the
+      # count's address as an integer (a pointer Fiddle would wrap), and
+      # the count is read back a byte at a time.
+      class Cycles
+        # GetCurrentThread()'s handle, which needs no closing.
+        CURRENT_THREAD = -2
+        QUERIES = {thread: ["QueryThreadCycleTime", CURRENT_THREAD], process: ["QueryProcessCycleTime", CURRENT_PROCESS]}.freeze #: Hash[:thread | :process, [String, Integer]]
+
+        # +handle+: the thread's or process's (by default, this one).
+        # mutant:disable -- Integer(), #to_int and #to_i are a Pointer's
+        # address alike, and how its memory is freed (test_windows_cycles
+        # checks it is) can't show in what's read
+        def initialize(scope, query: nil, handle: nil)
+          name, current = QUERIES.fetch(scope)
+          @handle = handle || current
+          @query = query || Native.function(name, %i[INTPTR_T INTPTR_T], :INT, library: KERNEL32)
+          @count = Fiddle::Pointer.malloc(UINT64, Fiddle::RUBY_FREE)
+          @address = @count.to_i
+        end
+
+        def read
+          @query.call(@handle, @address)
+          count = 0
+          byte = UINT64
+          count = (count << 8) + (@count[byte -= 1] & 0xff) while byte.positive?
+          count
+        end
+      end
+
+      # A child process, by a handle of its own (OpenProcess's), opened as
+      # it starts: what it took, once it has ended, as Windows keeps no
+      # account of a child's CPU time for its parent (Process.times has
+      # none): its CPU cycles, and its peak working set. (Not those of the
+      # processes it started, which Unix counts in.)
+      class Spawned
+        QUERY = 0x1000 # PROCESS_QUERY_LIMITED_INFORMATION
+
+        # +pid+'s, or nil where it can't be opened. (Ruby holds a handle of
+        # its own until it's waited for, so one that ended already can.)
+        def self.open(pid, open_process: nil)
+          open_process ||= Native.function("OpenProcess", %i[INT INT INT], :INTPTR_T, library: KERNEL32)
+          handle = open_process.call(QUERY, 0, pid)
+          new(handle) unless handle.zero?
+        rescue Fiddle::DLError # no such function
+          nil
+        end
+
+        def initialize(handle, cycles: nil, memory_info: nil, close: nil)
+          @handle = handle
+          @cycles = cycles || Cycles.new(:process, handle: handle)
+          @memory = Windows.new(memory_info || Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32),
+            handle: handle)
+          @close = close || Native.function("CloseHandle", %i[INTPTR_T], :INT, library: KERNEL32)
+        end
+
+        def cycles = @cycles.read
+
+        # Its peak working set, in bytes, or nil.
+        def peak = @memory.peak
+
+        def close = @close.call(@handle)
+      end
+
+      private
+
+      def counter(offset) = (@buffer.unpack1("Q", offset: offset) unless @memory_info.call(@handle, @buffer, COUNTERS).zero?)
     end
 
     # A child process of this one, waited for.

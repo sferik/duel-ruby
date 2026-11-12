@@ -30,19 +30,14 @@ class LockTest < DuelTest
     ready = File.join(tmpdir, "ready")
     code = "f = File.open(ARGV[0], File::RDWR | File::CREAT); f.flock(File::LOCK_EX); f.write(#{written}.to_s); f.flush; " \
       "File.write(ARGV[1], ''); sleep"
-    pid = Process.spawn(RbConfig.ruby, "-e", code, File.join(@dir, "lock"), ready, pgroup: true)
+    pid = Process.spawn(RbConfig.ruby, "-e", code, File.join(@dir, "lock"), ready, **own_group)
     @holders << pid
     sleep 0.01 until File.exist?(ready)
     FileUtils.rm_f(ready)
     pid
   end
 
-  def end_holder(pid)
-    Process.kill("KILL", -pid)
-    Process.wait(pid)
-  rescue Errno::ESRCH, Errno::ECHILD
-    nil
-  end
+  def end_holder(pid) = end_group(pid)
 
   def test_holds_it_and_says_whose_it_is
     held = Duel::Lock.hold(@dir) { [File.read(File.join(@dir, "lock")), :done] }

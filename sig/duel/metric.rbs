@@ -307,6 +307,46 @@ module Duel
     def self.process: () -> Integer
   end
 
+  # CPU time on Windows: the cycles charged to the thread or the
+  # process, in nanoseconds at the run's rate.
+  # @api private
+  module CycleClock
+    RATE: String
+    CALIBRATION_NS: Integer
+    CALIBRATIONS: Integer
+
+    interface _Counter
+      def read: () -> Integer
+    end
+
+    # The environment (ENV, or a Hash in its place).
+    interface _Env
+      def []: (String name) -> String?
+
+      def []=: (String name, String? value) -> String?
+    end
+
+    self.@thread: Native::Windows::Cycles
+    self.@process: Native::Windows::Cycles
+    self.@rate: Float
+
+    def self.thread: () -> Integer
+
+    def self.process: () -> Integer
+
+    def self.ns: (Integer cycles) -> Integer
+
+    # The cycles in a nanosecond: +env+'s, or else measured, and set
+    # there.
+    def self.rate: (?env: _Env) -> Float
+
+    # Measures the rate on Windows, before a run starts its workers.
+    def self.prepare: (?windows: bool) -> Float?
+
+    # The most cycles +cycles+ counted in a nanosecond of +clock+'s.
+    def self.calibrate: (?cycles: _Counter, ?clock: ^() -> Integer) -> Float
+  end
+
   # Bytes allocated, by the benchmark thread or by every thread (JRuby).
   module Allocated
     def self.thread: () -> Integer

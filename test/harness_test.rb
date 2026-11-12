@@ -367,7 +367,7 @@ class HarnessTest < DuelTest
   # do. Not what runs before the sample, an untimed block, or the hooks'
   # own work, and not the pausing and resuming around each iteration.
   def test_a_profile_of_iterations_inside_their_around_block
-    skip "StackProf is CRuby's" unless RUBY_ENGINE == "ruby"
+    skip "StackProf is CRuby's, off Windows" unless stackprof?
 
     require "stackprof"
     benchmark = definition(around_iteration: ->(iteration) { iteration.call && Busy.undone }) { Busy.iteration || untimed { Busy.untimed } }

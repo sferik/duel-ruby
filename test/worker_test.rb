@@ -575,7 +575,7 @@ class WorkerRequestsTest < DuelTest
   end
 
   def test_profile_merges_every_runs_frames
-    skip "StackProf is CRuby's" unless RUBY_ENGINE == "ruby"
+    skip "StackProf is CRuby's, off Windows" unless stackprof?
 
     reply = worker.handle("op" => "profile", "name" => "spin", "n" => 4, "runs" => 3)
     frames = reply.fetch("frames")
@@ -596,7 +596,7 @@ class WorkerRequestsTest < DuelTest
 
   # Untimed work, a large share of the run, isn't in its profile.
   def test_a_profile_leaves_untimed_work_out
-    skip "StackProf is CRuby's" unless RUBY_ENGINE == "ruby"
+    skip "StackProf is CRuby's, off Windows" unless stackprof?
 
     test = self
     duel("partly untimed") do
@@ -625,11 +625,11 @@ class WorkerRequestsTest < DuelTest
     refute_predicate Duel::Worker, :yjit?
   end
 
-  # StackProf, where it's installed (it is, here, on CRuby: the bundle
-  # has it on CRuby's platforms only).
+  # StackProf, where it's installed (it is, here, on CRuby off Windows:
+  # see stackprof?).
   def test_profiler
-    assert_equal RUBY_ENGINE == "ruby", Duel::Worker.profiler?
-    assert_equal RUBY_ENGINE == "ruby", Duel::Worker.profiler?("ruby")
+    assert_equal stackprof?, Duel::Worker.profiler?
+    assert_equal stackprof?, Duel::Worker.profiler?("ruby")
     Duel::Worker.define_singleton_method(:require) { |_| raise LoadError }
 
     refute_predicate Duel::Worker, :profiler?

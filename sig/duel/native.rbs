@@ -87,11 +87,13 @@ module Duel
       KERNEL32: String
       CURRENT_PROCESS: Integer
       COUNTERS: Integer
+      PEAK_WORKING_SET: Integer
       WORKING_SET: Integer
       STATUS: Integer
       AVAILABLE: Integer
 
       @memory_info: _Function
+      @handle: Integer
       # The struct K32GetProcessMemoryInfo fills in, in place.
       @buffer: String
 
@@ -100,10 +102,60 @@ module Duel
       # The bytes of physical memory available, or nil.
       def self.available: (?platform: String, ?status: _Function?) -> Integer?
 
-      def initialize: (_Function memory_info) -> void
+      def initialize: (_Function memory_info, ?handle: Integer) -> void
 
       # The bytes in its working set, or nil.
       def resident: () -> Integer?
+
+      # The most bytes its working set has held, or nil.
+      def peak: () -> Integer?
+
+      # The CPU cycles charged to this thread or this process, read
+      # without allocating.
+      class Cycles
+        CURRENT_THREAD: Integer
+        QUERIES: Hash[:thread | :process, [String, Integer]]
+
+        @handle: Integer
+        @query: _Function
+        # Where the call writes the count.
+        @count: Fiddle::Pointer
+        @address: Integer
+
+        def initialize: (:thread | :process scope, ?query: _Function?, ?handle: Integer?) -> void
+
+        def read: () -> Integer
+      end
+
+      # A child process, by a handle of its own: what it took, once it
+      # has ended.
+      class Spawned
+        QUERY: Integer
+
+        @handle: Integer
+        @cycles: Cycles | _Reader
+        @memory: Windows
+        @close: _Function
+
+        interface _Reader
+          def read: () -> Integer
+        end
+
+        # +pid+'s, or nil where it can't be opened.
+        def self.open: (Integer pid, ?open_process: _Function?) -> Spawned?
+
+        def initialize: (Integer handle, ?cycles: (Cycles | _Reader)?, ?memory_info: _Function?, ?close: _Function?) -> void
+
+        def cycles: () -> Integer
+
+        def peak: () -> Integer?
+
+        def close: () -> Integer
+      end
+
+      private
+
+      def counter: (Integer offset) -> Integer?
     end
 
     # A child process of this one, waited for.

@@ -54,6 +54,21 @@ class RunnerTest < DuelTest
     end
   end
 
+  # Windows's rate of CPU cycles is measured (see CycleClock.prepare)
+  # before any worker starts, to be theirs.
+  def test_the_cycle_rate_first
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      order = []
+      make = workers.method(:make)
+      stub(Duel::CycleClock, :prepare, -> { order << :prepared }) do
+        stub(workers, :make, ->(*args, **options) { (order << :worker) && make.call(*args, **options) }) { run_duel(workers) }
+      end
+
+      assert_equal %i[prepared worker], order.uniq
+    end
+  end
+
   GB = 1 << 30
 
   # A run whose memory readings are +readings+, one after another: the
@@ -489,9 +504,7 @@ class RunnerTest < DuelTest
   # Each version's Ruby's engine, as the Ruby says (for a JRuby worker's
   # JVM options: see Rubies.worker_environment).
   def test_each_versions_engine
-    jruby = File.join(tmpdir, "jruby")
-    File.write(jruby, "#!/bin/sh\nprintf jruby\n")
-    FileUtils.chmod(0o755, jruby)
+    jruby = fake_command(File.join(tmpdir, "jruby"), "printf jruby")
     config = Duel::Config.new(candidate)
     runner = Duel::Runner.new(config, settings, "base", out: StringIO.new)
     runner.instance_variable_set(:@dir, tmpdir)

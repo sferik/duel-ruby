@@ -7,6 +7,7 @@ require "tmpdir"
 require "open3"
 require "optparse"
 require "pathname"
+require "tempfile"
 require_relative "../duel"
 require_relative "comment"
 
@@ -120,7 +121,9 @@ module Duel
     end
 
     # Whether the file at +path+ is +content+, saying so, or how it
-    # differs (as diff -u has it), or that it's missing.
+    # differs (as diff -u has it), or that it's missing. Its lines are
+    # compared, whatever they end with: git can check a file out with
+    # CRLF line endings, on Windows.
     def same?(path, content)
       full = File.join(@root, path)
       unless File.file?(full)
@@ -128,7 +131,8 @@ module Duel
         return false
       end
 
-      differences, = Open3.capture2("diff", "-u", "-L", path, "-L", "#{path} (duel init)", full, "-", stdin_data: content)
+      lines = File.binread(full).gsub("\r\n", "\n")
+      differences = (lines == content) ? "" : diff(path, lines, content)
       said(differences.empty? ? "same" : "differs", path)
       @out.print differences
       differences.empty?
@@ -203,6 +207,17 @@ module Duel
       nil
     end
 
+    # How +lines+ (the file at +path+'s) differ from +content+, as diff -u
+    # has it.
+    def diff(path, lines, content)
+      Tempfile.create("duel-init") do |file|
+        file.binmode
+        file.write(lines)
+        file.close
+        Open3.capture2("diff", "-u", "-L", path, "-L", "#{path} (duel init)", file.path, "-", stdin_data: content).first
+      end
+    end
+
     # What Duel compares: a pull request, or on GitLab, a merge request.
     def request = @gitlab ? "merge request" : "pull request"
 
@@ -217,7 +232,8 @@ module Duel
       return if @dry_run
 
       FileUtils.mkdir_p(File.dirname(full))
-      File.write(full, content)
+      # (Its lines end with LF, as Duel's templates do, on Windows too.)
+      File.binwrite(full, content)
     end
 
     # Adds Duel's Rake task to the Rakefile, if there is one without it.

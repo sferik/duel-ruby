@@ -11,15 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The start of Windows support (CRuby): resident memory comes from
-  the process's working set, the memory available from
+- The start of Windows support (CRuby). CPU time there is the cycles
+  the thread (or the process) was charged, in nanoseconds at a rate
+  the run measures once for every worker, as Windows's own CPU times
+  move in ticks of 15.6 ms, more than a sample takes. A process
+  benchmark's CPU time and peak memory are its process's own (not what
+  it starts, as on Unix), from a handle on it, as Windows keeps no
+  account of a child's for its parent. Resident memory comes from the
+  process's working set, the memory available from
   `GlobalMemoryStatusEx`, a process benchmark's process that hangs is
   killed with what it started by `taskkill /T`, and a resource's
   processes are killed as it stops, as Windows can send them no other
-  signal (an `at_stop` block can ask one to stop first). A process
-  benchmark's peak memory isn't measured there yet, nor instructions.
-  The tests run on macOS and Windows in CI too, Windows's advisory
-  until they pass there.
+  signal (an `at_stop` block can ask one to stop first). There are no
+  instructions there. The tests run on macOS and Windows in CI too,
+  Windows's advisory until they pass there.
+
 - `duel comment`, which the Perf comment workflow now runs instead of
   a shell script: it installs Duel from RubyGems (the newest release of
   the same minor version) and comments with it, so a fix to how it
@@ -62,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `duel init` writes its files with LF line endings on Windows too,
+  and `duel init --check` takes a workflow whose lines end with CRLF
+  (as git can check it out on Windows) for the same.
+- A process benchmark's process that doesn't end once its input is
+  closed is killed ten seconds later, with what it started, rather
+  than waited for without end.
 - On TruffleRuby, Duel fits the workers in the memory available as
   they'll be once warm, not as they start: its workers grow some 2.9
   times as its JIT compiles, so where 8 of each version seemed to fit,
