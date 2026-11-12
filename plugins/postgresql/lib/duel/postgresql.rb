@@ -60,6 +60,11 @@ module Duel
       "pg_stat_statements.track_planning" => "on"
     }.freeze
 
+    # A server pg_ctl starts listens on 127.0.0.1 alone (on a port it's
+    # given), with no Unix socket. (A cluster's copy has its build
+    # server's settings too, in its postgresql.conf: see Cluster#start.)
+    TCP = {"listen_addresses" => "127.0.0.1", "unix_socket_directories" => ""}.freeze
+
     # Configures Duel for the plugin (c.use :postgresql): the server and
     # its metrics. +bin+ is the directory of its programs (postgres and
     # initdb: by default, the real directory of the postgres on the
@@ -89,7 +94,7 @@ module Duel
           port = free_port
           # (Its settings in its postgresql.conf, as pg_ctl takes no
           # others whole. +settings+' last, which it takes.)
-          cluster.start(data, SETTINGS.merge("listen_addresses" => host, "port" => port, "unix_socket_directories" => "").merge(settings))
+          cluster.start(data, SETTINGS.merge(TCP, "port" => port).merge(settings))
           w.at_stop { cluster.stop(data) }
         else
           host = w.dir
@@ -510,11 +515,12 @@ module Duel
         data = File.join(dir, PG_CTL)
         initdb(data)
         port = PostgreSQL.free_port
-        start(data, "listen_addresses" => "127.0.0.1", "port" => port, "unix_socket_directories" => "")
+        start(data, TCP.merge("port" => port))
         begin
-          url = "postgres:///%s?host=127.0.0.1&port=#{port}&user=#{USER}"
-          PostgreSQL.run(format(url, "postgres"), "CREATE DATABASE #{DATABASE}")
-          PostgreSQL.run(format(url, DATABASE), "CREATE EXTENSION pg_stat_statements")
+          url = "postgres://#{USER}@127.0.0.1:#{port}"
+          # (In the user's own database, postgres, which initdb made.)
+          PostgreSQL.run(url, "CREATE DATABASE #{DATABASE}")
+          PostgreSQL.run("#{url}/#{DATABASE}", "CREATE EXTENSION pg_stat_statements")
         ensure
           stop(data)
         end
