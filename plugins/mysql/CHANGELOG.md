@@ -7,14 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.8] - 2026-11-12
-
 ### Added
 
-- Says each worker's server takes at most 450 MB
-  (`Duel::MySQL.worker_memory`), so Duel 0.1.8 or later fits no more
-  workers than that leaves room for, even where a server takes less as
-  it starts.
 - `tcp: true` starts each worker's server on a port of 127.0.0.1's
   alone, its URL `mysql2://root@127.0.0.1:PORT/duel`, with no
   `DUEL_MYSQL_SOCKET`. It's the default on Windows, whose MySQL has no
@@ -32,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - On Windows, `mysqld.exe` on the `PATH` (or a `server:` path without
   its `.exe`) is found: the plugin looked for a file named `mysqld`.
+
+## [0.1.8] - 2026-11-12
+
+### Added
+
+- Says each worker's server takes at most 450 MB
+  (`Duel::MySQL.worker_memory`), so Duel 0.1.8 or later fits no more
+  workers than that leaves room for, even where a server takes less as
+  it starts.
 
 ## [0.1.7] - 2026-11-10
 

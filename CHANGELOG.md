@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.8] - 2026-11-12
-
 ### Added
 
 - The start of Windows support (CRuby). CPU time there is the cycles
@@ -24,8 +22,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   processes are killed as it stops, as Windows can send them no other
   signal (an `at_stop` block can ask one to stop first). A run's lock
   works there too, though Windows can't read a held lock, so another
-  run's isn't named. There are no instructions there. The tests run on macOS and Windows in CI too,
-  Windows's advisory until they pass there.
+  run's isn't named. There are no instructions there. The tests run on
+  macOS and Windows in CI too.
+
+### Changed
+
+- On macOS, instructions are the benchmark thread's
+  (`thread_selfcounts`), as they are on Linux, so they're no longer
+  counted for benchmarks with threads of their own. Where the thread's
+  can't be counted (in a virtual machine, say), they're the whole
+  process's, as before.
+
+### Fixed
+
+- A resource's program given its arguments, in a path with a space in
+  it (`C:/Program Files/PostgreSQL/17/bin/initdb`, say), has its log
+  named for the program (`initdb.log`), not the path's first word
+  (`Program.log`).
+- A process benchmark's Ruby process takes what it runs with (the
+  environment, the directory, the log) as its input's first line, not
+  as an argument: on Windows, an environment could be longer than a
+  command may be, and JRuby's spawn there split the argument at its
+  spaces.
+- On a Mac that counts no instructions (a virtual machine, say),
+  resident memory, and so peak memory, is measured all the same: it
+  was left out with the instructions.
+- `duel init` writes its files with LF line endings on Windows too,
+  and `duel init --check` takes a workflow whose lines end with CRLF
+  (as git can check it out on Windows) for the same.
+- A process benchmark's process that doesn't end once its input is
+  closed is killed ten seconds later, with what it started, rather
+  than waited for without end.
+
+## [0.1.8] - 2026-11-12
+
+### Added
 
 - `duel comment`, which the Perf comment workflow now runs instead of
   a shell script: it installs Duel from RubyGems (the newest release of
@@ -54,11 +85,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- On macOS, instructions are the benchmark thread's
-  (`thread_selfcounts`), as they are on Linux, so they're no longer
-  counted for benchmarks with threads of their own. Where the thread's
-  can't be counted (in a virtual machine, say), they're the whole
-  process's, as before.
 - On a pull request's run on GitHub Actions, the report names the pull
   request's own commit, "merged with `main`", instead of the commit
   that merges it, which GitHub makes for the run and isn't in the pull
@@ -74,24 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A resource's program given its arguments, in a path with a space in
-  it (`C:/Program Files/PostgreSQL/17/bin/initdb`, say), has its log
-  named for the program (`initdb.log`), not the path's first word
-  (`Program.log`).
-- A process benchmark's Ruby process takes what it runs with (the
-  environment, the directory, the log) as its input's first line, not
-  as an argument: on Windows, an environment could be longer than a
-  command may be, and JRuby's spawn there split the argument at its
-  spaces.
-- On a Mac that counts no instructions (a virtual machine, say),
-  resident memory, and so peak memory, is measured all the same: it
-  was left out with the instructions.
-- `duel init` writes its files with LF line endings on Windows too,
-  and `duel init --check` takes a workflow whose lines end with CRLF
-  (as git can check it out on Windows) for the same.
-- A process benchmark's process that doesn't end once its input is
-  closed is killed ten seconds later, with what it started, rather
-  than waited for without end.
 - On TruffleRuby, Duel fits the workers in the memory available as
   they'll be once warm, not as they start: its workers grow some 2.9
   times as its JIT compiles, so where 8 of each version seemed to fit,
