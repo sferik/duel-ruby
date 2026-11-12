@@ -109,6 +109,53 @@ class NativeTest < DuelTest
     assert_nil Duel::Native::MacOS.open(platform: "darwin", rusage: missing)
   end
 
+  # Resident memory is read where instructions aren't counted (a virtual
+  # machine's, say), from the same call.
+  def test_macos_memory_without_counters
+    memory = macos { Duel::Native::MacOS.memory(rusage: fake_rusage(0, 8192)) }
+
+    assert_equal 8192, memory.resident
+    assert_nil Duel::Native::MacOS.memory(platform: "darwin", rusage: fake_rusage(5, 0)), "none read"
+    assert_nil Duel::Native::MacOS.memory(platform: "linux", rusage: fake_rusage(5))
+    assert_nil Duel::Native::MacOS.memory(platform: "darwin", rusage: ->(*) { raise Fiddle::DLError, "no such function" })
+    found = []
+    rusage = fake_rusage(0)
+    stub(Duel::Native, :function, ->(*args) { (found << args) && rusage }) { macos { Duel::Native::MacOS.memory } }
+
+    assert_equal [["proc_pid_rusage", %i[INT INT VOIDP], :INT]], found
+  end
+
+  # A fake thread_selfcounts: writes +instructions+ and cycles where
+  # struct thsc_cpi has them, or fails.
+  def fake_selfcounts(instructions, calls = [], fails: false)
+    lambda do |type, buffer, size|
+      calls << [type, buffer.bytesize, buffer.encoding, size]
+      buffer[0, 16] = [instructions, 99].pack("QQ")
+      fails ? -1 : 0
+    end
+  end
+
+  # macOS's thread's instructions: the calling thread's.
+  def test_macos_thread_counts_the_threads_instructions
+    calls = []
+    counter = macos { Duel::Native::MacOSThread.open(selfcounts: fake_selfcounts(77, calls)) }
+
+    assert_equal ["thread", 77], [counter.scope, counter.read]
+    assert_equal [[1, 16, Encoding::BINARY, 16]] * 2, calls, "THSC_CPI, into a struct's worth"
+    found = []
+    selfcounts = fake_selfcounts(5)
+    stub(Duel::Native, :function, ->(*args) { (found << args) && selfcounts }) { macos { Duel::Native::MacOSThread.open } }
+
+    assert_equal [["thread_selfcounts", %i[INT VOIDP SIZE_T], :INT]], found
+  end
+
+  def test_macos_thread_unavailable
+    assert_nil Duel::Native::MacOSThread.open(platform: "darwin", selfcounts: fake_selfcounts(0)), "counts nothing (a VM's)"
+    assert_nil Duel::Native::MacOSThread.open(platform: "darwin", selfcounts: fake_selfcounts(5, fails: true)), "fails"
+    assert_nil Duel::Native::MacOSThread.open(platform: "linux", selfcounts: fake_selfcounts(5))
+    assert_nil Duel::Native::MacOSThread.open(platform: "darwin", selfcounts: ->(*) { raise Fiddle::DLError, "no such function" })
+  end
+
   def test_native_function
     skip "Windows's functions are its DLLs' (see test_a_libraries_function)" if windows?
 
@@ -119,9 +166,11 @@ class NativeTest < DuelTest
     assert_equal 5, Duel::Native.function("strlen", [:VOIDP], :LONG).call("hello")
   end
 
-  def counter_with(linux, macos, **options)
+  def counter_with(linux, macos, macos_thread: nil, **options)
     stub(Duel::Native::Linux, :open, -> { linux }) do
-      stub(Duel::Native::MacOS, :open, -> { macos }) { Duel::Native::Counter.open(**options) }
+      stub(Duel::Native::MacOSThread, :open, -> { macos_thread }) do
+        stub(Duel::Native::MacOS, :open, -> { macos }) { Duel::Native::Counter.open(**options) }
+      end
     end
   end
 
@@ -135,6 +184,8 @@ class NativeTest < DuelTest
 
   def test_the_best_counter
     assert_equal :linux, counter_with(:linux, :macos, fiddle: true), "Linux's counts the thread's"
+    assert_equal :macos_thread, counter_with(nil, :macos, macos_thread: :macos_thread, fiddle: true), "and macOS's thread's"
+    assert_equal :linux, counter_with(:linux, :macos, macos_thread: :macos_thread, fiddle: true)
     assert_equal :macos, counter_with(nil, :macos, fiddle: true)
     assert_equal :linux, counter_with(:linux, nil, fiddle: true)
     assert_nil counter_with(nil, nil, fiddle: true)
@@ -524,7 +575,7 @@ class NativeTest < DuelTest
     reader = Duel::Native::Memory.instance_variable_get(:@reader)
     opened = [true, false].map do |fiddle|
       Duel::Native::Memory.remove_instance_variable(:@reader) if Duel::Native::Memory.instance_variable_defined?(:@reader)
-      stub(Duel::Native::MacOS, :open, -> {}) do
+      stub(Duel::Native::MacOS, :memory, -> {}) do
         stub(Duel::Native::Windows, :open, -> { :windows }) { with_constants(Duel::Native, FIDDLE: fiddle) { Duel::Native::Memory.opened_reader } }
       end
     end

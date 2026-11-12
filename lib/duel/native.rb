@@ -38,9 +38,10 @@ module Duel
 
     # Instructions retired in user space, from the CPU's counters.
     class Counter
-      # The best counter here: the benchmark thread's (Linux), the
-      # process's (macOS), or nil.
-      def self.open(fiddle: FIDDLE) = (Linux.open || MacOS.open if fiddle)
+      # The best counter here: the benchmark thread's (Linux's, or
+      # macOS's), the process's (macOS's, where the thread's counts
+      # nothing: in a virtual machine, say), or nil.
+      def self.open(fiddle: FIDDLE) = (Linux.open || MacOSThread.open || MacOS.open if fiddle)
 
       # "thread" or "process": whose instructions it counts.
       attr_reader :scope
@@ -92,11 +93,18 @@ module Duel
       INSTRUCTIONS = 248 # offsetof(ri_instructions)
 
       def self.open(platform: OS, rusage: nil)
+        counter = memory(platform: platform, rusage: rusage)
+        counter if counter&.read&.positive?
+      end
+
+      # The same call, for resident memory alone: where the instructions
+      # aren't counted (a virtual machine's, say), the memory is.
+      def self.memory(platform: OS, rusage: nil)
         return unless platform.include?("darwin")
 
         rusage ||= Native.function("proc_pid_rusage", %i[INT INT VOIDP], :INT)
-        counter = new(rusage)
-        counter if counter.read.positive?
+        reader = new(rusage)
+        reader if reader.resident.positive?
       rescue Fiddle::DLError # no such function
         nil
       end
@@ -119,6 +127,36 @@ module Duel
         @rusage.call(Process.pid, RUSAGE_INFO_V4, @buffer)
         @buffer.unpack1("Q", offset: offset)
       end
+    end
+
+    # macOS: the calling thread's instructions, from thread_selfcounts
+    # (THSC_CPI: its instructions, then its cycles), no privileges
+    # needed. It's libSystem's, but not documented: where it fails, or
+    # counts nothing, there's none (see Counter.open). It counts the
+    # thread's instructions in the kernel too, where Linux's counts user
+    # space only.
+    class MacOSThread < Counter
+      THSC_CPI = 1
+      SIZE = 16 # sizeof(struct thsc_cpi)
+
+      def self.open(platform: OS, selfcounts: nil)
+        return unless platform.include?("darwin")
+
+        selfcounts ||= Native.function("thread_selfcounts", %i[INT VOIDP SIZE_T], :INT)
+        counter = new(selfcounts)
+        counter if counter.read&.positive?
+      rescue Fiddle::DLError # no such function
+        nil
+      end
+
+      def initialize(selfcounts)
+        super("thread")
+        @selfcounts = selfcounts
+        @buffer = "\0".b * SIZE
+      end
+
+      # The count, or nil where the call fails.
+      def read = (@buffer.unpack1("Q") if @selfcounts.call(THSC_CPI, @buffer, SIZE).zero?)
     end
 
     # Windows: this process's working set (its resident memory), from
@@ -298,7 +336,7 @@ module Duel
       def self.opened_reader
         return @reader if defined?(@reader)
 
-        @reader = (MacOS.open || Windows.open if FIDDLE)
+        @reader = (MacOS.memory || Windows.open if FIDDLE)
       end
 
       # From /proc (Linux), else from macOS's or Windows's reader, else

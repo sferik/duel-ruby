@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- On macOS, instructions are the benchmark thread's
+  (`thread_selfcounts`), as they are on Linux, so they're no longer
+  counted for benchmarks with threads of their own. Where the thread's
+  can't be counted (in a virtual machine, say), they're the whole
+  process's, as before.
 - On a pull request's run on GitHub Actions, the report names the pull
   request's own commit, "merged with `main`", instead of the commit
   that merges it, which GitHub makes for the run and isn't in the pull
@@ -69,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On a Mac that counts no instructions (a virtual machine, say),
+  resident memory, and so peak memory, is measured all the same: it
+  was left out with the instructions.
 - `duel init` writes its files with LF line endings on Windows too,
   and `duel init --check` takes a workflow whose lines end with CRLF
   (as git can check it out on Windows) for the same.

@@ -18,15 +18,17 @@ class EndToEndComparingTest < DuelTest
     # TruffleRuby's grow to some 1.5 GB each as they warm up, and 16 of
     # them ran a CI runner out of memory.)
     fewer = Duel::JIT_WARM.zero? ? [] : %w[--processes 3]
-    duel = lambda do |dir|
+    duel = lambda do |dir, *options|
       out = StringIO.new
-      [Dir.chdir(dir) { Duel::CLI.new(["--base", base, "--jobs", "1", *fewer], env: {}, out: out).run }, out.string]
+      [Dir.chdir(dir) { Duel::CLI.new(["--base", base, "--jobs", "1", *fewer, *options], env: {}, out: out).run }, out.string]
     end
 
     assert_equal 0, duel.call(candidate).first
-    status, out = duel.call(slower)
+    # (Its report, each worker's median and all, shown where it fails.)
+    report = File.join(tmpdir, "report.json")
+    status, out = duel.call(slower, "--json", report)
 
-    assert_equal 1, status, out
+    assert_equal 1, status, "#{out}#{File.read(report) if File.exist?(report)}"
     assert_includes out, "REGRESSION work"
   end
 

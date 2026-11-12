@@ -70,6 +70,9 @@ module Duel
 
       def self.open: (?platform: String, ?rusage: _Function?) -> MacOS?
 
+      # The same call, for resident memory alone.
+      def self.memory: (?platform: String, ?rusage: _Function?) -> MacOS?
+
       def initialize: (_Function rusage) -> void
 
       def read: () -> Integer
@@ -157,6 +160,23 @@ module Duel
       private
 
       def counter: (Integer offset) -> Integer?
+    end
+
+    # macOS: the calling thread's instructions, from thread_selfcounts.
+    class MacOSThread < Counter
+      THSC_CPI: Integer
+      SIZE: Integer
+
+      @selfcounts: _Function
+      # The struct thread_selfcounts fills in, in place.
+      @buffer: String
+
+      def self.open: (?platform: String, ?selfcounts: _Function?) -> MacOSThread?
+
+      def initialize: (_Function selfcounts) -> void
+
+      # The count, or nil where the call fails.
+      def read: () -> Integer?
     end
 
     # A child process of this one, waited for.

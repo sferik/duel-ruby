@@ -60,12 +60,13 @@ jobs:
         if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"
 
-  # The tests on macOS and Windows, on the latest CRuby. Windows's are
-  # advisory until they pass there: Duel itself runs on Windows, but
-  # many of its tests still start their processes the Unix way (sh, ps,
-  # $VAR in a command).
+  # The tests on macOS and Windows, on the latest CRuby and on JRuby
+  # 10.0 and 10.1. Windows's are advisory until they pass there, as are
+  # JRuby's on macOS, new here: Duel itself runs on Windows (CRuby),
+  # but some of its tests still fail there.
   os:
-    name: ${{ matrix.os }}
+    # (CRuby's named for the system alone, as they were.)
+    name: ${{ matrix.ruby-version == '4.0' && matrix.os || format('{0} {1}', matrix.os, matrix.ruby-version) }}
     if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -73,28 +74,37 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
+        ruby-version: ["4.0", "jruby-10.0", "jruby-10.1"]
+    env:
+      ADVISORY: ${{ matrix.os == 'windows-latest' || startsWith(matrix.ruby-version, 'jruby') }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ruby/setup-ruby@v1
+      - id: ruby
+        uses: ruby/setup-ruby@v1
+        continue-on-error: ${{ env.ADVISORY == 'true' }}
         with:
-          ruby-version: "4.0"
+          ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
       # (On Windows, in one process, each test named as it runs, so that
-      # one that hangs shows which, until they pass there.)
+      # one that hangs shows which, until they pass there. Elsewhere, the
+      # skipped tests are named, as what a system can't measure shows
+      # there.)
       - name: Run tests
         id: tests
-        continue-on-error: ${{ matrix.os == 'windows-latest' }}
+        continue-on-error: ${{ env.ADVISORY == 'true' }}
         env:
           COVERAGE: "false"
-          TESTOPTS: ${{ matrix.os == 'windows-latest' && '-v' || '' }}
+          TESTOPTS: ${{ matrix.os == 'windows-latest' && '-v' || '--show-skips' }}
+          # JRuby's --dev starts each process faster, and the tests start many
+          JRUBY_OPTS: ${{ startsWith(matrix.ruby-version, 'jruby') && '--dev' || '' }}
         run: bundle exec rake ${{ matrix.os == 'windows-latest' && 'test' || 'test:parallel' }}
       - name: Note an advisory failure
-        if: steps.tests.outcome == 'failure'
-        run: echo "::warning title=${{ matrix.os }} (advisory)::The tests failed on ${{ matrix.os }}, which Duel's tests don't pass on yet"
+        if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.os }} ${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.os }}, ${{ matrix.ruby-version }}, which Duel's tests don't pass on yet"
       # (For now: what each piece of a sample's CPU reading allocates on
       # Windows, where samples count some that aren't the benchmark's.)
       - name: Check what measuring allocates
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && matrix.ruby-version == '4.0'
         run: bundle exec ruby -Ilib tasks/allocations_check.rb
 
   coverage:

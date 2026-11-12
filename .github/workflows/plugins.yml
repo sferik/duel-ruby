@@ -32,26 +32,39 @@ permissions:
 
 jobs:
   test:
-    name: ${{ matrix.plugin }}
-    runs-on: ubuntu-latest
+    # (Linux's named for the plugin alone, as they were.)
+    name: ${{ matrix.os == 'ubuntu-latest' && matrix.plugin || format('{0} ({1})', matrix.plugin, matrix.os) }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         plugin: [activerecord, gvl, memcached, mysql, postgresql, rails, redis, retained]
         # What each plugin's tests need installed, as its own workflow
-        # installs it (gvl's extension: `rake test` builds it).
+        # installs it (gvl's extension: `rake test` builds it): on Linux
+        # with apt, on macOS with Homebrew. Windows's runners have
+        # PostgreSQL and MySQL already, and there's no Redis or memcached
+        # for Windows.
         include:
           - plugin: memcached
             packages: memcached
+            brew: memcached
           - plugin: mysql
             packages: mysql-server
+            brew: mysql
           - plugin: postgresql
             # PostgreSQL (its programs in /usr/lib/postgresql/*/bin, where
             # the plugin looks), with pg_stat_statements, and libpq's
             # headers for pg.
             packages: postgresql libpq-dev
+            brew: postgresql@17
           - plugin: redis
             packages: redis-server
+            brew: redis
+    # macOS's and Windows's are advisory until they pass there: the
+    # plugins that start servers find and stop them the Unix way.
+    env:
+      ADVISORY: ${{ matrix.os != 'ubuntu-latest' }}
     # The plugin is a project of its own, in its directory: its Gemfile
     # (which takes Duel from ../..), Rakefile and tests.
     defaults:
@@ -59,23 +72,40 @@ jobs:
         working-directory: plugins/${{ matrix.plugin }}
     steps:
       - uses: actions/checkout@v7
-      - if: matrix.packages
+      - if: matrix.packages && runner.os == 'Linux'
         run: sudo apt-get install -y ${{ matrix.packages }}
       # AppArmor confines Ubuntu's mysqld to /var/lib/mysql. Each worker's
       # server keeps its data in a directory of its own, under /tmp.
-      - if: matrix.plugin == 'mysql'
+      - if: matrix.plugin == 'mysql' && runner.os == 'Linux'
         run: |
           if [ -f /etc/apparmor.d/usr.sbin.mysqld ]; then
             sudo ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
             sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
           fi
+      # (Homebrew's PostgreSQL isn't linked onto the PATH, where the
+      # plugin looks.)
+      - if: matrix.brew && runner.os == 'macOS'
+        run: |
+          brew install ${{ matrix.brew }}
+          echo "$(brew --prefix ${{ matrix.brew }})/bin" >> "$GITHUB_PATH"
+      # (Windows's runners have PostgreSQL in PGBIN, off the PATH.)
+      - if: matrix.plugin == 'postgresql' && runner.os == 'Windows'
+        shell: bash
+        run: echo "$PGBIN" >> "$GITHUB_PATH"
       # (A bundle cached for each plugin's directory.)
-      - uses: ruby/setup-ruby@v1
+      - id: ruby
+        uses: ruby/setup-ruby@v1
+        continue-on-error: ${{ env.ADVISORY == 'true' }}
         with:
           ruby-version: "3.4"
           bundler-cache: true
           working-directory: plugins/${{ matrix.plugin }}
       - name: Run tests
+        id: tests
+        continue-on-error: ${{ env.ADVISORY == 'true' }}
         env:
           COVERAGE: "false"
         run: bundle exec rake test
+      - name: Note an advisory failure
+        if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: echo "::warning title=${{ matrix.plugin }} on ${{ matrix.os }} (advisory)::A step failed for ${{ matrix.plugin }} on ${{ matrix.os }}, which its tests don't pass on yet"

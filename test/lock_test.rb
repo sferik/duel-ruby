@@ -84,7 +84,8 @@ class LockTest < DuelTest
         Duel::Lock.hold(@dir, windows: windows) { nil }
       end
 
-      refute_path_exists path
+      # (Not where it's removed only while held, on Windows, which can't.)
+      refute_path_exists path if windows || !windows?
     end
 
     assert_equal [[false, path], [true, path], [true, path]], removed.select { |_, target| target == path }, "while held, and on Windows, once closed"

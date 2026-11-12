@@ -22,10 +22,13 @@ namespace :test do
   # so that they finish about together. Each process has its own
   # directories (see TestDirs, in test/test_helper.rb). Coverage is off:
   # each process runs only some of the files (`rake test` checks it).
+  # TESTOPTS go to each process's tests (--show-skips, say), as `rake
+  # test` takes them.
   desc "Run the tests in several processes at once (PROCESSES=3)"
   task :parallel do
+    options = ENV.fetch("TESTOPTS", "").empty? ? [] : ["--test-options", ENV.fetch("TESTOPTS")]
     sh({"COVERAGE" => "false"}, "parallel_test", "test", "-n", ENV.fetch("PROCESSES", "3"), "--group-by", "runtime",
-      "--runtime-log", "test/parallel_runtime.log")
+      "--runtime-log", "test/parallel_runtime.log", *options)
   end
 
   # Records each test file's time, for test:parallel to group the files

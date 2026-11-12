@@ -519,13 +519,14 @@ module Duel
       def stop_sample = (Clock.public_send(@clock) - @started).round
     end
 
-    # Instructions retired in user space, from the CPU's own counters:
-    # nearly the same from run to run, so it catches slowdowns too small
-    # for CPU time to settle (with a limit of its own, 1%). Where the
-    # counters are: Linux (the benchmark thread's, unless a virtual
-    # machine hides them, so not for benchmarks with threads of their
-    # own) and macOS (the whole process's). It misses what instructions
-    # don't show, like cache misses: CPU time is still judged.
+    # Instructions retired, from the CPU's own counters: nearly the same
+    # from run to run, so it catches slowdowns too small for CPU time to
+    # settle (with a limit of its own, 1%). Where the counters are: Linux
+    # (the benchmark thread's, in user space) and macOS (the thread's,
+    # the kernel's part too), so not for benchmarks with threads of their
+    # own, unless a virtual machine hides them, where macOS counts the
+    # whole process's, if it can. It misses what instructions don't show,
+    # like cache misses: CPU time is still judged.
     class Instructions < Metric
       def self.measures = {"instructions" => {kind: :ratio, floor: 100_000, sizes_samples: false, limit: 1.01}}
 
