@@ -252,4 +252,12 @@ class PluginTest < Minitest::Test
         end
       RUBY
   end
+
+  # Whether +socket+ sends each write at once (TCP_NODELAY). (JRuby's
+  # getsockopt reads only SOL_SOCKET's options: its Java socket says.)
+  def no_delay?(socket)
+    return socket.to_channel.socket.tcp_no_delay if RUBY_ENGINE == "jruby"
+
+    socket.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool
+  end
 end

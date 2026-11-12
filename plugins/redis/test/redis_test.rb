@@ -332,7 +332,7 @@ class RedisTest < PluginTest
     end
 
     assert_equal [["127.0.0.1", port]], opened, "to the URL's host and port"
-    assert sockets.last.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool, "no delay"
+    assert no_delay?(sockets.last), "no delay"
     assert_equal port, sockets.last.remote_address.ip_port
     assert_raises(SystemCallError, "a path, not a URL") { Duel::Redis::Connection.socket("redis://127.0.0.1:#{port}x") }
   ensure

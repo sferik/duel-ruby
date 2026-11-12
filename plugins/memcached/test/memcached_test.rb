@@ -113,7 +113,7 @@ class MemcachedTest < PluginTest
 
     assert_equal [UNIXSocket, TCPSocket], sockets.map(&:class)
     assert_equal [["127.0.0.1", port]], opened
-    assert sockets.last.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool, "no delay"
+    assert no_delay?(sockets.last), "no delay"
   ensure
     sockets&.each(&:close)
     unix&.close
