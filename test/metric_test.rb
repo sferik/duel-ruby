@@ -435,6 +435,10 @@ class MetricTest < DuelTest
     measured = stub(Duel::Clock, :thread, -> { clock.shift }) { cpu.start_sample(sample(:thread)) && cpu.stop_sample }
 
     assert_equal 250, measured, "the clock's advance"
+    clock = [1_000.25, 1_250.5]
+    measured = stub(Duel::Clock, :thread, -> { clock.shift }) { cpu.start_sample(sample(:thread)) && cpu.stop_sample }
+
+    assert_equal [250, Integer], [measured, measured.class], "in whole nanoseconds, where the clock reads Floats (Windows's)"
     other = Thread.new { 2_000_000.times { Math.sqrt(2) } }
     cpu.start_sample(sample(:thread))
     other.join

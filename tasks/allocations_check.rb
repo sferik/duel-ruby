@@ -20,6 +20,9 @@ per_call("GC.stat") { GC.stat(:total_allocated_objects) }
 per_call("monotonic clock") { Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond) }
 per_call("thread CPU clock (Ruby's)") { Process.clock_gettime(Process::CLOCK_THREAD_CPUTIME_ID, :nanosecond) }
 per_call("Duel::Clock.thread") { Duel::Clock.thread }
+cpu = Duel::Metrics::CPU.new
+sample = Duel::Sample.new(Duel::Definition.new("x", nil, false, nil, nil), [], n: 1, counting: false)
+per_call("the CPU metric, a sample") { cpu.start_sample(sample) && cpu.stop_sample }
 exit unless Duel::Native::WINDOWS
 
 Duel::CycleClock.rate

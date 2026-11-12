@@ -423,6 +423,8 @@ module Duel
   # runner measures the rate once, and its workers inherit it (as RATE,
   # in their environment), so that every worker of both versions counts
   # the same: a version's CPU time against the other's is its cycles'.
+  # Its readings are Floats, which Windows doesn't allocate, where it
+  # does an Integer past 2**30 (see Native::Windows::Cycles).
   # @api private
   module CycleClock
     RATE = "DUEL_CYCLES_PER_NS"
@@ -434,11 +436,12 @@ module Duel
 
     # mutant:disable -- kept only so as not to open them again: they're
     # the same counters however often they're opened
-    def self.thread = ns((@thread ||= Native::Windows::Cycles.new(:thread)).read)
+    def self.thread = (@thread ||= Native::Windows::Cycles.new(:thread)).read / rate
 
     # mutant:disable -- as .thread
-    def self.process = ns((@process ||= Native::Windows::Cycles.new(:process)).read)
+    def self.process = (@process ||= Native::Windows::Cycles.new(:process)).read / rate
 
+    # +cycles+ (a child process's, say), in whole nanoseconds.
     def self.ns(cycles) = (cycles / rate).round
 
     # The cycles in a nanosecond: what +env+ (RATE) says, or else
@@ -511,7 +514,9 @@ module Duel
         @started = Clock.public_send(@clock)
       end
 
-      def stop_sample = Clock.public_send(@clock) - @started
+      # (Rounded: on Windows, the clock's readings are Floats. See
+      # CycleClock.)
+      def stop_sample = (Clock.public_send(@clock) - @started).round
     end
 
     # Instructions retired in user space, from the CPU's own counters:

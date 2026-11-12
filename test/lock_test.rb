@@ -81,7 +81,7 @@ class LockTest < DuelTest
     rm_f = FileUtils.method(:rm_f)
     [false, true].each do |windows|
       stub(FileUtils, :rm_f, ->(target) { (removed << [windows, target, File.exist?(target)]) && rm_f.call(target) }) do
-        Duel::Lock.hold(@dir, windows: windows) { File.write(path, "kept") }
+        Duel::Lock.hold(@dir, windows: windows) { nil }
       end
     end
 

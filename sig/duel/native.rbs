@@ -124,7 +124,8 @@ module Duel
 
         def initialize: (:thread | :process scope, ?query: _Function?, ?handle: Integer?) -> void
 
-        def read: () -> Integer
+        # The count, as a Float.
+        def read: () -> Float
       end
 
       # A child process, by a handle of its own: what it took, once it
@@ -138,7 +139,7 @@ module Duel
         @close: _Function
 
         interface _Reader
-          def read: () -> Integer
+          def read: () -> Float
         end
 
         # +pid+'s, or nil where it can't be opened.
@@ -146,7 +147,7 @@ module Duel
 
         def initialize: (Integer handle, ?cycles: (Cycles | _Reader)?, ?memory_info: _Function?, ?close: _Function?) -> void
 
-        def cycles: () -> Integer
+        def cycles: () -> Float
 
         def peak: () -> Integer?
 

@@ -299,12 +299,13 @@ module Duel
     def grew: (totals[Metric::value] before, String name) -> Metric::value
   end
 
-  # CPU time in nanoseconds: the benchmark thread's, or the process's.
+  # CPU time in nanoseconds: the benchmark thread's, or the process's
+  # (on Windows, a Float: see CycleClock).
   # @api private
   module Clock
-    def self.thread: () -> Integer
+    def self.thread: () -> (Integer | Float)
 
-    def self.process: () -> Integer
+    def self.process: () -> (Integer | Float)
   end
 
   # CPU time on Windows: the cycles charged to the thread or the
@@ -316,7 +317,7 @@ module Duel
     CALIBRATIONS: Integer
 
     interface _Counter
-      def read: () -> Integer
+      def read: () -> Float
     end
 
     # The environment (ENV, or a Hash in its place).
@@ -330,11 +331,12 @@ module Duel
     self.@process: Native::Windows::Cycles
     self.@rate: Float
 
-    def self.thread: () -> Integer
+    def self.thread: () -> Float
 
-    def self.process: () -> Integer
+    def self.process: () -> Float
 
-    def self.ns: (Integer cycles) -> Integer
+    # +cycles+, in whole nanoseconds.
+    def self.ns: (Float cycles) -> Integer
 
     # The cycles in a nanosecond: +env+'s, or else measured, and set
     # there.
@@ -362,7 +364,7 @@ module Duel
     # CPU time, in nanoseconds.
     class CPU < Metric
       @clock: :thread | :process
-      @started: Integer
+      @started: Integer | Float
 
       def start_sample: (Sample sample) -> void
 

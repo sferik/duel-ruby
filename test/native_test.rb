@@ -374,10 +374,12 @@ class NativeTest < DuelTest
   # the call wrote them.
   def test_windows_cycles
     calls = []
-    thread = Duel::Native::Windows::Cycles.new(:thread, query: fake_cycles(0x0102_0304_0506_0708, calls))
+    thread = Duel::Native::Windows::Cycles.new(:thread, query: fake_cycles(0x0001_0203_0405_0607, calls))
+    read = thread.read
 
-    assert_equal 0x0102_0304_0506_0708, thread.read
-    assert_equal 2**64 - 1, Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(2**64 - 1)).read, "every byte"
+    assert_equal [0x0001_0203_0405_0607, Float], [read, read.class], "a Float, which Windows doesn't allocate"
+    assert_equal 0xff << 56, Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(0xff << 56)).read, "the last byte, unsigned"
+    assert_equal 0xff, Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(0xff)).read, "the first"
     process_calls = []
     Duel::Native::Windows::Cycles.new(:process, query: fake_cycles(5, process_calls)).read
     handle, address = calls.first
@@ -518,6 +520,7 @@ class NativeTest < DuelTest
   # Windows's reader, where it's neither Linux nor macOS, and none
   # without Fiddle.
   def test_the_reader_on_windows
+    opened = Duel::Native::Memory.instance_variable_defined?(:@reader)
     reader = Duel::Native::Memory.instance_variable_get(:@reader)
     opened = [true, false].map do |fiddle|
       Duel::Native::Memory.remove_instance_variable(:@reader) if Duel::Native::Memory.instance_variable_defined?(:@reader)
@@ -528,7 +531,12 @@ class NativeTest < DuelTest
 
     assert_equal [:windows, nil], opened
   ensure
-    Duel::Native::Memory.instance_variable_set(:@reader, reader)
+    # (As it was: none opened yet, if none was, rather than none to open.)
+    if opened
+      Duel::Native::Memory.instance_variable_set(:@reader, reader)
+    elsif Duel::Native::Memory.instance_variable_defined?(:@reader)
+      Duel::Native::Memory.remove_instance_variable(:@reader)
+    end
   end
 end
 

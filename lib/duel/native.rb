@@ -179,7 +179,10 @@ module Duel
       # ticks of 15.6 ms. Read without allocating, as the CPU metric's
       # readings are inside the count of allocations: the call takes the
       # count's address as an integer (a pointer Fiddle would wrap), and
-      # the count is read back a byte at a time.
+      # the count is read back a byte at a time, as a Float. (On Windows,
+      # an Integer past 2**30 is a Bignum, allocated, as a C long is 32
+      # bits there, but a Float isn't, and a double holds a count exactly
+      # to 2**53.)
       class Cycles
         # GetCurrentThread()'s handle, which needs no closing.
         CURRENT_THREAD = -2
@@ -199,9 +202,9 @@ module Duel
 
         def read
           @query.call(@handle, @address)
-          count = 0
+          count = 0.0
           byte = UINT64
-          count = (count << 8) + (@count[byte -= 1] & 0xff) while byte.positive?
+          count = (count * 256) + (@count[byte -= 1] & 0xff) while byte.positive?
           count
         end
       end
