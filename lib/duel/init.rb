@@ -132,7 +132,8 @@ module Duel
       end
 
       lines = File.binread(full).gsub("\r\n", "\n")
-      differences = (lines == content) ? "" : diff(path, lines, content)
+      # (Nothing, where they're the same.)
+      differences = diff(path, lines, content)
       said(differences.empty? ? "same" : "differs", path)
       @out.print differences
       differences.empty?
@@ -209,6 +210,9 @@ module Duel
 
     # How +lines+ (the file at +path+'s) differ from +content+, as diff -u
     # has it.
+    # mutant:disable -- the temporary file's name is never shown (diff
+    # labels it), and binmode only matters on Windows (where text mode
+    # would write CRLF), which mutant doesn't run on
     def diff(path, lines, content)
       Tempfile.create("duel-init") do |file|
         file.binmode

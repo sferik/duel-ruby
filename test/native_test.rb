@@ -104,6 +104,7 @@ class NativeTest < DuelTest
   def test_macos_unavailable
     assert_nil Duel::Native::MacOS.open(platform: "darwin", rusage: fake_rusage(0)), "no counters"
     assert_nil Duel::Native::MacOS.open(platform: "linux", rusage: fake_rusage(5))
+    refute_nil Duel::Native::MacOS.open(platform: "darwin", rusage: fake_rusage(99, 8192)), "darwin's, as it's told, on any system"
     missing = ->(*) { raise Fiddle::DLError, "no such function" }
 
     assert_nil Duel::Native::MacOS.open(platform: "darwin", rusage: missing)
