@@ -18,9 +18,11 @@ require_relative "watchdog"
 # in the directory it's in.
 module OwnDataDir
   def spawn(*command, **options)
-    program = command.grep(String).first.to_s
-    if File.basename(program).start_with?("mysqld") && command.grep(%r{\A--datadir=/}).empty?
-      raise ArgumentError, "a mysqld with no data directory of its own: #{command.grep(String).join(" ")}"
+    words = command.grep(String)
+    data = words.find { |word| word.start_with?("--datadir=") }&.delete_prefix("--datadir=")
+    # (Absolute on Windows too: D:/..., not /...)
+    if File.basename(words.first.to_s).start_with?("mysqld") && !(data && File.absolute_path?(data))
+      raise ArgumentError, "a mysqld with no data directory of its own: #{words.join(" ")}"
     end
 
     super
