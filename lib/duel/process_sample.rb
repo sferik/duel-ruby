@@ -90,12 +90,13 @@ module Duel
       @pid = nil
     end
 
-    # Runs a process for each line of +input+ (a command, in JSON), with
-    # what +spec+ says ({"env", "chdir", "log"}), and reports each (see
-    # .once) as a line of +output+, at once, until the input ends: run in
-    # the Ruby process of its own.
-    def self.main(spec, input: $stdin, output: $stdout)
-      spec = JSON.parse(spec)
+    # Runs a process for each line of +input+ (a command, in JSON) after
+    # its first, with what that says ({"env", "chdir", "log"}), and
+    # reports each (see .once) as a line of +output+, at once, until the
+    # input ends: run in the Ruby process of its own.
+    def self.main(input: $stdin, output: $stdout)
+      first = input.gets or return
+      spec = JSON.parse(first)
       output.sync = true
       while (line = input.gets)
         output.puts JSON.generate(once(JSON.parse(line), spec.fetch("env"), spec.fetch("chdir"), spec.fetch("log")))
@@ -158,19 +159,22 @@ module Duel
 
     private
 
-    # Starts the Ruby process of its own, given the environment, the
-    # directory and the log, and connected by a pipe each way (not a
-    # socket: JRuby's spawn can't give one).
+    # Starts the Ruby process of its own, connected by a pipe each way
+    # (not a socket: JRuby's spawn can't give one), and gives it the
+    # environment, the directory and the log, as the first line of its
+    # input. (Not an argument: JRuby's spawn on Windows splits one at its
+    # spaces, and the environment can be longer than Windows lets a
+    # command be.)
     def start
-      spec = JSON.generate({"env" => {**ENV, **@env}, "chdir" => @chdir, "log" => @log})
       requests, @requests = IO.pipe
       @replies, replies = IO.pipe
       # (Out of the runner's bundle: it needs nothing of it.)
       @pid = Process.spawn({"RUBYOPT" => nil, "RUBYLIB" => nil}, RbConfig.ruby,
         *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-        "Duel::ProcessSample.main(*ARGV)", spec, in: requests, out: replies, **ProcessSample.group, close_others: true)
+        "Duel::ProcessSample.main", in: requests, out: replies, **ProcessSample.group, close_others: true)
       requests.close
       replies.close
+      @requests.puts JSON.generate({"env" => {**ENV, **@env}, "chdir" => @chdir, "log" => @log})
     end
 
     # Kills the Ruby process of its own, and what it started.

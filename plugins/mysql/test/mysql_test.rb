@@ -116,6 +116,15 @@ class MySQLTest < PluginTest
     assert_nil Duel::MySQL::DataDir.find_server(File.join(@dir, "mysqld"), bin)
     with_env("PATH" => bin) { assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld"), "the PATH's" }
     with_env("PATH" => nil) { assert_nil Duel::MySQL::DataDir.find_server("mysqld"), "no PATH" }
+    windows = File.join(@dir, "windows")
+    FileUtils.mkdir_p(windows)
+    File.write(File.join(windows, "mysqld.exe"), "")
+    File.chmod(0o755, File.join(windows, "mysqld.exe"))
+
+    assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ".exe"), "Windows's, by its .exe"
+    assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server(File.join(windows, "mysqld"), "", exe: ".exe")
+    assert_nil Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ""), "no .exe, off Windows"
+    assert_equal RbConfig::CONFIG["EXEEXT"].empty?, Duel::MySQL::DataDir.find_server("mysqld", windows).nil?, "this system's, by default"
   end
 
   # The first worker's data directory is initialized (Resource#cached);

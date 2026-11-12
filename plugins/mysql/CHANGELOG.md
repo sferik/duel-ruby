@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workers than that leaves room for, even where a server takes less as
   it starts.
 
+### Fixed
+
+- On Windows, `mysqld.exe` on the `PATH` (or a `server:` path without
+  its `.exe`) is found: the plugin looked for a file named `mysqld`.
+
 ## [0.1.7] - 2026-11-10
 
 No changes of its own: released in step with the other Duel gems.

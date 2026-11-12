@@ -3,6 +3,7 @@
 require "duel"
 require "digest"
 require "fileutils"
+require "rbconfig"
 require_relative "postgresql/version"
 
 module Duel
@@ -382,11 +383,15 @@ module Duel
     # A worker's database cluster: a copy of one initdb'd once, with the
     # database and pg_stat_statements created in it.
     class Cluster
+      # A program's file ends with +EXE+: on Windows, .exe.
+      EXE = RbConfig::CONFIG["EXEEXT"]
+
       # The real directory of the postgres on +path+ (where its initdb is:
       # the one on the PATH may be another version's, libpq's, say), or of
-      # the newest Debian's; nil if there's none.
-      def self.find_bin(path = ENV.fetch("PATH", ""), debian: "/usr/lib/postgresql/*/bin")
-        postgres = path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "postgres") }.find { |file| File.executable?(file) }
+      # the newest Debian's; nil if there's none. (Its file is postgres
+      # +exe+: postgres.exe, on Windows.)
+      def self.find_bin(path = ENV.fetch("PATH", ""), debian: "/usr/lib/postgresql/*/bin", exe: EXE)
+        postgres = path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "postgres#{exe}") }.find { |file| File.executable?(file) }
         return File.dirname(File.realpath(postgres)) if postgres
 
         Dir[debian].max_by { |dir| File.basename(File.dirname(dir)).to_i }
@@ -408,7 +413,7 @@ module Duel
       # What a cluster is good for: these programs (until they change),
       # and this version of the plugin.
       def key
-        postgres = File.realpath(File.join(@bin, "postgres"))
+        postgres = File.realpath(File.join(@bin, "postgres#{EXE}"))
         "postgresql-#{VERSION}-#{Digest::SHA256.hexdigest([postgres, File.mtime(postgres).to_f].join("\0"))[0, 16]}"
       end
 

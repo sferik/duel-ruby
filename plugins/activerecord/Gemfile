@@ -12,11 +12,12 @@ gem "duel", path: "../.."
 gem "stackprof", platforms: :mri
 
 # The Active Record the tests run against (ACTIVERECORD for another:
-# "~> 7.2.0", say), on SQLite: through the sqlite3 gem, a C extension,
-# or on JRuby, which can't build it, through JDBC (whose adapter holds
-# Active Record to 7.2 there).
+# "~> 7.2.0", say), on SQLite: through the sqlite3 gem, a C extension
+# (on Windows too, which Bundler's :ruby leaves out), or on JRuby, which
+# can't build it, through JDBC (whose adapter holds Active Record to 7.2
+# there).
 gem "activerecord", ENV.fetch("ACTIVERECORD", ">= 7.2")
-gem "sqlite3", ">= 2.0", platforms: :ruby
+gem "sqlite3", ">= 2.0", platforms: %i[ruby windows]
 gem "activerecord-jdbcsqlite3-adapter", ">= 72.0", platforms: :jruby
 
 gem "rake"

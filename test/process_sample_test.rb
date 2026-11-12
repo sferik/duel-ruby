@@ -54,8 +54,16 @@ class ProcessSampleTest < DuelTest
     other = ended_child
     runs = sampler
     pipes = []
+    sent = []
     pipe = IO.method(:pipe)
-    stub(IO, :pipe, -> { pipe.call.tap { |ends| pipes << ends } }) { noting { 2.times { runs.run(["true"]) } } }
+    # (What's written to each pipe's end, noted.)
+    pipes_noting = lambda do
+      pipe.call.tap do |ends|
+        pipes << ends
+        ends.last.define_singleton_method(:puts) { |*lines| (sent << lines) && super(*lines) }
+      end
+    end
+    stub(IO, :pipe, pipes_noting) { noting { 2.times { runs.run(["true"]) } } }
 
     assert_equal 1, @spawned.size, "one for every run"
     pid, args, options = @spawned.first
@@ -63,8 +71,9 @@ class ProcessSampleTest < DuelTest
 
     assert_equal [{"RUBYOPT" => nil, "RUBYLIB" => nil}, RbConfig.ruby], [env, ruby]
     assert_equal [*Duel::WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-      "Duel::ProcessSample.main(*ARGV)"], rest[0...-1]
-    assert_equal({"env" => ENV.to_h, "chdir" => tmpdir, "log" => @log}, JSON.parse(rest.last))
+      "Duel::ProcessSample.main"], rest, "no argument (JRuby's spawn on Windows splits one at its spaces)"
+    assert_equal({"env" => ENV.to_h, "chdir" => tmpdir, "log" => @log}, JSON.parse(sent.first.first), "its input's first line, first")
+    assert_equal [%w[true]] * 2, sent.drop(1).map { |(line)| JSON.parse(line) }, "then each run's"
     (input, requests), (replies, output) = pipes
 
     assert_equal [input, output, true], options.values_at(:in, :out, :close_others), "a pipe each way"
@@ -177,12 +186,13 @@ class ProcessSampleTest < DuelTest
   def test_a_process_that_hangs
     started = File.join(tmpdir, "started")
     pids = File.join(tmpdir, "pids")
-    timeout = (RUBY_ENGINE == "ruby") ? 1.0 : 15.0
+    # (Long enough for a Ruby to start another, under mutant's load.)
+    timeout = (RUBY_ENGINE == "ruby") ? 2.0 : 15.0
     other = ended_child
     runs = sampler
     noting { runs.run(["true"]) }
     runs.instance_variable_set(:@timeout, timeout)
-    command = [*ruby("pid = Process.spawn(RbConfig.ruby, '-e', 'sleep 60'); File.write(ARGV[0], pid.to_s); File.write(ARGV[1], ''); " \
+    command = [*ruby("File.write(ARGV[1], ''); pid = Process.spawn(RbConfig.ruby, '-e', 'sleep 60'); File.write(ARGV[0], pid.to_s); " \
       "Process.wait(pid)"), pids, started]
     error = assert_raises(Duel::Failed) { noting { runs.run(command) } }
 
@@ -200,6 +210,13 @@ class ProcessSampleTest < DuelTest
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "another, for the next"
+  end
+
+  # The timeout it's given is a run's. (The test above sets it once its
+  # Ruby process has started, which a busy machine can take more than it
+  # to do.)
+  def test_its_timeout
+    assert_in_delta 7.5, sampler(timeout: 7.5).instance_variable_get(:@timeout)
   end
 
   # A Ruby process of its own that ends (killed, say, here by what it
@@ -265,7 +282,8 @@ class ProcessSampleTest < DuelTest
     input, requests = IO.pipe
     replies, output = IO.pipe
     output.sync = false
-    thread = Thread.new { noting { Duel::ProcessSample.main(spec, input: input, output: output) } }
+    requests.puts spec
+    thread = Thread.new { noting { Duel::ProcessSample.main(input: input, output: output) } }
     # (A signal's, off Windows, which kills with none.)
     commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), ruby("exit 3"), *(["kill -TERM $$"] unless windows?)]
     reports = commands.map do |command|
@@ -391,15 +409,24 @@ class ProcessSampleTest < DuelTest
     end
   end
 
+  # An input that ends before it says what to run with runs nothing.
+  def test_main_without_its_spec
+    output = StringIO.new
+    noting { Duel::ProcessSample.main(input: StringIO.new, output: output) }
+
+    assert_equal ["", []], [output.string, @spawned]
+  end
+
   # Its own input and output, unless it's given others.
   def test_main_on_its_own_input_and_output
     spec = JSON.generate({"env" => {"PATH" => ENV.fetch("PATH")}, "chdir" => tmpdir, "log" => @log})
     reader, writer = IO.pipe
+    writer.puts spec
     writer.puts JSON.generate(["true"])
     writer.close
     stdin = $stdin.dup
     $stdin.reopen(reader)
-    out, = capture_io { noting { Duel::ProcessSample.main(spec) } }
+    out, = capture_io { noting { Duel::ProcessSample.main } }
 
     assert_equal [nil], out.lines.map { |line| JSON.parse(line).fetch("failed") }
   ensure

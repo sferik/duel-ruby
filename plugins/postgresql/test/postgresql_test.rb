@@ -131,6 +131,14 @@ class PostgreSQLTest < PluginTest
     replacing(Dir, :[], ->(pattern) { [].tap { patterns << pattern } }) { find.call(@dir) }
 
     assert_equal ["/usr/lib/postgresql/*/bin"], patterns, "Debian's, by default"
+    windows = FileUtils.mkdir_p(File.join(@dir, "windows")).first
+    File.write(File.join(windows, "postgres.exe"), "")
+    File.chmod(0o755, File.join(windows, "postgres.exe"))
+
+    assert_equal File.realpath(windows), find.call(windows, debian: nothing, exe: ".exe"), "Windows's, by its .exe"
+    assert_nil find.call(windows, debian: nothing, exe: ""), "no .exe, off Windows"
+    assert_equal Duel::PostgreSQL::Cluster::EXE.empty?, find.call(windows, debian: nothing).nil?, "this system's, by default"
+    assert_equal RbConfig::CONFIG["EXEEXT"], Duel::PostgreSQL::Cluster::EXE
   end
 
   # The first worker's cluster is initdb'd (Resource#cached); the others
