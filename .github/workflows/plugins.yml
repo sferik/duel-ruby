@@ -89,9 +89,11 @@ jobs:
           brew install ${{ matrix.brew }}
           echo "$(brew --prefix ${{ matrix.brew }})/bin" >> "$GITHUB_PATH"
       # Windows has no Redis or memcached of its own: these are builds of
-      # them for Windows (Redis's by MSYS2, memcached's by MinGW, with the
-      # libevent it needs), pinned, each checked against its digest. The
-      # plugins use them over TCP there (their tcp: option).
+      # them for Windows, pinned: Redis's by MSYS2, checked against its
+      # digest, and memcached's by Cygwin (1.6.45, with the DLLs it needs:
+      # Dalli's meta protocol wants a recent one), at a commit of the
+      # repository that holds it. The plugins use them over TCP there
+      # (their tcp: option).
       - if: matrix.plugin == 'redis' && runner.os == 'Windows'
         shell: bash
         run: |
@@ -103,18 +105,9 @@ jobs:
       - if: matrix.plugin == 'memcached' && runner.os == 'Windows'
         shell: bash
         run: |
-          base=https://github.com/jefyt/memcached-windows/releases/download/1.6.8_mingw_libressl
-          curl -fsSL -o "$RUNNER_TEMP/memcached.zip" "$base/memcached-1.6.8-win64-mingw.zip"
-          curl -fsSL -o "$RUNNER_TEMP/libevent.zip" "$base/libevent-2.1.12-stable-win64-mingw.zip"
-          sha256sum -c - <<SUMS
-          48ec62cef718f0d73698414b783c0e4a69821013553ca00afe0eed324eb5994b  $RUNNER_TEMP/memcached.zip
-          617fe0e90c788720be9000ba0c30132f37ada5c6682ef95992ece7172a75f0f2  $RUNNER_TEMP/libevent.zip
-          SUMS
-          unzip -q "$RUNNER_TEMP/memcached.zip" -d "$RUNNER_TEMP/memcached"
-          unzip -q "$RUNNER_TEMP/libevent.zip" -d "$RUNNER_TEMP/libevent"
-          server=$(find "$RUNNER_TEMP/memcached" -name memcached.exe | head -1)
-          find "$RUNNER_TEMP/libevent" -name '*.dll' -exec cp {} "$(dirname "$server")" \;
-          cygpath -w "$(dirname "$server")" >> "$GITHUB_PATH"
+          git clone -q --filter=blob:none --no-checkout https://github.com/nono303/memcached "$RUNNER_TEMP/memcached"
+          git -C "$RUNNER_TEMP/memcached" checkout -q e78f75a8f8606409a090a1a88a682a1f9be47c20 -- libevent-2.1/x64
+          cygpath -w "$RUNNER_TEMP/memcached/libevent-2.1/x64" >> "$GITHUB_PATH"
       # (Windows's runners have PostgreSQL in PGBIN, off the PATH.)
       - if: matrix.plugin == 'postgresql' && runner.os == 'Windows'
         shell: bash

@@ -22,7 +22,8 @@ module OwnDataDir
     if %w[postgres initdb].include?(File.basename(words.first.to_s))
       data = words.each_cons(2).find { |flag, _| flag == "-D" }&.last ||
         words.find { |word| word.start_with?("--pgdata=") }&.delete_prefix("--pgdata=")
-      raise ArgumentError, "#{File.basename(words.first)} with no data directory of its own: #{words.join(" ")}" unless data&.start_with?("/")
+      # (Absolute on Windows too: D:/..., not /...)
+      raise ArgumentError, "#{File.basename(words.first)} with no data directory of its own: #{words.join(" ")}" unless data && File.absolute_path?(data)
     end
 
     super
