@@ -74,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A resource's program given its arguments, in a path with a space in
+  it (`C:/Program Files/PostgreSQL/17/bin/initdb`, say), has its log
+  named for the program (`initdb.log`), not the path's first word
+  (`Program.log`).
 - A process benchmark's Ruby process takes what it runs with (the
   environment, the directory, the log) as its input's first line, not
   as an argument: on Windows, an environment could be longer than a
