@@ -2,7 +2,7 @@
 
 require "digest"
 require "fileutils"
-require "trilogy"
+require "socket"
 
 # The plugin guards its own speed, each version loaded as a gem's is
 # (duel/mysql, from its lib/). It isn't used here (c.use): that would
@@ -16,10 +16,11 @@ Duel.configure do |c|
   # say), not Duel's.
   c.release_tags = "duel-mysql-v*"
 
-  # The plugin's options (Duel::MySQL::OPTIONS): the server its
-  # benchmarks read is one it would start.
+  # The plugin's options (Duel::MySQL::OPTIONS, and --skip-networking,
+  # on a Unix socket): the server its benchmarks read is one it would
+  # start.
   options = %w[
-    --skip-networking --mysqlx=OFF --skip-log-bin
+    --skip-networking --console --mysqlx=OFF --skip-log-bin
     --innodb-buffer-pool-size=32M --innodb-redo-log-capacity=8M --innodb-doublewrite=OFF --innodb-use-native-aio=OFF
     --innodb-flush-log-at-trx-commit=0 --innodb-stats-auto-recalc=OFF --event-scheduler=OFF --performance-schema=ON
   ]
@@ -43,9 +44,12 @@ Duel.configure do |c|
     socket = w.path("mysqld.sock")
     w.spawn(*run.call(w.path("data")), "--socket=#{socket}", "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}",
       "--innodb-fast-shutdown=2")
+    # (Ready once it listens on its socket, which it does once it's
+    # started: a client's connection would wait for nothing more.)
     w.wait_until do
-      Trilogy.new(socket:, database: "duel").discard!
-    rescue Trilogy::Error
+      UNIXSocket.new(socket).close
+      true
+    rescue SystemCallError
       false
     end
     {"DUEL_MYSQL_SOCKET" => socket}
