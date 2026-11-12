@@ -180,6 +180,9 @@ module Duel
       # Makes one in +data+: a copy of the one made for these programs.
       def create: (String data) -> void
 
+      # On Windows, gives the user the cluster in +data+.
+      def self.grant: (Resource resource, String data, ?windows: bool) -> void
+
       # Starts a server on the cluster in +data+ with pg_ctl, with
       # +settings+, once it's ready.
       def start: (String data, Hash[String | Symbol, String | Integer] settings) -> void
