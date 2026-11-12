@@ -219,8 +219,15 @@ module Duel
       end
     end
 
-    # The log a command's output goes to: +name+.log, or its program's.
-    def log_path(command, name) = path("#{name || File.basename(command.grep(String).fetch(0).split.fetch(0))}.log")
+    # The log a command's output goes to: +name+.log, or its program's:
+    # a command line's first word (a String alone, which a shell runs), or
+    # else the program given its arguments, whole, as its path may have a
+    # space in it (C:/Program Files/PostgreSQL/17/bin/initdb, say).
+    def log_path(command, name)
+      words = command.grep(String)
+      program = (words.size > 1) ? words.fetch(0) : words.fetch(0).split.fetch(0)
+      path("#{name || File.basename(program)}.log")
+    end
 
     def start(command, log, options)
       # (Its own environment, if it's given one, over its version's.)

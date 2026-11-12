@@ -312,6 +312,20 @@ class ResourceTest < DuelTest
     assert_equal "head-1's resource: #{RUBY} exited with 4\nno space\n", error.message
   end
 
+  # A program given its arguments is named for its whole path's last part,
+  # spaces and all (C:/Program Files/PostgreSQL/17/bin/initdb, say), and a
+  # command line for its first word.
+  def test_a_program_in_a_path_with_a_space
+    r = resource
+    program = fake_command(File.join(tmpdir, "Program Files", "bin", "tool"), %(echo "$1"))
+    r.run(program, "an argument")
+
+    assert_equal "an argument\n", File.read(r.path("#{File.basename(program)}.log"))
+    r.run("echo a line")
+
+    assert_equal "a line\n", File.read(r.path("echo.log")), "a command line: its first word"
+  end
+
   # One a signal killed says which.
   def test_running_a_command_a_signal_kills
     skip "Windows kills with no signal" if windows?

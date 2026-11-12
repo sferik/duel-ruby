@@ -91,8 +91,8 @@ jobs:
       # Windows has no Redis or memcached of its own: these are builds of
       # them for Windows, pinned: Redis's by MSYS2, checked against its
       # digest, and memcached's by Cygwin (1.6.45, with the DLLs it needs:
-      # Dalli's meta protocol wants a recent one), at a commit of the
-      # repository that holds it. The plugins use them over TCP there
+      # Dalli's meta protocol wants a recent one), each file at a commit of
+      # the repository that holds it, checked against its digest. The plugins use them over TCP there
       # (their tcp: option).
       - if: matrix.plugin == 'redis' && runner.os == 'Windows'
         shell: bash
@@ -105,9 +105,25 @@ jobs:
       - if: matrix.plugin == 'memcached' && runner.os == 'Windows'
         shell: bash
         run: |
-          git clone -q --filter=blob:none --no-checkout https://github.com/nono303/memcached "$RUNNER_TEMP/memcached"
-          git -C "$RUNNER_TEMP/memcached" checkout -q e78f75a8f8606409a090a1a88a682a1f9be47c20 -- libevent-2.1/x64
-          cygpath -w "$RUNNER_TEMP/memcached/libevent-2.1/x64" >> "$GITHUB_PATH"
+          dir="$RUNNER_TEMP/memcached"
+          mkdir -p "$dir"
+          cd "$dir"
+          while read -r sum file; do
+            curl -fsSL -o "$file" "https://raw.githubusercontent.com/nono303/memcached/e78f75a8f8606409a090a1a88a682a1f9be47c20/libevent-2.1/x64/$file"
+            echo "$sum  $file" | sha256sum -c -
+          done <<SUMS
+          e40a3fc08942808e409aa011cfe8ab02ffd44c5ed3ba458f81affaf3544343fd memcached.exe
+          554e30a21a5c4ad1a78cd9b2b286ce48fa2356da87f6d6f35e34bce701e70be0 cygwin1.dll
+          7cd354d0efce2ff1f463c47a8eb9996629fc9889ea51f389f45f2a210e703b4f cygevent-2-1-7.dll
+          04b8b2b8cf9a99913c0a589dbdf90eb6aa79c40195dc94e095e11f79fbb0a6bd cygevent_core-2-1-7.dll
+          597ce8e1db4b444ea1d4ccb8edeb7d47f336fa60581a1cd7a2a81e8f01d96ed2 cygevent_extra-2-1-7.dll
+          0e42f7bff84024321c0ff688898d64406c1d8acaca5fbf4d7388b221b34833b0 cygevent_pthreads-2-1-7.dll
+          f42d73d96c69f731d01eba662d5c21e8fdde103c692385e6e23f69c2b0bfa494 cygevent_openssl-2-1-7.dll
+          10a7bd9046915bd1729233426e38e129e6e25ba538ffbf6ca66d9dd71fd5d9dc cygz.dll
+          ea44808fdc52f7cf2a4d817fc5103a12c91df48eb0b0dd05cab1b8a8490fa95c cygcrypto-3.dll
+          e375b780d90333bd9cb072c988b65a403fb72095d9b00c4233536926fc6ba07b cygssl-3.dll
+          SUMS
+          cygpath -w "$dir" >> "$GITHUB_PATH"
       # (Windows's runners have PostgreSQL in PGBIN, off the PATH.)
       - if: matrix.plugin == 'postgresql' && runner.os == 'Windows'
         shell: bash
