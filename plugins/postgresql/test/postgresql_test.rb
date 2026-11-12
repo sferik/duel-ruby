@@ -107,7 +107,7 @@ class PostgreSQLTest < PluginTest
       settings = query("SELECT current_setting('fsync'), current_setting('work_mem'), current_setting('search_path'), " \
         "current_setting('listen_addresses'), current_setting('unix_socket_directories'), current_setting('port'), " \
         "current_setting('data_directory'), (SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements')").first
-      data = settings.pop(2).first
+      data, extensions = settings.pop(2)
 
       assert_match(/\A\d+\z/, port)
       assert_equal "postgres:///duel?host=127.0.0.1&port=#{port}&user=postgres", url
@@ -115,6 +115,7 @@ class PostgreSQLTest < PluginTest
       assert_equal ["127.0.0.1", "postgres", "duel"], env.values_at("PGHOST", "PGUSER", "PGDATABASE")
       assert_equal ["off", "5MB", "it's", "127.0.0.1", "", port], settings, "the settings given (quoted), over the plugin's"
       assert_equal "data", File.basename(data), "in the worker's directory"
+      assert_equal 1, Integer(extensions), "pg_stat_statements, in its database"
       assert_path_exists File.join(File.dirname(data), "postgres.log")
       url
     end
@@ -159,6 +160,7 @@ class PostgreSQLTest < PluginTest
     end
 
     assert_equal "127.0.0.1", host
+    assert_path_exists File.join(@dir, "icacls.args"), "its copy given to the user" unless windows
   ensure
     Duel::Native.send(:remove_const, :WINDOWS)
     Duel::Native.const_set(:WINDOWS, windows)
@@ -219,8 +221,21 @@ class PostgreSQLTest < PluginTest
 
     assert_equal File.realpath(windows), find.call(windows, debian: nothing, exe: ".exe"), "Windows's, by its .exe"
     assert_nil find.call(windows, debian: nothing, exe: ""), "no .exe, off Windows"
-    assert_equal Duel::PostgreSQL::Cluster::EXE.empty?, find.call(windows, debian: nothing).nil?, "this system's, by default"
     assert_equal RbConfig::CONFIG["EXEEXT"], Duel::PostgreSQL::Cluster::EXE
+    exe(".exe") { assert_equal File.realpath(windows), find.call(windows, debian: nothing), "EXE's, by default" }
+  end
+
+  # A cluster's made for postgres by EXE's name (postgres.exe, on
+  # Windows), and by a cache key of its own without pg_ctl.
+  def test_a_cluster_for_postgres_by_its_exe
+    unix!
+    bin = FileUtils.mkdir_p(File.join(@dir, "windows")).first
+    File.symlink(File.join(POSTGRES, "postgres"), File.join(bin, "postgres.exe"))
+    resource = Duel::Resource.new(File.join(@dir, "resource"), "head-1", @dir, timeout: 60, cache: own_cache)
+    postgres = File.realpath(File.join(POSTGRES, "postgres"))
+    key = Digest::SHA256.hexdigest("#{postgres}\0#{File.mtime(postgres).to_f}")[0, 16]
+
+    assert_equal "postgresql-#{Duel::PostgreSQL::VERSION}-#{key}", exe(".exe") { Duel::PostgreSQL::Cluster.new(resource, bin).send(:key) }
   end
 
   # The first worker's cluster is initdb'd (Resource#cached); the others
@@ -497,16 +512,17 @@ class PostgreSQLTest < PluginTest
   # has it in ms).
   def test_statements
     shared_worker do
-      query("SELECT pg_sleep(0.01)")
+      # (Twice, 3 rows each: its calls and rows aren't its index.)
+      2.times { query("SELECT pg_sleep(0.01), generate_series(1, 3)") }
       id, blocks, ms = query(<<~SQL).first
         SELECT queryid, sum(shared_blks_hit + shared_blks_read), sum(total_plan_time + total_exec_time)
-        FROM pg_stat_statements WHERE query = 'SELECT pg_sleep($1)' GROUP BY queryid
+        FROM pg_stat_statements WHERE query = 'SELECT pg_sleep($1), generate_series($2, $3)' GROUP BY queryid
       SQL
       numbers = Duel::PostgreSQL.statements(@connection.value).fetch(id)
 
-      assert_equal [1, 1, Integer(blocks), (Float(ms) * 1_000_000).round], numbers
+      assert_equal [2, 6, Integer(blocks), (Float(ms) * 1_000_000).round], numbers
       assert_instance_of Integer, numbers.last
-      assert_equal({id => "SELECT pg_sleep($1)"}, Duel::PostgreSQL.texts(@connection.value, [id]))
+      assert_equal({id => "SELECT pg_sleep($1), generate_series($2, $3)"}, Duel::PostgreSQL.texts(@connection.value, [id]))
     end
   end
 
@@ -706,6 +722,17 @@ class PostgreSQLTest < PluginTest
   end
 
   private
+
+  # Runs the block with Cluster::EXE +exe+ (as Windows's is, say).
+  def exe(exe)
+    saved = Duel::PostgreSQL::Cluster::EXE
+    Duel::PostgreSQL::Cluster.send(:remove_const, :EXE)
+    Duel::PostgreSQL::Cluster.const_set(:EXE, exe)
+    yield
+  ensure
+    Duel::PostgreSQL::Cluster.send(:remove_const, :EXE)
+    Duel::PostgreSQL::Cluster.const_set(:EXE, saved)
+  end
 
   # A directory with an icacls that writes its arguments to a file, and
   # that file's path.

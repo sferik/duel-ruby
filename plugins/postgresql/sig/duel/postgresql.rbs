@@ -15,6 +15,9 @@ module Duel
     # The server's settings.
     SETTINGS: Hash[String, String]
 
+    # A server pg_ctl starts listens on 127.0.0.1 alone, with no Unix socket.
+    TCP: Hash[String, String]
+
     METRICS: Hash[String, Metric::settings]
 
     # What the worker's server has done so far, by statement, but for
