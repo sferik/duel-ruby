@@ -4,6 +4,7 @@ require "duel"
 require "digest"
 require "fileutils"
 require "rbconfig"
+require "socket"
 require_relative "mysql/version"
 
 module Duel
@@ -26,9 +27,12 @@ module Duel
   # .reset in setup (or untimed blocks): while a benchmark is measured,
   # they fail.
   #
-  # The server listens only on a Unix socket in the worker's directory;
-  # its URL is in DUEL_MYSQL_URL, and in DATABASE_URL too (unless +env+
-  # names others), and the socket's path in DUEL_MYSQL_SOCKET.
+  # The server listens only on a Unix socket in the worker's directory
+  # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,
+  # whose MySQL has none); its URL is in DUEL_MYSQL_URL, and in
+  # DATABASE_URL too (unless +env+ names others), and the socket's path
+  # in DUEL_MYSQL_SOCKET (with +tcp+, none). The plugin's connections are
+  # a client of its own (see Connection): no gem's.
   module MySQL
     Duel.plugin(:mysql, self)
 
@@ -38,13 +42,13 @@ module Duel
     USER = "root"
 
     # The server's options (after --no-defaults: no my.cnf of the
-    # machine's): no network, nothing to disk that needn't be, little
+    # machine's): nothing to disk that needn't be, little
     # memory, no Linux AIO contexts (there are only so many, for every
     # server on the machine), and nothing running on its own
     # (recalculating a table's statistics would change its plans while
     # they're measured).
     OPTIONS = %w[
-      --skip-networking --mysqlx=OFF --skip-log-bin
+      --mysqlx=OFF --skip-log-bin
       --innodb-buffer-pool-size=32M --innodb-redo-log-capacity=8M --innodb-doublewrite=OFF --innodb-use-native-aio=OFF
       --innodb-flush-log-at-trx-commit=0 --innodb-stats-auto-recalc=OFF --event-scheduler=OFF --performance-schema=ON
     ].freeze
@@ -68,40 +72,54 @@ module Duel
     # to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
     def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], setup: nil, env: %w[DATABASE_URL],
-      scheme: "mysql2")
+      scheme: "mysql2", tcp: Native::WINDOWS)
       config.prepare(:worker) do |w|
         program = DataDir.find_server(server) || w.failed("no #{server} on the PATH (give it as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")
         DataDir.new(w, program).create(data)
-        socket = w.path("mysqld.sock")
-        w.spawn(program, *DataDir.options(data), "--socket=#{socket}", "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}",
-          *(RUNNING + args))
-        w.wait_until { Connection.ping(socket) }
-        run(socket, setup) if setup
-        url = "#{scheme}://#{USER}@localhost/#{DATABASE}?socket=#{socket}"
-        {URL => url, SOCKET => socket}.merge(env.to_h { |name| [name, url] })
+        if tcp
+          port = free_port
+          listen = ["--port=#{port}", "--bind-address=127.0.0.1"]
+          address = "127.0.0.1:#{port}"
+          url = "#{scheme}://#{USER}@127.0.0.1:#{port}/#{DATABASE}"
+          vars = {URL => url}
+        else
+          # (No network at all.)
+          address = w.path("mysqld.sock")
+          listen = ["--skip-networking", "--socket=#{address}"]
+          url = "#{scheme}://#{USER}@localhost/#{DATABASE}?socket=#{address}"
+          vars = {URL => url, SOCKET => address}
+        end
+        w.spawn(program, *(DataDir.options(data) + listen), "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}", *(RUNNING + args))
+        w.wait_until { Connection.ping(address) }
+        run(address, setup) if setup
+        vars.merge(env.to_h { |name| [name, url] })
       end
-      connection = config.in_worker { |w| Connection.new(socket).tap { |mysql| w.at_stop { mysql.close } } }
+      connection = config.in_worker { |w| Connection.new(address).tap { |mysql| w.at_stop { mysql.close } } }
       statements = Statements.new(connection)
       config.metric(METRICS) { statements.read }.costly.details { |stretches, sample| statements.details(stretches, sample.n) }
       connection
     end
 
-    # Loads Trilogy, as the first connection is made: not as the plugin
-    # loads, in .duel.rb, before a worker loads its version. In trilogy's
-    # own repository, trilogy is what's measured, and the worker would load
-    # whichever trilogy the load path led to first (the bundle's release,
-    # say), and keep it. (In the runner, which loads no version, the
-    # bundle's.)
-    # mutant:disable -- the tests' process has Trilogy loaded from the start,
-    # so a require changes nothing there: test_loads_trilogy_only_when_used
-    # checks it, in a process of its own
-    def self.require_trilogy = require("trilogy")
+    # A port of 127.0.0.1's that's free (one the system chose, let go of
+    # again), for a server of a worker's to listen on.
+    # mutant:disable -- any address the system binds to gives a port free
+    # alike: 127.0.0.1's is the one the server listens on
+    def self.free_port
+      # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
+      # before it.)
+      server = TCPServer.new("127.0.0.1", 0) # steep:ignore UnexpectedPositionalArgument
+      begin
+        server.addr.fetch(1)
+      ensure
+        server.close
+      end
+    end
 
-    # Runs SQL on a connection of its own to the server on +socket+;
-    # returns the last statement's result.
-    def self.run(socket, sql)
-      connection = Connection.new(socket)
+    # Runs SQL on a connection of its own to the server at +address+ (its
+    # socket's path, or HOST:PORT); returns the last statement's result.
+    def self.run(address, sql)
+      connection = Connection.new(address)
       begin
         connection.execute(sql)
       ensure
@@ -218,8 +236,19 @@ module Duel
     # For benchmarks: the worker's server.
     def self.url = ENV.fetch(URL)
 
-    # Its socket's path (for a client that takes it, not a URL).
+    # Its socket's path (for a client that takes it, not a URL). With
+    # +tcp+, there's none (see .url).
     def self.socket = ENV.fetch(SOCKET)
+
+    # Where it is, for the plugin's own connections: its socket's path, or
+    # (with +tcp+) its URL's HOST:PORT, in +env+ (a worker's).
+    def self.address(env = ENV)
+      env.fetch(SOCKET) do
+        # (A URL the plugin made, with a HOST:PORT.)
+        host_and_port = env.fetch(URL)[%r{@([^/]+)/}, 1] #: String
+        host_and_port
+      end
+    end
 
     # Runs SQL (statements, ;-separated) on it, over a connection of its
     # own; returns the last one's result. For setting up: it fails while
@@ -227,17 +256,17 @@ module Duel
     # counted.
     def self.execute(sql)
       Duel.unmeasured!("Duel::MySQL.execute")
-      run(socket, sql)
+      run(address, sql)
     end
 
     # Empties every table in its database, restarting their
     # AUTO_INCREMENTs. For setting up, as execute is.
     def self.reset
       Duel.unmeasured!("Duel::MySQL.reset")
-      tables = run(socket, "SELECT table_name FROM information_schema.tables " \
+      tables = run(address, "SELECT table_name FROM information_schema.tables " \
         "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'").map(&:first)
       # (Only this connection's: it's closed after.)
-      run(socket, "SET FOREIGN_KEY_CHECKS = 0#{tables.map { |table| "; TRUNCATE TABLE `#{table}`" }.join}")
+      run(address, "SET FOREIGN_KEY_CHECKS = 0#{tables.map { |table| "; TRUNCATE TABLE `#{table}`" }.join}")
     end
 
     # Running totals of what the worker's server did, all told (#read),
@@ -392,45 +421,297 @@ module Duel
       def shorten(text) = (text.length > TEXT) ? "#{text[0, TEXT - 1]}…" : text
     end
 
-    # A connection to a worker's server, as root, to its database.
+    # What a connection to a worker's server raises where it fails: a
+    # statement's error (its code and message), or a reply it can't read.
+    class Error < Duel::Error
+      # The server's error code, or nil (not the server's error).
+      attr_reader :code
+
+      def initialize(message, code: nil)
+        super(message)
+        @code = code
+      end
+    end
+
+    # A query's result: its columns' names, and its rows, each value a
+    # String, but an integer column's an Integer, a floating-point one's a
+    # Float, and NULL nil. (One that returns none, an INSERT's, say, has
+    # neither.)
+    class Result
+      include Enumerable
+
+      attr_reader :fields, :rows
+
+      def initialize(fields:, rows:)
+        @fields = fields
+        @rows = rows
+      end
+
+      def each(&) = rows.each(&)
+    end
+
+    # The least a connection needs to read a server's statistics: not the
+    # code's own, whose statements are what's measured. As root (with no
+    # password: the data directory's initialized with none), to its
+    # database, over its Unix socket (a path), or over TCP (HOST:PORT: on
+    # Windows), in MySQL's text protocol: statements, several to a query
+    # if need be, and their results, the last one's returned.
     class Connection
-      # Whether a server answers on +socket+.
-      def self.ping(socket)
-        new(socket).close
-      rescue Trilogy::Error
+      # What the client says it can do: protocol 4.1's packets, a
+      # database to connect to, transactions' statuses, 4.1's (and 8.0's)
+      # authentication, several statements to a query, and their results.
+      LONG_PASSWORD = 0x1
+      CONNECT_WITH_DB = 0x8
+      PROTOCOL_41 = 0x200
+      TRANSACTIONS = 0x2000
+      SECURE_CONNECTION = 0x8000
+      MULTI_STATEMENTS = 0x10000
+      MULTI_RESULTS = 0x20000
+      PLUGIN_AUTH = 0x80000
+      CAPABILITIES = LONG_PASSWORD | CONNECT_WITH_DB | PROTOCOL_41 | TRANSACTIONS | SECURE_CONNECTION | MULTI_STATEMENTS | MULTI_RESULTS |
+        PLUGIN_AUTH
+      # The largest packet it takes, and its character set (utf8mb4).
+      MAX_PACKET = (1 << 24) - 1
+      UTF8MB4 = 45
+
+      # A packet's first byte: an OK, an error, an end of rows (EOF, of
+      # fewer than 9 bytes), or more of authentication's (caching_sha2_
+      # password's: FAST_AUTH, the password matched what it had cached).
+      OK = 0x00
+      ERR = 0xFF
+      EOF = 0xFE
+      AUTH_SWITCH = 0xFE
+      AUTH_MORE = 0x01
+      FAST_AUTH = 0x03
+      COM_QUERY = 0x03
+      # A NULL value in a row, and lenenc integers' prefixes.
+      NULL = 0xFB
+      # An OK's or EOF's status: more results to come.
+      MORE_RESULTS = 0x08
+
+      # The column types read as Integers (TINY, SHORT, LONG, LONGLONG,
+      # INT24, YEAR) and as Floats (FLOAT, DOUBLE).
+      INTEGERS = [1, 2, 3, 8, 9, 13].freeze
+      FLOATS = [4, 5].freeze
+
+      # What the client says it is when the server's gone.
+      CLOSED = "MySQL closed the connection"
+
+      # Whether a server answers at +address+.
+      def self.ping(address)
+        new(address).close
+      rescue Error, SystemCallError, IOError
         false
       end
 
-      def initialize(socket)
-        MySQL.require_trilogy
-        # (As root: trilogy's user, unless it's given another.)
-        @client = Trilogy.new(socket: socket, database: DATABASE, multi_statement: true)
+      # The host and port of a HOST:PORT address, or nil (a Unix socket's
+      # path).
+      def self.address(address)
+        match = %r{\A([^:/]+):(\d+)\z}.match(address) or return
+        [match[1], Integer(match[2])]
       end
 
-      def query(sql) = @client.query(sql)
+      # A socket to +address+, without TCP's delay before a small write
+      # (a statement), whose reply would wait for it.
+      def self.socket(address)
+        host_and_port = address(address)
+        return UNIXSocket.new(address) unless host_and_port
 
-      # +text+ as a string literal.
-      def quote(text) = "'#{@client.escape(text)}'"
+        host, port = host_and_port
+        # (RBS's setsockopt takes an Integer for the value, but Ruby's
+        # takes true too.)
+        TCPSocket.new(host, port).tap { |socket| socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, true) } # steep:ignore ArgumentTypeMismatch
+      end
+
+      def initialize(address, database: DATABASE)
+        @socket = Connection.socket(address)
+        begin
+          authenticate(database)
+        rescue Exception # rubocop:disable Lint/RescueException
+          close
+          raise
+        end
+      end
+
+      # Runs +sql+ (statements, ;-separated); returns the last one's
+      # result. A statement that fails raises its Error.
+      def query(sql)
+        write(COM_QUERY.chr + sql, 0)
+        loop do
+          result, more = next_result
+          return result unless more
+        end
+      end
 
       # Runs statements; returns the last one's result.
-      def execute(sql)
-        result = query(sql)
-        result = @client.next_result while @client.more_results_exist?
-        result
-      end
+      def execute(sql) = query(sql)
+
+      # +text+ as a string literal.
+      def quote(text) = "'#{text.gsub(/[\0\n\r\\'"\x1a]/, ESCAPES)}'"
+
+      ESCAPES = {"\0" => "\\0", "\n" => "\\n", "\r" => "\\r", "\\" => "\\\\", "'" => "\\'", "\"" => "\\\"", "\x1a" => "\\Z"}.freeze
 
       # Closes it without telling the server (no QUIT, which the server
       # could read after a benchmark's started, and count); true.
-      def close = @client.discard!
+      def close
+        @socket.close
+        true
+      end
+
+      private
+
+      # The server's greeting (a handshake, protocol 10), and the client's
+      # reply: root, with no password (an empty response, whichever plugin
+      # the server authenticates with), to +database+. Fails unless it's
+      # let in.
+      def authenticate(database)
+        greeting, sequence = read
+        error!(greeting) if greeting.getbyte(0) == ERR
+        # (Its last string: the scramble before it has no NUL in it.)
+        plugin = greeting.split("\0").last #: String
+        # (23 bytes reserved, and the response's length, 0, before the
+        # database.)
+        write([CAPABILITIES, MAX_PACKET, UTF8MB4, USER, database, plugin].pack("VVCx23Z*xZ*Z*"), sequence + 1)
+        loop do
+          reply, sequence = read
+          case reply.getbyte(0)
+          when OK then return
+          when ERR then error!(reply)
+          # (Another plugin: an empty response again.)
+          when AUTH_SWITCH then write("", sequence + 1)
+          # (caching_sha2_password's: the empty password matched.)
+          when AUTH_MORE then raise Error, "MySQL wants a password (root's has none)" unless reply.getbyte(1) == FAST_AUTH
+          else raise Error, "MySQL: an authentication reply the connection doesn't read: #{reply.getbyte(0)}"
+          end
+        end
+      end
+
+      # A statement's result, and whether more follow: an OK's (no rows),
+      # or a result set's (its columns, then its rows, each ended by an
+      # EOF). An error raises it.
+      def next_result
+        packet, = read
+        case packet.getbyte(0)
+        # (Its status after its affected rows and insert id.)
+        when OK then [Result.new(fields: [], rows: []), more?(packet, lenenc(packet, lenenc(packet, 1).last).last)]
+        when ERR then error!(packet)
+        else
+          columns = Array.new(lenenc(packet, 0).first) { column(read.first) }
+          read # (the columns' EOF)
+          rows = [] #: Array[Array[untyped]]
+          while (row = read.first) && !eof?(row)
+            rows << row(row, columns)
+          end
+          # (Its status after its warnings.)
+          [Result.new(fields: columns.map(&:first), rows: rows), more?(row, 3)]
+        end
+      end
+
+      # Whether an OK's or an EOF's status, at +at+, says more results
+      # follow.
+      def more?(packet, at)
+        status = packet.unpack1("v", offset: at) #: Integer
+        (status & MORE_RESULTS).positive?
+      end
+
+      # An EOF: one of fewer than 9 bytes that starts with EOF (a row can
+      # too, with a value's 8-byte length).
+      def eof?(packet) = packet.getbyte(0) == EOF && packet.bytesize < 9
+
+      # A column's name, and its type: after six lenenc strings (its
+      # catalog, schema, table, original table, name, original name) and
+      # its fixed fields' length, its character set (2 bytes) and length
+      # (4), then its type.
+      def column(packet)
+        at = 0
+        strings = Array.new(6) do
+          string, at = lenenc_string(packet, at)
+          string
+        end
+        _, at = lenenc(packet, at)
+        [strings.fetch(4).force_encoding(Encoding::UTF_8), packet.getbyte(at + 6)]
+      end
+
+      # A row's values, by its columns' types.
+      def row(packet, columns)
+        at = 0
+        columns.map do |_, type|
+          if packet.getbyte(at) == NULL
+            at += 1
+            next
+          end
+
+          value, at = lenenc_string(packet, at)
+          cast(value, type)
+        end
+      end
+
+      def cast(value, type)
+        return Integer(value, 10) if INTEGERS.include?(type)
+        return Float(value) if FLOATS.include?(type)
+
+        value.force_encoding(Encoding::UTF_8)
+      end
+
+      # A length-encoded integer at +at+, and where what follows starts.
+      def lenenc(packet, at)
+        first = packet.getbyte(at) #: Integer
+        size = LENGTHS.fetch(first) { return [first, at + 1] }
+        # (Its bytes, little-endian, padded to 8.)
+        value = "#{packet.byteslice(at + 1, size)}\0\0\0\0\0\0".unpack1("Q<") #: Integer
+        [value, at + 1 + size]
+      end
+
+      # A length-encoded integer's prefixes, and its bytes after them (one
+      # under 0xFB is the integer itself).
+      LENGTHS = {0xFC => 2, 0xFD => 3, 0xFE => 8}.freeze
+
+      # A length-encoded string at +at+, and where what follows starts.
+      def lenenc_string(packet, at)
+        length, at = lenenc(packet, at)
+        string = packet.byteslice(at, length) #: String
+        [string, at + length]
+      end
+
+      # A packet's payload, and its sequence number.
+      def read
+        header = read_exactly(4)
+        size = header.unpack1("V") #: Integer
+        sequence = header.getbyte(3) #: Integer
+        [read_exactly(size & MAX_PACKET), sequence]
+      end
+
+      def read_exactly(size)
+        data = @socket.read(size)
+        raise IOError, CLOSED unless data && data.bytesize == size
+
+        data
+      end
+
+      # (Its header: its length in 3 bytes, then its sequence number.)
+      def write(payload, sequence) = @socket.write([payload.bytesize + (sequence << 24)].pack("V"), payload)
+
+      # Raises an error packet's error: its code (2 bytes), its SQL state
+      # (# and 5 characters), and its message.
+      def error!(packet)
+        code = packet.unpack1("v", offset: 1) #: Integer
+        start = (packet.getbyte(3) == 35) ? 9 : 3 # (after the SQL state, where there's one)
+        message = packet.byteslice(start..) #: String
+        message.force_encoding(Encoding::UTF_8)
+        raise Error.new("MySQL: #{message} (#{code})", code: code)
+      end
     end
 
     # A worker's data directory: a copy of one initialized once, with the
     # database created in it.
     class DataDir
+      # A program's file ends with +EXE+: on Windows, .exe.
+      EXE = RbConfig::CONFIG["EXEEXT"]
+
       # The server program: +server+ if it's a path, or the one by that
       # name on +path+; nil if there's none. Either may end with +exe+ too
       # (on Windows, .exe: mysqld.exe, for mysqld).
-      def self.find_server(server, path = ENV.fetch("PATH", ""), exe: RbConfig::CONFIG["EXEEXT"])
+      def self.find_server(server, path = ENV.fetch("PATH", ""), exe: EXE)
         files = server.include?(File::SEPARATOR) ? [server] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
         files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.executable?(file) }
       end

@@ -44,20 +44,21 @@ module Duel
     # Configures Duel for the plugin (c.use :mysql): the server (+server+
     # the program, +args+ more of its options, +setup+ SQL each worker's
     # database runs when it's started, +env+ the variables besides
-    # DUEL_MYSQL_URL given its URL, +scheme+ the URL's) and its metrics.
-    # Returns the plugin's own connection to it, a worker's.
+    # DUEL_MYSQL_URL given its URL, +scheme+ the URL's, +tcp+ on a port
+    # of 127.0.0.1's: by default on Windows) and its metrics. Returns the
+    # plugin's own connection to it, a worker's.
     def self.configure: (Config config, ?server: String, ?args: Array[String], ?setup: String?, ?env: Array[String],
-                         ?scheme: String) -> InWorker[Connection]
+                         ?scheme: String, ?tcp: bool) -> InWorker[Connection]
 
-    # Runs SQL on a connection of its own to the server on +socket+;
-    # returns the last statement's result.
-    # Loads Trilogy, as the first connection is made.
-    def self.require_trilogy: () -> bool
+    # A port of 127.0.0.1's that's free, for a worker's server.
+    def self.free_port: () -> Integer
 
     # The most memory a worker's server takes.
     def self.worker_memory: () -> Integer
 
-    def self.run: (String socket, String sql) -> ::Trilogy::Result
+    # Runs SQL on a connection of its own to the server at +address+;
+    # returns the last statement's result.
+    def self.run: (String address, String sql) -> Result
 
     # What the worker's server has done so far, but for the plugin's own
     # connection, which reads it.
@@ -88,13 +89,23 @@ module Duel
     # Its socket's path.
     def self.socket: () -> String
 
+    # The environment (ENV, or a Hash in its place).
+    interface _Env
+      def fetch: (String name) -> String
+               | (String name) { (String name) -> String } -> String
+    end
+
+    # Where it is, for the plugin's own connections: its socket's path, or
+    # its URL's HOST:PORT.
+    def self.address: (?_Env env) -> String
+
     # Runs SQL on it, over a connection of its own; returns the last
     # statement's result. For setting up: it fails while a benchmark is
     # measured.
-    def self.execute: (String sql) -> ::Trilogy::Result
+    def self.execute: (String sql) -> Result
 
     # Empties every table in its database. For setting up, as execute is.
-    def self.reset: () -> ::Trilogy::Result
+    def self.reset: () -> Result
 
     # Running totals of what the worker's server did, all told, and by
     # statement, to explain a regression.
@@ -169,29 +180,119 @@ module Duel
       def shorten: (String text) -> String
     end
 
-    # A connection to a worker's server, as root, to its database.
+    # What a connection to a worker's server raises where it fails.
+    class Error < Duel::Error
+      @code: Integer?
+
+      # The server's error code, or nil.
+      attr_reader code: Integer?
+
+      def initialize: (String message, ?code: Integer?) -> void
+    end
+
+    # A query's result: its columns' names, and its rows.
+    class Result
+      include Enumerable[Array[untyped]]
+
+      attr_reader fields: Array[String]
+      attr_reader rows: Array[Array[untyped]]
+
+      def initialize: (fields: Array[String], rows: Array[Array[untyped]]) -> void
+
+      def each: () { (Array[untyped] row) -> void } -> Array[Array[untyped]]
+    end
+
+    # The least a connection needs to read a server's statistics, in
+    # MySQL's text protocol: as root, to its database.
     class Connection
-      @client: ::Trilogy
+      LONG_PASSWORD: Integer
+      CONNECT_WITH_DB: Integer
+      PROTOCOL_41: Integer
+      TRANSACTIONS: Integer
+      SECURE_CONNECTION: Integer
+      MULTI_STATEMENTS: Integer
+      MULTI_RESULTS: Integer
+      PLUGIN_AUTH: Integer
+      CAPABILITIES: Integer
+      MAX_PACKET: Integer
+      UTF8MB4: Integer
+      OK: Integer
+      ERR: Integer
+      EOF: Integer
+      AUTH_SWITCH: Integer
+      AUTH_MORE: Integer
+      FAST_AUTH: Integer
+      COM_QUERY: Integer
+      NULL: Integer
+      MORE_RESULTS: Integer
+      INTEGERS: Array[Integer]
+      FLOATS: Array[Integer]
+      CLOSED: String
+      ESCAPES: Hash[String, String]
+      LENGTHS: Hash[Integer, Integer]
 
-      # Whether a server answers on +socket+.
-      def self.ping: (String socket) -> bool
+      # A column's name, and its type.
+      type column = [String, Integer?]
 
-      def initialize: (String socket) -> void
+      @socket: UNIXSocket | TCPSocket
 
-      def query: (String sql) -> ::Trilogy::Result
+      # Whether a server answers at +address+.
+      def self.ping: (String address) -> bool
+
+      # The host and port of a HOST:PORT address, or nil.
+      def self.address: (String address) -> [String, Integer]?
+
+      # A socket to +address+.
+      def self.socket: (String address) -> (UNIXSocket | TCPSocket)
+
+      def initialize: (String address, ?database: String) -> void
+
+      def query: (String sql) -> Result
+
+      # Runs statements; returns the last one's result.
+      def execute: (String sql) -> Result
 
       # +text+ as a string literal.
       def quote: (String text) -> String
 
-      # Runs statements; returns the last one's result.
-      def execute: (String sql) -> ::Trilogy::Result
-
       # Closes it without telling the server (no QUIT); true.
       def close: () -> bool
+
+      private
+
+      def authenticate: (String database) -> void
+
+      # A statement's result, and whether more follow.
+      def next_result: () -> [Result, bool]
+
+      def more?: (String packet, Integer at) -> bool
+
+      def eof?: (String packet) -> bool
+
+      def column: (String packet) -> column
+
+      def row: (String packet, Array[column] columns) -> Array[untyped]
+
+      def cast: (String value, Integer? type) -> (Integer | Float | String)
+
+      def lenenc: (String packet, Integer at) -> [Integer, Integer]
+
+      def lenenc_string: (String packet, Integer at) -> [String, Integer]
+
+      # A packet's payload, and its sequence number.
+      def read: () -> [String, Integer]
+
+      def read_exactly: (Integer size) -> String
+
+      def write: (String payload, Integer sequence) -> Integer
+
+      def error!: (String packet) -> bot
     end
 
     # A worker's data directory: a copy of one initialized once.
     class DataDir
+      EXE: String
+
       @resource: Resource
       @server: String
 

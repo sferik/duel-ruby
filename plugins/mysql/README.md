@@ -48,9 +48,8 @@ end
 
 > [!NOTE]
 > It needs MySQL 8.0.30 or later (not MariaDB: its `performance_schema`
-> differs) and the [trilogy](https://github.com/trilogy-libraries/trilogy)
-> gem, so CRuby (TruffleRuby 40.0 fails inside trilogy once benchmarks
-> run). Your code can use any client: trilogy is only the plugin's own.
+> differs). The plugin reads the server's statistics with a small client
+> of its own, so it needs no client gem, and your code can use any.
 
 ## Usage
 
@@ -62,16 +61,18 @@ Duel.configure { |c| c.use :mysql }
 `c.use` requires the plugin, so `.duel.rb` doesn't need to.
 
 Each worker's server listens only on a Unix socket in the worker's own
-directory (no `my.cnf` is read), with no binary log, little memory,
+directory (or with `tcp: true`, on a port of 127.0.0.1's alone, as it
+does by default on Windows, whose MySQL has no Unix socket). No
+`my.cnf` is read, and it runs with no binary log, little memory,
 nothing written to disk that needn't be, and InnoDB's statistics left as
 they are (recalculated on their own, they'd change a query's plan while
 it's measured: `ANALYZE TABLE` in a setup if you need them). Its URL is
 in `DUEL_MYSQL_URL`, and in `DATABASE_URL` too, so a client that reads
 that finds it and nothing reaches another database. The socket's path
-is in `DUEL_MYSQL_SOCKET`. Benchmarks can call `Duel::MySQL.url`,
+is in `DUEL_MYSQL_SOCKET` (with `tcp`, there's none). Benchmarks can call `Duel::MySQL.url`,
 `Duel::MySQL.socket`, `Duel::MySQL.execute` and `Duel::MySQL.reset`
-(each of these two opens a connection of its own, from the worker's
-`DUEL_MYSQL_SOCKET`, and closes it).
+(each of these two opens a connection of its own to the worker's
+server, and closes it).
 
 > [!IMPORTANT]
 > `execute` and `reset` are for setting up: call them in a `setup` hook,
@@ -98,7 +99,8 @@ c.use :mysql,
   args: ["--sort-buffer-size=4M"],          # more of its options
   setup: File.read("db/structure.sql"),     # SQL each worker's database runs first
   env: %w[DATABASE_URL PRIMARY_URL],        # variables given its URL besides DUEL_MYSQL_URL
-  scheme: "trilogy"                         # the URL's (Rails takes it for the adapter, mysql2 by default)
+  scheme: "trilogy",                        # the URL's (Rails takes it for the adapter, mysql2 by default)
+  tcp: true                                 # on a port of 127.0.0.1's, its URL mysql2://root@127.0.0.1:PORT/duel (default: on Windows only)
 ```
 
 > [!WARNING]

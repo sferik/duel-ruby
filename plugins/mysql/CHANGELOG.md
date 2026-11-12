@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Duel::MySQL.worker_memory`), so Duel 0.1.8 or later fits no more
   workers than that leaves room for, even where a server takes less as
   it starts.
+- `tcp: true` starts each worker's server on a port of 127.0.0.1's
+  alone, its URL `mysql2://root@127.0.0.1:PORT/duel`, with no
+  `DUEL_MYSQL_SOCKET`. It's the default on Windows, whose MySQL has no
+  Unix socket.
+
+### Changed
+
+- The plugin reads the server's statistics with a client of its own,
+  in MySQL's protocol, so it no longer needs the trilogy gem (or a
+  build of it for Windows). `Duel::MySQL.execute` and `.reset`
+  return a `Duel::MySQL::Result`, and a statement that fails raises
+  `Duel::MySQL::Error`.
 
 ### Fixed
 

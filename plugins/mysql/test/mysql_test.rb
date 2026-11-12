@@ -13,7 +13,8 @@ class MySQLTest < PluginTest
     FIRST = %w[test_registered test_by_measure test_texts_read_once test_readings_not_one_after_the_other test_what_ran_since_the_last_reading
       test_finding_the_server test_no_server test_initializing_that_fails].freeze
     LAST = %w[test_a_reading_waits_for_other_statements test_a_server_of_the_workers_own test_a_server_that_doesnt_start test_its_options
-      test_a_data_directory_made_once test_a_reading_waits_for_clients_only test_comparisons].freeze
+      test_a_data_directory_made_once test_a_reading_waits_for_clients_only test_a_server_on_a_port test_on_a_port_on_windows
+      test_a_wrong_database test_comparisons].freeze
 
     def self.runnable_methods
       super.sort_by { |name| [FIRST.index(name) || (FIRST.size + (LAST.index(name)&.succ || 0)), name] }
@@ -23,28 +24,15 @@ class MySQLTest < PluginTest
   # The plugin registers itself, as c.use :mysql finds it, and is
   # configured once (one server for each worker), however many times it's
   # used: what it returns is its connection, each worker's.
-  # Not as the plugin loads (in .duel.rb, before a worker loads its
-  # version, which in trilogy's own repository is trilogy): once it
-  # connects.
-  def test_loads_trilogy_only_when_used
+  # Its connections are a client of its own: it loads no MySQL gem (in
+  # trilogy's repository, or mysql2's, the version's would be measured).
+  def test_needs_no_client_gem
     loaded = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", <<~RUBY], &:read)
       require "duel/mysql"
-      before = defined?(Trilogy)
-      Duel::MySQL.require_trilogy
-      print [before.inspect, defined?(Trilogy::Error).inspect].join(" ")
+      print $LOADED_FEATURES.grep(/trilogy|mysql2/).inspect
     RUBY
 
-    assert_equal %(nil "constant"), loaded
-  end
-
-  # What Trilogy isn't loaded for yet, first: a connection (the runner's,
-  # to see that its server answers, and the worker's).
-  def test_loads_trilogy_before_it_connects
-    unloaded = Class.new(StandardError)
-
-    replacing(Duel::MySQL, :require_trilogy, -> { raise unloaded }) do
-      assert_raises(unloaded) { Duel::MySQL::Connection.new("/nowhere.sock") }
-    end
+    assert_equal "[]", loaded
   end
 
   def test_registered
@@ -60,9 +48,10 @@ class MySQLTest < PluginTest
 
   # Its options are its own: none from a my.cnf (~/.my.cnf here).
   def test_a_server_of_the_workers_own
+    unix!
     File.write(File.join(@dir, ".my.cnf"), "[mysqld]\nmax_connections=7\n")
     socket = with_env("HOME" => @dir) do
-      prepare(config) do |env|
+      prepare(config(tcp: false)) do |env|
         socket = env.fetch("DUEL_MYSQL_SOCKET")
         dir = File.dirname(socket)
         url = "mysql2://root@localhost/duel?socket=#{socket}"
@@ -83,12 +72,13 @@ class MySQLTest < PluginTest
   end
 
   def test_its_options
-    config = config(server: MYSQLD, args: ["--max-connections=17"], env: %w[PRIMARY_URL],
+    unix!
+    config = config(server: MYSQLD, args: ["--max-connections=17"], env: %w[PRIMARY_URL], tcp: false,
       scheme: "trilogy", setup: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_MYSQL_SOCKET DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort
       assert_equal "trilogy://root@localhost/duel?socket=#{Duel::MySQL.socket}", env.fetch("PRIMARY_URL")
-      assert_equal [[17, 2]], query("SELECT @@max_connections, (SELECT COUNT(*) FROM items)")
+      assert_equal [[17, 2, 1]], query("SELECT @@max_connections, (SELECT COUNT(*) FROM items), @@skip_networking"), "no network"
     end
   end
 
@@ -105,6 +95,7 @@ class MySQLTest < PluginTest
   end
 
   def test_finding_the_server
+    unix!
     bin = File.join(@dir, "bin")
     FileUtils.mkdir_p(bin)
     File.write(File.join(bin, "mysqld"), "")
@@ -116,6 +107,11 @@ class MySQLTest < PluginTest
     assert_nil Duel::MySQL::DataDir.find_server(File.join(@dir, "mysqld"), bin)
     with_env("PATH" => bin) { assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld"), "the PATH's" }
     with_env("PATH" => nil) { assert_nil Duel::MySQL::DataDir.find_server("mysqld"), "no PATH" }
+    assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld", bin, exe: ".exe"), "without its .exe too"
+  end
+
+  # Windows's, by its .exe (this system's suffix, by default).
+  def test_finding_the_server_by_its_exe
     windows = File.join(@dir, "windows")
     FileUtils.mkdir_p(windows)
     File.write(File.join(windows, "mysqld.exe"), "")
@@ -124,12 +120,14 @@ class MySQLTest < PluginTest
     assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ".exe"), "Windows's, by its .exe"
     assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server(File.join(windows, "mysqld"), "", exe: ".exe")
     assert_nil Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ""), "no .exe, off Windows"
-    assert_equal RbConfig::CONFIG["EXEEXT"].empty?, Duel::MySQL::DataDir.find_server("mysqld", windows).nil?, "this system's, by default"
+    assert_equal Duel::MySQL::DataDir::EXE.empty?, Duel::MySQL::DataDir.find_server("mysqld", windows).nil?, "this system's, by default"
+    assert_equal RbConfig::CONFIG["EXEEXT"], Duel::MySQL::DataDir::EXE
   end
 
   # The first worker's data directory is initialized (Resource#cached);
   # the others copy it.
   def test_a_data_directory_made_once
+    unix!
     config = self.config
     cache = own_cache
     made = prepare(config, cache:, name: "base-1") { |env| File.exist?(log(env, "mysqld-initialize.log")) }
@@ -142,7 +140,7 @@ class MySQLTest < PluginTest
     assert_equal ["mysql-#{Duel::MySQL::VERSION}-#{key}"], made_once, "for the real server, by its path and time"
     link = File.join(@dir, "mysqld")
     File.symlink(MYSQLD, link)
-    prepare(self.config(server: link), cache:) do |env| # (a link to it is the same server)
+    prepare(self.config(server: link, tcp: false), cache:) do |env| # (a link to it is the same server)
       refute_path_exists log(env, "mysqld-initialize.log")
       assert_equal [["duel"]], query("SELECT DATABASE()")
     end
@@ -151,6 +149,7 @@ class MySQLTest < PluginTest
   end
 
   def test_initializing_that_fails
+    unix!
     server = File.join(@dir, "mysqld")
     File.write(server, "#!/bin/sh\necho \"mysqld: can't\"\nexit 1\n")
     File.chmod(0o755, server)
@@ -370,7 +369,7 @@ class MySQLTest < PluginTest
     shared do
       GC.disable # (a connection left open would be closed when it's collected)
       Duel::MySQL.execute("SELECT 1")
-      Duel::MySQL::Connection.ping(Duel::MySQL.socket)
+      Duel::MySQL::Connection.ping(Duel::MySQL.address)
       db = client
 
       assert_equal [[0]], alone(db), "only the one asking"
@@ -392,7 +391,7 @@ class MySQLTest < PluginTest
     shared do
       connection = Duel::Testing.in_worker(config) { @connection.value }
 
-      assert_raises(Trilogy::Error, "closed (the server's still up)") { connection.query("SELECT 1") }
+      assert_raises(IOError, "closed (the server's still up)") { connection.query("SELECT 1") }
     end
     error = assert_raises(Duel::Error) { @connection.value }
 
@@ -581,6 +580,242 @@ class MySQLTest < PluginTest
 
     assert_predicate config.metrics.first, :costly?
     assert_equal [20, 40], measured.values_at("mysql_queries", "mysql_rows")
+  end
+
+  # Unix's alone: a Unix socket's (Windows's MySQL has none), and the
+  # tests' links and shell scripts.
+  def unix! = (skip "Unix's alone: see the tcp tests" if Duel::Native::WINDOWS)
+
+  # With +tcp+ (Windows's, by default): on a port of its own, of
+  # 127.0.0.1's alone, its URL host and port, with no socket, which the
+  # plugin's connections reach it on.
+  def test_a_server_on_a_port
+    address = prepare(config(tcp: true, env: %w[PRIMARY_URL])) do |env|
+      url = env.fetch("DUEL_MYSQL_URL")
+      port = url[/:(\d+)\//, 1]
+
+      assert_equal "mysql2://root@127.0.0.1:#{port}/duel", url
+      assert_equal %w[DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort, "no socket"
+      assert_equal "127.0.0.1:#{port}", Duel::MySQL.address
+      assert_equal [[0, "127.0.0.1", Integer(port), "duel"]], query("SELECT @@skip_networking, @@bind_address, @@port, DATABASE()")
+      assert_equal [["root@localhost"]], Duel::MySQL.execute("SELECT CURRENT_USER()").rows
+      Duel::MySQL.address
+    end
+
+    refute Duel::MySQL::Connection.ping(address), "stopped with the worker"
+  end
+
+  # On Windows, by default.
+  def test_on_a_port_on_windows
+    windows = Duel::Native::WINDOWS
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, true)
+    url = prepare(config) { |env| env.fetch("DUEL_MYSQL_URL") }
+
+    assert_match %r{\Amysql2://root@127\.0\.0\.1:\d+/duel\z}, url
+  ensure
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, windows)
+  end
+
+  # A statement that fails raises its error (its code too), and the
+  # connection goes on.
+  def test_a_statement_that_fails
+    shared do
+      db = client
+      error = assert_raises(Duel::MySQL::Error) { db.query("SELEKT 1") }
+
+      assert_equal 1064, error.code
+      assert_match(/\AMySQL: You have an error in your SQL syntax.* \(1064\)\z/, error.message)
+      assert_kind_of Duel::Error, error
+      assert_equal [[1]], db.query("SELECT 1").rows
+    ensure
+      db&.close
+    end
+  end
+
+  # A database there isn't: the server refuses the connection.
+  def test_a_wrong_database
+    shared do
+      error = assert_raises(Duel::MySQL::Error) { Duel::MySQL::Connection.new(Duel::MySQL.address, database: "nö_such_database") }
+
+      assert_equal ["MySQL: Unknown database 'nö_such_database' (1049)", 1049], [error.message, error.code], "its message UTF-8"
+      refute Duel::MySQL::Connection.ping("#{Duel::MySQL.address}x"), "nothing there"
+    end
+  end
+
+  # Values of every kind: integers (and YEAR) as Integers, in base 10
+  # (a ZEROFILL one's too), floating-point numbers as Floats, NULL as
+  # nil, and the rest (decimals too) as Strings, UTF-8, of any length
+  # (one past 250 bytes, and one past 64KB, take longer lengths); its
+  # columns named, in UTF-8, as many as there are (past 250 too).
+  def test_values
+    shared do
+      db = client
+      result = db.query("SELECT 1 a, CAST(-2 AS SIGNED) b, CAST(3 AS UNSIGNED) c, 4.5e0 d, CAST(0.25 AS FLOAT) e, 1.25 f, NULL g, " \
+        "'é' `é`, REPEAT('x', 300) i, REPEAT('y', 70000) j, YEAR('2026-01-01') k, CAST(7 AS CHAR) l")
+      a, b, c, d, e, f, g, h, i, j, k, l = result.rows.first
+
+      assert_equal %w[a b c d e f g é i j k l], result.fields
+      assert_equal [1, -2, 3, 4.5, 0.25, "1.25", nil, "é", 2026, "7"], [a, b, c, d, e, f, g, h, k, l]
+      assert_equal [[10]], db.query("CREATE TEMPORARY TABLE z (n INT(4) ZEROFILL); INSERT INTO z VALUES (10); SELECT n FROM z").rows
+      assert_equal [(1..300).to_a], db.query("SELECT #{(1..300).to_a.join(", ")}").rows
+      assert_equal [Encoding::UTF_8, 300, 70_000], [h.encoding, i.size, j.size]
+      assert_equal [[1, nil], [2, nil]], db.query("SELECT 1, NULL UNION SELECT 2, NULL").to_a, "each row, as Enumerable has it"
+    ensure
+      db&.close
+    end
+  end
+
+  # Several statements, and their results: the last one's, an OK's (no
+  # rows) where it returns none.
+  def test_several_statements
+    shared do
+      db = client
+      last = db.query("CREATE TABLE t (id int); INSERT INTO t VALUES (1), (2); SELECT COUNT(*) FROM t")
+      none = db.execute("INSERT INTO t VALUES (3); SET @a = 1")
+
+      assert_equal [[2]], last.rows
+      assert_equal [[], []], [none.fields, none.rows]
+      assert_equal [[3]], db.query("SELECT 1; SELECT COUNT(*) FROM t").rows, "the last one's"
+      many = "INSERT INTO t WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300) SELECT i FROM n"
+
+      assert_equal [[303]], db.query("#{many}; SELECT COUNT(*) FROM t").rows, "after an OK of a longer count"
+    ensure
+      db&.close
+    end
+  end
+
+  # A string literal for any text: what MySQL escapes, escaped.
+  def test_quoting
+    shared do
+      db = client
+      text = "a'b\"c\\d\0e\nf\rg\x1ah"
+
+      assert_equal "'a\\'b\\\"c\\\\d\\0e\\nf\\rg\\Zh'", db.quote(text)
+      assert_equal [[text]], db.query("SELECT #{db.quote(text)}").rows
+    ensure
+      db&.close
+    end
+  end
+
+  # A connection over TCP sends each packet at once (TCP_NODELAY).
+  def test_no_delay
+    server = TCPServer.new("127.0.0.1", 0)
+    socket = Duel::MySQL::Connection.socket("127.0.0.1:#{server.addr.fetch(1)}")
+
+    assert socket.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool
+  ensure
+    socket&.close
+    server&.close
+  end
+
+  # HOST:PORT's host and port; a path's, none.
+  def test_an_address
+    assert_equal ["127.0.0.1", 3306], Duel::MySQL::Connection.address("127.0.0.1:3306")
+    assert_equal ["db", 1], Duel::MySQL::Connection.address("db:1")
+    ["/tmp/mysqld.sock", "mysqld.sock", "127.0.0.1", "a:b:1", "/a:1", "a:1x", "a:1\n"].each do |address|
+      assert_nil Duel::MySQL::Connection.address(address), address
+    end
+    assert_equal "/s.sock", Duel::MySQL.address({"DUEL_MYSQL_SOCKET" => "/s.sock", "DUEL_MYSQL_URL" => "mysql2://root@127.0.0.1:1/duel"})
+    assert_equal "127.0.0.1:1", Duel::MySQL.address({"DUEL_MYSQL_URL" => "mysql2://root@127.0.0.1:1/duel"}), "the URL's, without a socket"
+  end
+
+  # A server of the test's own, on a Unix socket, that greets (as MySQL
+  # 8's does, caching_sha2_password's) and answers each packet the client
+  # sends with the next of +replies+ (payloads; nil hangs up), each
+  # numbered on from the client's (their numbers in @sequences). Its
+  # greeting's header may say it's +longer+ than it is. Yields its path;
+  # returns the packets it was sent.
+  def fake_server(*replies, greeting: fake_greeting, longer: 0)
+    path = File.join(@dir, "f.sock")
+    server = UNIXServer.new(path)
+    @sequences = []
+    thread = Thread.new do
+      client = server.accept
+      sent = []
+      write = ->(payload, sequence, size = payload.bytesize) { client.write([size].pack("V").byteslice(0, 3) + sequence.chr + payload.b) }
+      write.call(greeting, 0, greeting.bytesize + longer)
+      replies.each do |reply|
+        header = client.read(4) or break
+        @sequences << header.getbyte(3)
+        sent << client.read(header.unpack1("V") & 0xFFFFFF)
+        reply.nil? ? break : Array(reply).each_with_index { |payload, i| write.call(payload, header.getbyte(3) + 1 + i) }
+      end
+      sent
+    ensure
+      client&.close
+    end
+    yield path
+    thread.value
+  ensure
+    server&.close
+    FileUtils.rm_f(path)
+  end
+
+  def fake_greeting = "\x0a8.0.0\0" + [1].pack("V") + ("s" * 8) + "\0" + [0xFFFF, 45, 2, 0xFFFF, 21].pack("vCvvC") + ("\0" * 10) +
+    ("t" * 12) + "\0" + "caching_sha2_password\0"
+
+  OK = "\x00\x00\x00\x02\x00\x00\x00"
+
+  # What it says as it connects: protocol 4.1's, root, no password, the
+  # database, and the server's plugin. An auth switch is answered with an
+  # empty response too, and caching_sha2_password's fast auth taken.
+  def test_the_handshake
+    sent = fake_server(["\x01\x03", OK], OK) { |path| Duel::MySQL::Connection.new(path, database: "mine").close }
+    response = sent.first
+    capabilities, max, charset = response.unpack("VVC")
+
+    assert_equal [0xB_A209, (1 << 24) - 1, 45], [capabilities, max, charset]
+    assert_equal ("\0" * 23) + "root\0\0mine\0caching_sha2_password\0", response.byteslice(9..)
+    sent = fake_server("\xFEmysql_native_password\0#{"x" * 20}\0", OK) { |path| Duel::MySQL::Connection.new(path).close }
+
+    assert_equal ["", 2], [sent.last, sent.size], "an empty response to the switch"
+    assert_equal [1, 3], @sequences, "numbered on from the server's"
+  end
+
+  # What it can't connect with: a server that refuses at once (an error
+  # for a greeting, of MySQL 4.1's form, without an SQL state), wants a
+  # password, or answers what it doesn't read. Its socket's closed.
+  def test_a_handshake_that_fails
+    opened = []
+    socket = Duel::MySQL::Connection.method(:socket)
+    error = replacing(Duel::MySQL::Connection, :socket, ->(address) { socket.call(address).tap { |s| opened << s } }) do
+      assert_raises(Duel::MySQL::Error) { fake_server(greeting: "\xFF\x10\x04Too many connections") { |path| Duel::MySQL::Connection.new(path) } }
+    end
+
+    assert_equal ["MySQL: Too many connections (1040)", 1040], [error.message, error.code]
+    assert_equal [true], opened.map(&:closed?)
+    error = assert_raises(Duel::MySQL::Error) { fake_server("\x01\x04") { |path| Duel::MySQL::Connection.new(path) } }
+
+    assert_equal "MySQL wants a password (root's has none)", error.message
+    error = assert_raises(Duel::MySQL::Error) { fake_server("\x07\x00") { |path| Duel::MySQL::Connection.new(path) } }
+
+    assert_equal "MySQL: an authentication reply the connection doesn't read: 7", error.message
+    assert_raises(Duel::MySQL::Error) { fake_server("\xFF\x15\x04#28000Access denied") { |path| Duel::MySQL::Connection.new(path) } }
+  end
+
+  # A server that hangs up, even in the middle of a packet.
+  def test_a_server_that_hangs_up
+    error = assert_raises(IOError) { fake_server(nil) { |path| Duel::MySQL::Connection.new(path) } }
+
+    assert_equal "MySQL closed the connection", error.message
+    error = assert_raises(IOError) { fake_server(greeting: "\xFF\x10\x04Too many", longer: 10) { |path| Duel::MySQL::Connection.new(path) } }
+
+    assert_equal "MySQL closed the connection", error.message, "cut short"
+  end
+
+  # A row may start with an EOF's byte (a value's 8-byte length): it's a
+  # row, at 9 bytes or more, and an EOF under 9. And a reply cut short
+  # raises.
+  def test_a_row_that_starts_like_an_end
+    columns = ["\x01", "\x03def\0\0\0\x01v\0\x0c\x2d\0\x00\x01\0\0\xfd\0\0\0\0\0", "\xFE\0\0\x02\0"]
+    rows = ["\xFE#{[3].pack("Q<")}abc", "\xFE#{[0].pack("Q<")}"]
+    result = nil
+    fake_server(OK, [*columns, *rows, "\xFE\0\0\x02\0\0\0\0"]) { |path| result = Duel::MySQL::Connection.new(path).query("SELECT").rows }
+
+    assert_equal [["abc"], [""]], result
+    assert_raises(IOError) { fake_server(OK, [*columns]) { |path| Duel::MySQL::Connection.new(path).query("SELECT") } }
   end
 
   private
