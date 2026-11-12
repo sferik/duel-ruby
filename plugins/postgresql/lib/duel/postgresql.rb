@@ -444,11 +444,22 @@ module Duel
         @pg_ctl = pg_ctl
       end
 
-      # Makes one in +data+: a copy of the one made for these programs.
+      # Makes one in +data+: a copy of the one made for these programs
+      # (on Windows, given to the user: see .grant).
       def create(data)
         built = @resource.cached(key) { |dir| make(dir) }
         FileUtils.cp_r(@pg_ctl ? File.join(built, PG_CTL) : built, data)
         File.chmod(0o700, data) # (as postgres insists)
+        Cluster.grant(@resource, data)
+      end
+
+      # On Windows (+windows+), gives the user the cluster in +data+, run
+      # by +resource+. An administrator's copy (Ruby's, on GitHub's
+      # runners) is the Administrators group's, which pg_ctl starts
+      # postgres without (it drops an administrator's rights), so postgres
+      # couldn't open its own files. (initdb's are the user's already.)
+      def self.grant(resource, data, windows: Native::WINDOWS)
+        resource.run("icacls", data, "/grant", "#{ENV.fetch("USERNAME")}:(OI)(CI)F", "/T", "/Q") if windows
       end
 
       # Starts a server on the cluster in +data+ with pg_ctl, with

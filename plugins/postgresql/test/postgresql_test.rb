@@ -147,12 +147,16 @@ class PostgreSQLTest < PluginTest
     refute_path_exists File.join(cache, built.first, "cluster", "postmaster.pid"), "its server stopped"
   end
 
-  # On Windows, by default.
+  # On Windows, by default (its copy given to the user: icacls is a fake
+  # one off Windows).
   def test_pg_ctl_on_windows
     windows = Duel::Native::WINDOWS
     Duel::Native.send(:remove_const, :WINDOWS)
     Duel::Native.const_set(:WINDOWS, true)
-    host = prepare(config) { |env| env.fetch("PGHOST") }
+    bin, = fake_icacls unless windows
+    host = with_env(bin ? {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "USERNAME" => "someone"} : {}) do
+      prepare(config) { |env| env.fetch("PGHOST") }
+    end
 
     assert_equal "127.0.0.1", host
   ensure
@@ -269,6 +273,22 @@ class PostgreSQLTest < PluginTest
 
     assert_match(/\Ahead-1's resource: postgres exited with 1\n.*no_such_column/m, error.message)
     assert_equal "SELECT no_such_column\n", File.read(File.join(@dir, "resource", "single.sql"))
+  end
+
+  # On Windows, a cluster's copy is given to the user (see
+  # Cluster.grant), with icacls. Elsewhere, nothing's run.
+  def test_a_copy_given_to_the_user
+    unix!
+    resource = Duel::Resource.new(File.join(@dir, "resource"), "head-1", @dir, timeout: 60, cache: own_cache)
+    bin, args = fake_icacls
+    with_env("PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "USERNAME" => "someone") do
+      Duel::PostgreSQL::Cluster.grant(resource, "data", windows: false)
+
+      refute_path_exists args, "not off Windows"
+      Duel::PostgreSQL::Cluster.grant(resource, "data", windows: true)
+    end
+
+    assert_equal "data /grant someone:(OI)(CI)F /T /Q\n", File.read(args)
   end
 
   # (bin:, or DUEL_POSTGRESQL_BIN.)
@@ -686,6 +706,17 @@ class PostgreSQLTest < PluginTest
   end
 
   private
+
+  # A directory with an icacls that writes its arguments to a file, and
+  # that file's path.
+  def fake_icacls
+    bin = File.join(@dir, "fake")
+    args = File.join(@dir, "icacls.args")
+    FileUtils.mkdir_p(bin)
+    File.write(File.join(bin, "icacls"), "#!/bin/sh\necho \"$*\" > #{args}\n")
+    File.chmod(0o755, File.join(bin, "icacls"))
+    [bin, args]
+  end
 
   # Yields a block that measures, with +config+, 20 iterations of a
   # query (of 2 rows, sent with the extended protocol) inside an
