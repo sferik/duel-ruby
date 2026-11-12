@@ -53,7 +53,7 @@ module SharedServer
   # returns its environment. (The environment's left as it was: a test
   # sets it while it runs.)
   def self.start
-    root = Dir.mktmpdir("dmcs", "/tmp")
+    root = Dir.mktmpdir("dmcs", Duel::Lane.short_tmp)
     config = Duel::Config.new(root)
     config.use(:memcached)
     fiber = Fiber.new { Duel::Testing.prepare(config) { |env| Fiber.yield(env) } }
@@ -83,7 +83,7 @@ module SharedServer
   # Gives a test its server as it started: no keys, and its
   # statistics reset.
   def self.clean(env)
-    socket = UNIXSocket.new(env.fetch(Duel::Memcached::SERVERS))
+    socket = Duel::Memcached::Connection.socket(env.fetch(Duel::Memcached::SERVERS))
     begin
       socket.write("flush_all\r\nstats reset\r\n")
       2.times { socket.gets }
@@ -96,7 +96,7 @@ end
 class PluginTest < Minitest::Test
   def setup
     skip "memcached isn't installed" unless system("memcached", "--version", out: File::NULL, err: File::NULL)
-    @dir = Dir.mktmpdir("dm", "/tmp")
+    @dir = Dir.mktmpdir("dm", Duel::Lane.short_tmp)
   end
 
   def teardown

@@ -23,7 +23,7 @@ require "minitest/strict"
 # teardown, and minitest's hooks don't run). (Before mutant's coverage
 # declarations, which define Mutant themselves.)
 module TestFiles
-  ROOT = Dir.mktmpdir("drt", "/tmp")
+  ROOT = Dir.mktmpdir("drt", Duel::Lane.short_tmp)
   OWNER = Process.pid
   cleanup = -> { FileUtils.rm_rf(ROOT) if Process.pid == OWNER }
   defined?(Mutant) ? at_exit(&cleanup) : Minitest.after_run(&cleanup)

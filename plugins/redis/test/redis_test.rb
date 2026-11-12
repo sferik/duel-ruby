@@ -12,8 +12,8 @@ class RedisTest < PluginTest
   # servers of their own last.
   if defined?(Mutant)
     FIRST = %w[test_used_by_name test_a_ping test_a_flush_closes_its_connection test_a_reply_of_another_type test_a_reply_cut_short].freeze
-    LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own test_its_options
-      test_its_directory test_the_connection].freeze
+    LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
+      test_a_server_on_a_port test_on_a_port_on_windows test_its_options test_its_directory test_the_connection].freeze
 
     def self.runnable_methods
       super.sort_by { |name| [FIRST.index(name) || (FIRST.size + (LAST.index(name)&.succ || 0)), name] }
@@ -34,8 +34,13 @@ class RedisTest < PluginTest
     assert_equal [%w[redis_cpu redis_commands redis_round_trips]], config.metrics.map { |metric| metric.measures.keys }
   end
 
+  # Unix sockets: there's no Redis for Windows whose Windows's Ruby can
+  # reach (see test_a_server_on_a_port).
+  def unix_sockets! = (skip "Windows's Redis has Unix sockets of its own, not Windows's" if Duel::Native::WINDOWS)
+
   def test_a_server_of_the_workers_own
-    socket = Duel::Testing.prepare(config) do |env|
+    unix_sockets!
+    socket = Duel::Testing.prepare(config(tcp: false)) do |env|
       path = env.fetch("DUEL_REDIS_URL").delete_prefix("unix://")
 
       assert_equal env.fetch("DUEL_REDIS_URL"), env.fetch("REDIS_URL")
@@ -46,6 +51,45 @@ class RedisTest < PluginTest
     end
 
     refute Duel::Redis::Connection.ping(socket), "stopped with the worker"
+  end
+
+  # With +tcp+ (Windows's, by default), on a port of its own, of
+  # 127.0.0.1's alone, in the worker's directory all the same, and no
+  # Unix socket.
+  def test_a_server_on_a_port
+    url = Duel::Testing.prepare(config(tcp: true, args: ["--databases", "4"])) do |env|
+      url = env.fetch("DUEL_REDIS_URL")
+      redis = Duel::Redis::Connection.new(url)
+      dir = redis.call("CONFIG", "GET", "dir").last
+
+      assert_equal [["save", ""], ["appendonly", "no"], ["databases", "4"]], %w[save appendonly databases].map { |name| redis.call("CONFIG", "GET", name) },
+        "its options, and those it's given"
+
+      assert_match %r{\Aredis://127\.0\.0\.1:\d+\z}, url
+      assert_equal url, env.fetch("REDIS_URL")
+      assert_equal [["bind", "127.0.0.1"], ["port", url[/\d+\z/]], ["unixsocket", ""]],
+        %w[bind port unixsocket].map { |name| redis.call("CONFIG", "GET", name) }
+      # (Told by its name, as writing nothing there tells nothing: a
+      # mutation that dropped --dir would write in the project.)
+      assert_equal "head-1-1", File.basename(dir), "in the worker's directory"
+      redis.close
+      url
+    end
+
+    refute Duel::Redis::Connection.ping(url), "stopped with the worker"
+  end
+
+  # On Windows, by default.
+  def test_on_a_port_on_windows
+    windows = Duel::Native::WINDOWS
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, true)
+    url = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_REDIS_URL") }
+
+    assert_match %r{\Aredis://}, url
+  ensure
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, windows)
   end
 
   def test_its_options
@@ -61,7 +105,8 @@ class RedisTest < PluginTest
   # The server works in the worker's directory: what a user's options make
   # it write (an append-only file, here) goes there, not in the project.
   def test_its_directory
-    Duel::Testing.prepare(config(args: ["--appendonly", "yes"])) do |env|
+    unix_sockets!
+    Duel::Testing.prepare(config(tcp: false, args: ["--appendonly", "yes"])) do |env|
       dir = File.dirname(env.fetch("REDIS_URL").delete_prefix("unix://"))
       redis = Duel::Redis::Connection.new(env.fetch("REDIS_URL"))
 
@@ -74,7 +119,7 @@ class RedisTest < PluginTest
   # Nothing written to disk: no snapshots, no append-only file.
   def test_no_persistence
     shared do |env|
-      socket = UNIXSocket.new(env.fetch("REDIS_URL").delete_prefix("unix://"))
+      socket = Duel::Redis::Connection.socket(env.fetch("REDIS_URL"))
       socket.write("CONFIG GET save\r\nCONFIG GET appendonly\r\n")
 
       assert_equal ["*2", "$4", "save", "$0", "", "*2", "$10", "appendonly", "$2", "no"], Array.new(10) { socket.gets.chomp }
@@ -264,6 +309,53 @@ class RedisTest < PluginTest
         redis&.close
       end
     end
+  end
+
+  # A socket by URL: a Unix socket's (unix://, or a path alone), or a TCP
+  # one's (redis://HOST:PORT), which sends a command at once.
+  def test_a_socket_by_url
+    path = File.join(@dir, "fake.sock")
+    unix = UNIXServer.new(path)
+    tcp = TCPServer.new("127.0.0.1", 0)
+    port = tcp.addr.fetch(1)
+    sockets = ["unix://#{path}", path, "redis://127.0.0.1:#{port}"].map { |url| Duel::Redis::Connection.socket(url) }
+
+    assert_equal [UNIXSocket, UNIXSocket, TCPSocket], sockets.map(&:class)
+    opened = []
+    connect = TCPSocket.method(:new)
+    TCPSocket.singleton_class.define_method(:new) { |*args| (opened << args) && connect.call(*args) }
+    begin
+      Duel::Redis::Connection.socket("redis://127.0.0.1:#{port}").close
+    ensure
+      TCPSocket.singleton_class.remove_method(:new)
+    end
+
+    assert_equal [["127.0.0.1", port]], opened, "to the URL's host and port"
+    assert sockets.last.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool, "no delay"
+    assert_equal port, sockets.last.remote_address.ip_port
+    assert_raises(SystemCallError, "a path, not a URL") { Duel::Redis::Connection.socket("redis://127.0.0.1:#{port}x") }
+  ensure
+    sockets&.each(&:close)
+    unix&.close
+    tcp&.close
+  end
+
+  # A redis:// URL's host and port; another's, none.
+  def test_an_address
+    assert_equal ["127.0.0.1", 6379], Duel::Redis::Connection.address("redis://127.0.0.1:6379")
+    assert_equal ["cache", 1], Duel::Redis::Connection.address("redis://cache:1")
+    ["unix:///tmp/r.sock", "/tmp/r.sock", "redis://127.0.0.1:6379/0", "redis://127.0.0.1", "xredis://a:1", "redis://a:b:1",
+      "redis://a:1\n"].each do |url|
+      assert_nil Duel::Redis::Connection.address(url), url
+    end
+  end
+
+  # A port the system chose, free again.
+  def test_a_free_port
+    ports = Array.new(3) { Duel::Redis.free_port }
+
+    assert(ports.all? { |port| port.between?(1, 65_535) })
+    TCPServer.new("127.0.0.1", ports.last).close
   end
 
   # Ready only when the server answers PONG; it hangs up either way.

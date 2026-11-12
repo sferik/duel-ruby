@@ -23,9 +23,11 @@ module Duel
   # Duel::Memcached.flush in setup (or untimed blocks): while a benchmark
   # is measured, it fails.
   #
-  # The server listens only on a Unix socket in the worker's directory,
-  # with one thread (so its statistics are up to date when they're read);
-  # the socket's path is in DUEL_MEMCACHED_SERVERS, and in
+  # The server listens only on a Unix socket in the worker's directory
+  # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,
+  # whose builds of memcached have no Unix socket), with one thread (so
+  # its statistics are up to date when they're read); the socket's path
+  # (or 127.0.0.1:PORT) is in DUEL_MEMCACHED_SERVERS, and in
   # MEMCACHE_SERVERS too (unless +env+ names others), so a client that
   # reads that (Dalli does) finds it.
   module Memcached
@@ -38,12 +40,20 @@ module Duel
     # metrics, memcached_cpu too with +cpu+. Returns the plugin's own
     # connection to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), args: [], env: %w[MEMCACHE_SERVERS], cpu: false)
+    def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), args: [], env: %w[MEMCACHE_SERVERS], cpu: false,
+      tcp: Native::WINDOWS)
       config.prepare(:worker) do |w|
-        socket = w.path("memcached.sock")
-        w.spawn(*[server, "-s", socket, "-m", "32", "-t", "1"] + args)
-        w.wait_until { Connection.ready?(socket) }
-        ([SERVERS] + env).to_h { |name| [name, socket] }
+        if tcp
+          port = free_port
+          listen = ["-l", "127.0.0.1", "-p", port.to_s]
+          address = "127.0.0.1:#{port}"
+        else
+          address = w.path("memcached.sock")
+          listen = ["-s", address]
+        end
+        w.spawn(*[server, *listen, "-m", "32", "-t", "1"] + args)
+        w.wait_until { Connection.ready?(address) }
+        ([SERVERS] + env).to_h { |name| [name, address] }
       end
       connection = config.in_worker { |w| Connection.new(servers).tap { |memcached| w.at_stop { memcached.close } } }
       config.metric(METRICS) { stats(connection.value) }.costly
@@ -117,8 +127,24 @@ module Duel
       value
     end
 
-    # For benchmarks: the worker's server (its socket's path).
+    # For benchmarks: the worker's server (its socket's path, or
+    # 127.0.0.1:PORT).
     def self.servers = ENV.fetch(SERVERS)
+
+    # A port of 127.0.0.1's that's free (one the system chose, let go of
+    # again), for a server of a worker's to listen on.
+    # mutant:disable -- any address the system binds to gives a port free
+    # alike: 127.0.0.1's is the one the server listens on
+    def self.free_port
+      # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
+      # before it.)
+      server = TCPServer.new("127.0.0.1", 0) # steep:ignore UnexpectedPositionalArgument
+      begin
+        server.addr.fetch(1)
+      ensure
+        server.close
+      end
+    end
 
     # Empties it, over a connection of its own (opened and closed: a Unix
     # socket's is cheap). A flush is an operation, and its bytes count as
@@ -147,20 +173,40 @@ module Duel
       # The most read at a time: a whole stats reply (some 2.5KB) at once.
       READ = 65_536
 
-      def self.ready?(path)
-        socket = UNIXSocket.new(path)
+      # A socket to the server at +server+: a Unix socket's path, or
+      # HOST:PORT, without TCP's delay before a small write (a command),
+      # whose reply would wait for it.
+      def self.socket(server)
+        address = address(server)
+        return UNIXSocket.new(server) unless address
+
+        host, port = address
+        # (RBS's setsockopt takes an Integer for the value, but Ruby's
+        # takes true too.)
+        TCPSocket.new(host, port).tap { |socket| socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, true) } # steep:ignore ArgumentTypeMismatch
+      end
+
+      # The host and port of a HOST:PORT server, or nil (a Unix socket's
+      # path).
+      def self.address(server)
+        match = %r{\A([^:/]+):(\d+)\z}.match(server) or return
+        [match[1], Integer(match[2])]
+      end
+
+      def self.ready?(server)
+        connection = socket(server)
         begin
-          socket.write("version\r\n")
-          socket.gets.to_s.start_with?("VERSION ")
+          connection.write("version\r\n")
+          connection.gets.to_s.start_with?("VERSION ")
         ensure
-          socket.close
+          connection.close
         end
       rescue SystemCallError, IOError # (JRuby's refusal is an IOError)
         false
       end
 
-      def initialize(path)
-        @socket = UNIXSocket.new(path)
+      def initialize(server)
+        @socket = Connection.socket(server)
         @sent = @received = @own = 0
         @reply = +""
         @chunk = +""

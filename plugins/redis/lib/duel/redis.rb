@@ -18,9 +18,12 @@ module Duel
   #
   # Benchmarks can call Duel::Redis.url and Duel::Redis.flush.
   #
-  # The server listens only on a Unix socket in the worker's directory,
-  # and works there too (--dir): what its options make it write, a
-  # snapshot or an append-only file, goes there, never in the project.
+  # The server listens only on a Unix socket in the worker's directory
+  # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,
+  # whose builds of Redis, Cygwin's or MSYS2's, have Unix sockets of their
+  # own, which Windows's Ruby can't reach), and works there too (--dir):
+  # what its options make it write, a snapshot or an append-only file,
+  # goes there, never in the project.
   # Its URL is in DUEL_REDIS_URL, and in REDIS_URL too (unless +env+
   # names others), so a client that reads that finds it.
   module Redis
@@ -35,12 +38,20 @@ module Duel
     # (+server+ is the program, +args+ more of its options) and its
     # metrics. Returns the plugin's own connection to it, a worker's
     # (see Config#in_worker, and in tests, Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), args: [], env: %w[REDIS_URL])
+    def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), args: [], env: %w[REDIS_URL],
+      tcp: Native::WINDOWS)
       config.prepare(:worker) do |w|
-        socket = w.path("redis.sock")
-        w.spawn(*[server, "--unixsocket", socket, "--dir", w.dir, *OPTIONS] + args)
-        w.wait_until { Connection.ping(socket) }
-        url = "unix://#{socket}"
+        if tcp
+          # (Its port after OPTIONS' 0, which it takes the place of.)
+          port = free_port
+          w.spawn(*[server, "--dir", w.dir, *OPTIONS, "--port", port.to_s, "--bind", "127.0.0.1"] + args)
+          url = "redis://127.0.0.1:#{port}"
+        else
+          socket = w.path("redis.sock")
+          w.spawn(*[server, "--unixsocket", socket, "--dir", w.dir, *OPTIONS] + args)
+          url = "unix://#{socket}"
+        end
+        w.wait_until { Connection.ping(url) }
         ([URL] + env).to_h { |name| [name, url] }
       end
       connection = config.in_worker { |w| Connection.new(url).tap { |redis| w.at_stop { redis.close } } }
@@ -71,6 +82,21 @@ module Duel
     # For benchmarks: the worker's server.
     def self.url = ENV.fetch(URL)
 
+    # A port of 127.0.0.1's that's free (one the system chose, let go of
+    # again), for a server of a worker's to listen on.
+    # mutant:disable -- any address the system binds to gives a port free
+    # alike: 127.0.0.1's is the one the server listens on
+    def self.free_port
+      # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
+      # before it.)
+      server = TCPServer.new("127.0.0.1", 0) # steep:ignore UnexpectedPositionalArgument
+      begin
+        server.addr.fetch(1)
+      ensure
+        server.close
+      end
+    end
+
     # Empties it, over a connection of its own (opened and closed: a Unix
     # socket's is cheap). For setup or untimed blocks only: while a
     # benchmark is measured (Duel.measuring?) it fails, as its FLUSHALL
@@ -94,20 +120,39 @@ module Duel
       # The first byte of a reply: its type, one of RESP2's.
       STATUS, ERROR, INTEGER, BULK, ARRAY = "+-:$*".bytes
 
-      def self.ping(path)
-        socket = UNIXSocket.new(path)
+      # A socket to the server at +url+: unix://PATH (or PATH alone), or
+      # redis://HOST:PORT, without TCP's delay before a small write (a
+      # command), whose reply would wait for it.
+      def self.socket(url)
+        address = address(url)
+        return UNIXSocket.new(url.delete_prefix("unix://")) unless address
+
+        host, port = address
+        # (RBS's setsockopt takes an Integer for the value, but Ruby's
+        # takes true too.)
+        TCPSocket.new(host, port).tap { |socket| socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, true) } # steep:ignore ArgumentTypeMismatch
+      end
+
+      # The host and port of a redis:// URL, or nil (a Unix socket's).
+      def self.address(url)
+        match = %r{\Aredis://([^:/]+):(\d+)\z}.match(url) or return
+        [match[1], Integer(match[2])]
+      end
+
+      def self.ping(url)
+        connection = socket(url)
         begin
-          socket.write("PING\r\n")
-          socket.gets == "+PONG\r\n"
+          connection.write("PING\r\n")
+          connection.gets == "+PONG\r\n"
         ensure
-          socket.close
+          connection.close
         end
       rescue SystemCallError
         false
       end
 
       def initialize(url)
-        @socket = UNIXSocket.new(url.delete_prefix("unix://"))
+        @socket = Connection.socket(url)
       end
 
       # Sends a command; returns its reply, read whole (every type RESP2

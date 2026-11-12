@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tcp: true` starts each worker's server on a port of 127.0.0.1's
+  alone, its URL `redis://127.0.0.1:PORT`, rather than a Unix socket:
+  the default on Windows, whose builds of Redis (Cygwin's, MSYS2's)
+  have Unix sockets of their own, which Windows's Ruby can't reach.
+
 ## [0.1.8] - 2026-11-12
 
 No changes of its own: released in step with the other Duel gems.

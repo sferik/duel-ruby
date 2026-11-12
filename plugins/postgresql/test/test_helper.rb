@@ -76,7 +76,7 @@ module SharedServer
   # what @started has of it. (The environment's left as it was: a test
   # sets it while it runs.)
   def self.start(cache)
-    root = Dir.mktmpdir("dps", "/tmp")
+    root = Dir.mktmpdir("dps", Duel::Lane.short_tmp)
     config = Duel::Config.new(root)
     config.use(:postgresql)
     fiber = Fiber.new { Duel::Testing.prepare(config, cache:) { |env| Fiber.yield(env) } }
@@ -150,7 +150,7 @@ class PluginTest < Minitest::Test
   # process. (Mutant runs them in processes forked from this one, a
   # mutation in each, at once, and has no after_run. A cluster one
   # mutation built, broken, say, mustn't be another's to copy.)
-  CACHE = Dir.mktmpdir("dpc", "/tmp")
+  CACHE = Dir.mktmpdir("dpc", Duel::Lane.short_tmp)
   if defined?(Mutant)
     main = Process.pid
     at_exit { FileUtils.rm_rf(CACHE) if Process.pid == main }
@@ -163,7 +163,7 @@ class PluginTest < Minitest::Test
   # say, for r.path("data")) is written there, not into the project.
   def setup
     skip "PostgreSQL isn't installed" unless POSTGRES
-    @dir = Dir.mktmpdir("dp", "/tmp")
+    @dir = Dir.mktmpdir("dp", Duel::Lane.short_tmp)
     @cwd = Dir.pwd
     Dir.chdir(@dir)
   end
