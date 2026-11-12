@@ -120,7 +120,17 @@ class MySQLTest < PluginTest
     assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ".exe"), "Windows's, by its .exe"
     assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server(File.join(windows, "mysqld"), "", exe: ".exe")
     assert_nil Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ""), "no .exe, off Windows"
-    assert_equal Duel::MySQL::DataDir::EXE.empty?, Duel::MySQL::DataDir.find_server("mysqld", windows).nil?, "this system's, by default"
+    exe = Duel::MySQL::DataDir::EXE
+    begin
+      Duel::MySQL::DataDir.send(:remove_const, :EXE)
+      Duel::MySQL::DataDir.const_set(:EXE, ".exe")
+
+      assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows), "EXE's, by default"
+    ensure
+      Duel::MySQL::DataDir.send(:remove_const, :EXE)
+      Duel::MySQL::DataDir.const_set(:EXE, exe)
+    end
+
     assert_equal RbConfig::CONFIG["EXEEXT"], Duel::MySQL::DataDir::EXE
   end
 
@@ -597,7 +607,10 @@ class MySQLTest < PluginTest
       assert_equal "mysql2://root@127.0.0.1:#{port}/duel", url
       assert_equal %w[DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort, "no socket"
       assert_equal "127.0.0.1:#{port}", Duel::MySQL.address
-      assert_equal [[0, "127.0.0.1", Integer(port), "duel"]], query("SELECT @@skip_networking, @@bind_address, @@port, DATABASE()")
+      networking, bind, listening, database, socket = query("SELECT @@skip_networking, @@bind_address, @@port, DATABASE(), @@socket").first
+
+      assert_equal [0, "127.0.0.1", Integer(port), "duel"], [networking, bind, listening, database]
+      assert_equal "mysqld.sock", File.basename(socket), "its socket the worker's (MySQL can't do without one)"
       assert_equal [["root@localhost"]], Duel::MySQL.execute("SELECT CURRENT_USER()").rows
       Duel::MySQL.address
     end
@@ -707,6 +720,20 @@ class MySQLTest < PluginTest
     assert socket.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool
   ensure
     socket&.close
+    server&.close
+  end
+
+  # It connects to the host it's given (not another of the machine's:
+  # one listening on ::1 alone isn't 127.0.0.1).
+  def test_the_host_given
+    server = begin
+      TCPServer.new("::1", 0)
+    rescue SystemCallError
+      skip "no IPv6 loopback"
+    end
+
+    assert_raises(Errno::ECONNREFUSED) { Duel::MySQL::Connection.socket("127.0.0.1:#{server.addr.fetch(1)}").close }
+  ensure
     server&.close
   end
 

@@ -77,16 +77,19 @@ module Duel
         program = DataDir.find_server(server) || w.failed("no #{server} on the PATH (give it as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")
         DataDir.new(w, program).create(data)
+        # (A Unix socket even with +tcp+, which MySQL can't do without:
+        # its own default's in a directory of the system's.)
+        socket = w.path("mysqld.sock")
         if tcp
           port = free_port
-          listen = ["--port=#{port}", "--bind-address=127.0.0.1"]
+          listen = ["--port=#{port}", "--bind-address=127.0.0.1", "--socket=#{socket}"]
           address = "127.0.0.1:#{port}"
           url = "#{scheme}://#{USER}@127.0.0.1:#{port}/#{DATABASE}"
           vars = {URL => url}
         else
           # (No network at all.)
-          address = w.path("mysqld.sock")
-          listen = ["--skip-networking", "--socket=#{address}"]
+          address = socket
+          listen = ["--skip-networking", "--socket=#{socket}"]
           url = "#{scheme}://#{USER}@localhost/#{DATABASE}?socket=#{address}"
           vars = {URL => url, SOCKET => address}
         end
@@ -565,13 +568,14 @@ module Duel
       # the server authenticates with), to +database+. Fails unless it's
       # let in.
       def authenticate(database)
-        greeting, sequence = read
+        greeting, = read
         error!(greeting) if greeting.getbyte(0) == ERR
         # (Its last string: the scramble before it has no NUL in it.)
         plugin = greeting.split("\0").last #: String
         # (23 bytes reserved, and the response's length, 0, before the
         # database.)
-        write([CAPABILITIES, MAX_PACKET, UTF8MB4, USER, database, plugin].pack("VVCx23Z*xZ*Z*"), sequence + 1)
+        # (The greeting's numbered 0, and the reply 1.)
+        write([CAPABILITIES, MAX_PACKET, UTF8MB4, USER, database, plugin].pack("VVCx23Z*xZ*Z*"), 1)
         loop do
           reply, sequence = read
           case reply.getbyte(0)
