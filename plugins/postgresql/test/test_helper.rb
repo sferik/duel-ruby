@@ -36,6 +36,37 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "pg"
 require "duel/postgresql"
 require "duel/testing"
+
+# A server pg_ctl starts (Cluster#start) leads a group of its own (pg_ctl
+# starts it in a session of its own), so the watchdog, which kills the
+# groups the tests start, is told of it, by its pid (postmaster.pid's
+# first line), and that it's gone once it's stopped (Cluster#stop): one
+# a test that's killed left running would hold its System V shared
+# memory, and macOS allows 32 segments in all. (Not on Windows, which has
+# no watchdog: see watchdog.rb.)
+module PgCtlWatched
+  def start(data, settings)
+    super.tap do
+      pid = postmaster(data)
+      Watchdog.tell(pid) if pid
+    end
+  end
+
+  def stop(data)
+    pid = postmaster(data)
+    super.tap { Watchdog.tell(-pid) if pid }
+  end
+
+  private
+
+  # The server's pid, or nil where there's none (it didn't start).
+  def postmaster(data)
+    Integer(File.readlines(File.join(data, "postmaster.pid")).first, exception: false)
+  rescue Errno::ENOENT
+    nil
+  end
+end
+Duel::PostgreSQL::Cluster.prepend(PgCtlWatched) if defined?(Watchdog)
 # Mutant runs the tests itself (and autorun, at exit, would run them all
 # again in every one of its processes).
 require defined?(Mutant) ? "minitest" : "minitest/autorun"

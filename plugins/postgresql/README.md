@@ -63,7 +63,10 @@ Duel.configure { |c| c.use :postgresql }
 `c.use` requires the plugin, so `.duel.rb` doesn't need to.
 
 Each worker's server listens only on a Unix socket in the worker's own
-directory, with nothing written to disk that needn't be, and no
+directory (or with `pg_ctl: true`, as by default on Windows, on a port
+of 127.0.0.1's alone, started and stopped by `pg_ctl`: there `postgres`
+won't run with an administrator's rights, which `pg_ctl` drops), with
+nothing written to disk that needn't be, and no
 autovacuum (which would change what a query reads, and its plan, while
 it's measured). Its URL is in `DUEL_POSTGRESQL_URL`, and in
 `DATABASE_URL` too, and libpq's `PGHOST`, `PGPORT`, `PGUSER` and
@@ -96,7 +99,8 @@ c.use :postgresql,
   bin: "/usr/lib/postgresql/17/bin",       # its programs (default: DUEL_POSTGRESQL_BIN, or found)
   settings: {work_mem: "64MB"},             # more of its settings
   setup: File.read("db/structure.sql"),     # SQL each worker's database runs first
-  env: %w[DATABASE_URL PRIMARY_URL]        # variables given its URL besides DUEL_POSTGRESQL_URL
+  env: %w[DATABASE_URL PRIMARY_URL],       # variables given its URL besides DUEL_POSTGRESQL_URL
+  pg_ctl: true                             # started by pg_ctl, on a port of 127.0.0.1's (default: on Windows only)
 ```
 
 > [!WARNING]

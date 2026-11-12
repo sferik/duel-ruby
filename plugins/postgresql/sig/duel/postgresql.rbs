@@ -40,8 +40,13 @@ module Duel
     # settings, +setup+ SQL each worker's database runs when it's started,
     # +env+ the variables besides DUEL_POSTGRESQL_URL given its URL) and
     # its metrics. Returns the plugin's own connection to it, a worker's.
+    # +pg_ctl+: started and stopped by pg_ctl, on a port of 127.0.0.1's
+    # (by default on Windows).
     def self.configure: (Config config, ?bin: String?, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
-                         ?env: Array[String]) -> InWorker[::PG::Connection]
+                         ?env: Array[String], ?pg_ctl: bool) -> InWorker[::PG::Connection]
+
+    # A port of 127.0.0.1's that's free, for a worker's server.
+    def self.free_port: () -> Integer
 
     # Runs SQL on a connection of its own to +url+; returns the last
     # statement's result.
@@ -158,6 +163,10 @@ module Duel
     class Cluster
       @resource: Resource
       @bin: String
+      @pg_ctl: bool
+
+      # Where pg_ctl's cluster is in its build.
+      PG_CTL: String
 
       # The real directory of the postgres on +path+, or of the newest
       # Debian's; nil if there's none.
@@ -166,16 +175,28 @@ module Duel
 
       def self.find_bin: (?String path, ?debian: String, ?exe: String) -> String?
 
-      def initialize: (Resource resource, String bin) -> void
+      def initialize: (Resource resource, String bin, ?pg_ctl: bool) -> void
 
       # Makes one in +data+: a copy of the one made for these programs.
       def create: (String data) -> void
+
+      # Starts a server on the cluster in +data+ with pg_ctl, with
+      # +settings+, once it's ready.
+      def start: (String data, Hash[String | Symbol, String | Integer] settings) -> void
+
+      # Stops the server #start started.
+      def stop: (String data) -> void
 
       private
 
       def key: () -> String
 
       def make: (String data) -> void
+
+      def initdb: (String data) -> void
+
+      # Made with pg_ctl, in +dir+'s PG_CTL.
+      def make_with_pg_ctl: (String dir) -> void
 
       def single: (String data, String database, String sql) -> void
 
