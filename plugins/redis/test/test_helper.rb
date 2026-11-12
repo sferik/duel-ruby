@@ -53,7 +53,7 @@ module SharedServer
   # returns its environment. (The environment's left as it was: a test
   # sets it while it runs.)
   def self.start
-    root = Dir.mktmpdir("drs", "/tmp")
+    root = Dir.mktmpdir("drs", Duel::Lane.short_tmp)
     config = Duel::Config.new(root)
     config.use(:redis)
     fiber = Fiber.new { Duel::Testing.prepare(config) { |env| Fiber.yield(env) } }
@@ -83,7 +83,7 @@ module SharedServer
   # Gives a test its server as it started: no keys, and its statistics
   # reset.
   def self.clean(env)
-    socket = UNIXSocket.new(env.fetch(Duel::Redis::URL).delete_prefix("unix://"))
+    socket = Duel::Redis::Connection.socket(env.fetch(Duel::Redis::URL))
     begin
       socket.write("FLUSHALL\r\nCONFIG RESETSTAT\r\n")
       2.times { socket.gets }
@@ -96,7 +96,7 @@ end
 class PluginTest < Minitest::Test
   def setup
     skip "redis-server isn't installed" unless system("redis-server", "--version", out: File::NULL, err: File::NULL)
-    @dir = Dir.mktmpdir("dr", "/tmp")
+    @dir = Dir.mktmpdir("dr", Duel::Lane.short_tmp)
   end
 
   def teardown

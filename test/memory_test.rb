@@ -120,6 +120,6 @@ class MemoryTest < DuelTest
 
   # By default, this machine's: Linux's, or else macOS's.
   def test_this_machine
-    assert_kind_of Integer, Duel::Memory.available if RUBY_PLATFORM.match?(/linux|darwin|mingw|mswin/)
+    assert_kind_of Integer, Duel::Memory.available if Duel::Native::OS.match?(/linux|darwin|mingw|mswin/)
   end
 end

@@ -43,8 +43,8 @@ jobs:
         # What each plugin's tests need installed, as its own workflow
         # installs it (gvl's extension: `rake test` builds it): on Linux
         # with apt, on macOS with Homebrew. Windows's runners have
-        # PostgreSQL and MySQL already, and there's no Redis or memcached
-        # for Windows.
+        # PostgreSQL and MySQL already, and Redis and memcached are
+        # downloaded (see below).
         include:
           - plugin: memcached
             packages: memcached
@@ -88,6 +88,33 @@ jobs:
         run: |
           brew install ${{ matrix.brew }}
           echo "$(brew --prefix ${{ matrix.brew }})/bin" >> "$GITHUB_PATH"
+      # Windows has no Redis or memcached of its own: these are builds of
+      # them for Windows (Redis's by MSYS2, memcached's by MinGW, with the
+      # libevent it needs), pinned, each checked against its digest. The
+      # plugins use them over TCP there (their tcp: option).
+      - if: matrix.plugin == 'redis' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/redis.zip" https://github.com/redis-windows/redis-windows/releases/download/8.10.3/Redis-8.10.3-Windows-x64-msys2.zip
+          echo "af16df340525b431e9ec8dabfd625d5e7a233f82805b5418819904ea909c447f  $RUNNER_TEMP/redis.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/redis.zip" -d "$RUNNER_TEMP/redis"
+          server=$(find "$RUNNER_TEMP/redis" -name redis-server.exe | head -1)
+          cygpath -w "$(dirname "$server")" >> "$GITHUB_PATH"
+      - if: matrix.plugin == 'memcached' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          base=https://github.com/jefyt/memcached-windows/releases/download/1.6.8_mingw_libressl
+          curl -fsSL -o "$RUNNER_TEMP/memcached.zip" "$base/memcached-1.6.8-win64-mingw.zip"
+          curl -fsSL -o "$RUNNER_TEMP/libevent.zip" "$base/libevent-2.1.12-stable-win64-mingw.zip"
+          sha256sum -c - <<SUMS
+          48ec62cef718f0d73698414b783c0e4a69821013553ca00afe0eed324eb5994b  $RUNNER_TEMP/memcached.zip
+          617fe0e90c788720be9000ba0c30132f37ada5c6682ef95992ece7172a75f0f2  $RUNNER_TEMP/libevent.zip
+          SUMS
+          unzip -q "$RUNNER_TEMP/memcached.zip" -d "$RUNNER_TEMP/memcached"
+          unzip -q "$RUNNER_TEMP/libevent.zip" -d "$RUNNER_TEMP/libevent"
+          server=$(find "$RUNNER_TEMP/memcached" -name memcached.exe | head -1)
+          find "$RUNNER_TEMP/libevent" -name '*.dll' -exec cp {} "$(dirname "$server")" \;
+          cygpath -w "$(dirname "$server")" >> "$GITHUB_PATH"
       # (Windows's runners have PostgreSQL in PGBIN, off the PATH.)
       - if: matrix.plugin == 'postgresql' && runner.os == 'Windows'
         shell: bash

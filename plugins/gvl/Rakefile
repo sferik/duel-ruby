@@ -13,16 +13,22 @@ ENV["gem_push"] = "no"
 # releases: duel-gvl-v0.1.0, say (Duel tags its own v0.1.0).
 Bundler::GemHelper.tag_prefix = "duel-gvl-"
 
-if RUBY_ENGINE == "ruby"
+# (Where extconf.rb builds nothing, rake-compiler would copy a build that
+# isn't there: JRuby and TruffleRuby have no GVL to wait for, and on
+# Windows Ruby's thread event hooks do nothing.)
+skipped = if RUBY_ENGINE != "ruby" then "#{RUBY_ENGINE} has no GVL to wait for"
+elsif Gem.win_platform? then "Ruby's thread event hooks do nothing on Windows"
+end
+if skipped
+  desc "Compile the extension (skipped: #{skipped})"
+  task :compile do
+    puts "Skipping the extension: #{skipped}."
+  end
+else
   require "rake/extensiontask"
   Rake::ExtensionTask.new("duel_gvl") do |ext|
     ext.ext_dir = "ext/duel_gvl"
     ext.lib_dir = "lib/duel_gvl"
-  end
-else
-  desc "Compile the extension (skipped: #{RUBY_ENGINE} has no GVL)"
-  task :compile do
-    puts "Skipping the extension on #{RUBY_ENGINE}: there's no GVL to wait for."
   end
 end
 

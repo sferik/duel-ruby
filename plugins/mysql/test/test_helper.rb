@@ -73,7 +73,7 @@ module SharedServer
   # returns its environment. (The environment's left as it was: a test
   # sets it while it runs.)
   def self.start(cache)
-    root = Dir.mktmpdir("dms", "/tmp")
+    root = Dir.mktmpdir("dms", Duel::Lane.short_tmp)
     config = Duel::Config.new(root)
     config.use(:mysql)
     fiber = Fiber.new { Duel::Testing.prepare(config, cache:) { |env| Fiber.yield(env) } }
@@ -126,7 +126,7 @@ class PluginTest < Minitest::Test
   # initialized) are kept, for every test, removed when they're done.
   # (Mutant runs them in processes forked from this one, at once, and has
   # no after_run.)
-  CACHE = Dir.mktmpdir("dmc", "/tmp")
+  CACHE = Dir.mktmpdir("dmc", Duel::Lane.short_tmp)
   if defined?(Mutant)
     main = Process.pid
     at_exit { FileUtils.rm_rf(CACHE) if Process.pid == main }
@@ -139,7 +139,7 @@ class PluginTest < Minitest::Test
     # that has run a thousand or so queries takes TruffleRuby down.)
     skip "TruffleRuby 40.0 fails inside Trilogy#query (a dead handle)" if RUBY_ENGINE == "truffleruby"
     skip "MySQL isn't installed" unless MYSQLD
-    @dir = Dir.mktmpdir("dm", "/tmp")
+    @dir = Dir.mktmpdir("dm", Duel::Lane.short_tmp)
     # (In the test's directory: what a mutation makes a relative path,
     # and writes there, isn't left in the project.)
     Dir.chdir(@dir)

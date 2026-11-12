@@ -45,7 +45,10 @@ Duel.configure { |c| c.use :memcached }
 ```
 
 Each worker's server listens only on a Unix socket in the worker's own
-directory, with 32 MB of memory and one thread. The socket's path is in
+directory (or with `tcp: true`, on a port of 127.0.0.1's alone, as it
+does by default on Windows, whose builds of memcached have no Unix
+socket), with 32 MB of memory and one thread. The socket's path (or
+`127.0.0.1:PORT`) is in
 `DUEL_MEMCACHED_SERVERS`, and in `MEMCACHE_SERVERS` too, so a client that
 reads that (Dalli does) finds it and nothing reaches another memcached.
 Benchmarks can call `Duel::Memcached.servers` and
@@ -75,7 +78,8 @@ c.use :memcached,
   server: "/opt/memcached/bin/memcached", # the program (default: DUEL_MEMCACHED_SERVER, or memcached)
   args: ["-m", "256"],                    # more of its options (they win)
   env: %w[CACHE_SERVERS],                 # variables given its socket besides DUEL_MEMCACHED_SERVERS (default: MEMCACHE_SERVERS)
-  cpu: true                               # judge memcached_cpu too
+  cpu: true,                              # judge memcached_cpu too
+  tcp: true                               # on a port of 127.0.0.1's, its server 127.0.0.1:PORT (default: on Windows only)
 ```
 
 The metrics come from the server's `stats`, read over a connection of

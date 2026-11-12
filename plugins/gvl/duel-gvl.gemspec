@@ -27,5 +27,5 @@ Gem::Specification.new do |spec|
   # extconf.rb), and no metric.
   spec.extensions = ["ext/duel_gvl/extconf.rb"]
 
-  spec.add_dependency "duel", "~> 0.1"
+  spec.add_dependency "duel", "~> 0.2"
 end

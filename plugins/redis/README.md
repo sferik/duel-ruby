@@ -37,7 +37,10 @@ Duel.configure { |c| c.use :redis }
 ```
 
 Each worker's server listens only on a Unix socket in the worker's own
-directory, with persistence off, and works in that directory too
+directory (or with `tcp: true`, on a port of 127.0.0.1's alone, as it
+does by default on Windows, whose builds of Redis have Unix sockets
+Windows's Ruby can't reach), with persistence off, and works in that
+directory too
 (`--dir`): if your `args:` turn persistence on, its snapshots and
 append-only files go there, never in your project. Its URL is in
 `DUEL_REDIS_URL`, and in `REDIS_URL` too, so a client that reads that
@@ -67,7 +70,8 @@ Options:
 c.use :redis,
   server: "valkey-server",        # the program (default: DUEL_REDIS_SERVER, or redis-server)
   args: ["--maxmemory", "64mb"],  # more of its options
-  env: %w[CACHE_URL]              # variables given its URL besides DUEL_REDIS_URL (default: REDIS_URL)
+  env: %w[CACHE_URL],             # variables given its URL besides DUEL_REDIS_URL (default: REDIS_URL)
+  tcp: true                       # on a port of 127.0.0.1's, its URL redis://127.0.0.1:PORT (default: on Windows only)
 ```
 
 The metrics come from the server's `INFO` (command statistics and

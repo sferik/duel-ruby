@@ -23,9 +23,13 @@ module Duel
     # Configures Duel for the plugin (c.use :memcached): the server
     # (+server+ is the program, +args+ more of its options, +env+ the
     # variables besides DUEL_MEMCACHED_SERVERS given its socket's path)
-    # and its metrics, memcached_cpu too with +cpu+. Returns the plugin's
+    # and its metrics, memcached_cpu too with +cpu+, on a port of
+    # 127.0.0.1's with +tcp+ (by default on Windows). Returns the plugin's
     # own connection to it, a worker's.
-    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?cpu: bool) -> InWorker[Connection]
+    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?cpu: bool, ?tcp: bool) -> InWorker[Connection]
+
+    # A port of 127.0.0.1's that's free, for a worker's server.
+    def self.free_port: () -> Integer
 
     # What the worker's server has done so far (but memcached_cpu), read
     # over +connection+ (the plugin's own). It allocates only its Hash.
@@ -50,7 +54,7 @@ module Duel
 
     # The least a connection needs to read a server's statistics.
     class Connection
-      @socket: UNIXSocket
+      @socket: UNIXSocket | TCPSocket
       @sent: Integer
       @received: Integer
       @reply: String
@@ -62,9 +66,16 @@ module Duel
       # The most read at a time.
       READ: Integer
 
-      def self.ready?: (String path) -> bool
+      # A socket to the server at +server+ (a Unix socket's path, or
+      # HOST:PORT).
+      def self.socket: (String server) -> (UNIXSocket | TCPSocket)
 
-      def initialize: (String path) -> void
+      # The host and port of a HOST:PORT server, or nil.
+      def self.address: (String server) -> [String, Integer]?
+
+      def self.ready?: (String server) -> bool
+
+      def initialize: (String server) -> void
 
       # The server's statistics, by name.
       def stats: () -> Hash[String, String]

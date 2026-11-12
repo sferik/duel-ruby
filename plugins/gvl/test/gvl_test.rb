@@ -121,7 +121,7 @@ class GVLComparisonTest < PluginTest
   # (its CPU time is the same), with how long they waited an iteration on
   # each version. Never across the board.
   def test_comparisons
-    dir = Dir.mktmpdir("dg", "/tmp")
+    dir = Dir.mktmpdir("dg", Duel::Lane.short_tmp)
     base = project(dir, "base", held: false)
     same = compare(base, project(dir, "same", held: false))
 

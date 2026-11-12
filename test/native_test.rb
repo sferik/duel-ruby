@@ -540,7 +540,7 @@ class NativeTest < DuelTest
     assert_match Duel::Native::WINDOWS_OS, "mingw32"
     assert_match Duel::Native::WINDOWS_OS, "mswin64_140"
     refute_match Duel::Native::WINDOWS_OS, "darwin24"
-    assert_equal RUBY_PLATFORM.match?(/mingw|mswin/), Duel::Native::WINDOWS
+    assert_equal windows?, Duel::Native::WINDOWS, "by the host's system (JRuby's RUBY_PLATFORM is \"java\")"
   end
 
   # A function of a library of its own (a DLL, on Windows).

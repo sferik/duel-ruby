@@ -13,6 +13,7 @@ end
 
 require "digest"
 require "fileutils"
+require "rbconfig"
 require "tmpdir"
 
 # Every directory a run of the tests makes (the workers they start too) is
@@ -23,7 +24,9 @@ require "tmpdir"
 # the next run removes it.
 module TestDirs
   ROOTS = File.expand_path("../tmp/test", __dir__)
-  WINDOWS = RUBY_PLATFORM.match?(/mingw|mswin/)
+  # (By the host's system, as Duel tells it: JRuby's RUBY_PLATFORM is
+  # "java".)
+  WINDOWS = RbConfig::CONFIG["host_os"].match?(/mingw|mswin/)
 
   def self.short(pid) = WINDOWS ? File.join(ROOTS, pid.to_s) : "/tmp/duel-test-#{pid}"
 

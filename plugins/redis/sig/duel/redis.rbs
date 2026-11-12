@@ -15,13 +15,18 @@ module Duel
     # is the program, +args+ more of its options, +env+ the variables
     # besides DUEL_REDIS_URL given its URL) and its metrics. Returns the
     # plugin's own connection to it, a worker's.
-    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String]) -> InWorker[Connection]
+    # +tcp+: on a port of 127.0.0.1's, not a Unix socket (by default on
+    # Windows).
+    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?tcp: bool) -> InWorker[Connection]
 
     # What the worker's server has done so far, read over +connection+.
     def self.stats: (Connection connection) -> Hash[String, Integer]
 
     # For benchmarks: the worker's server.
     def self.url: () -> String
+
+    # A port of 127.0.0.1's that's free, for a worker's server.
+    def self.free_port: () -> Integer
 
     # Empties it, over a connection of its own: in setup or untimed blocks
     # only (it fails while a benchmark is measured).
@@ -42,9 +47,16 @@ module Duel
       BULK: Integer
       ARRAY: Integer
 
-      @socket: UNIXSocket
+      @socket: UNIXSocket | TCPSocket
 
-      def self.ping: (String path) -> bool
+      # A socket to the server at +url+ (unix://PATH, PATH, or
+      # redis://HOST:PORT).
+      def self.socket: (String url) -> (UNIXSocket | TCPSocket)
+
+      # The host and port of a redis:// URL, or nil.
+      def self.address: (String url) -> [String, Integer]?
+
+      def self.ping: (String url) -> bool
 
       def initialize: (String url) -> void
 

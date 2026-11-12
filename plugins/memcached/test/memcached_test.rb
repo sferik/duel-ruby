@@ -13,8 +13,8 @@ class MemcachedTest < PluginTest
     FIRST = %w[test_used_by_name test_its_cpu_time test_a_value test_a_value_that_isnt_one test_what_a_reading_allocates test_ready
       test_a_flush_closes_its_connection test_its_statistics test_its_errors test_its_statistics_errors
       test_its_statistics_in_pieces].freeze
-    LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own test_its_options
-      test_the_connection].freeze
+    LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
+      test_a_server_on_a_port test_on_a_port_on_windows test_its_options test_the_connection].freeze
 
     def self.runnable_methods
       super.sort_by { |name| [FIRST.index(name) || (FIRST.size + (LAST.index(name)&.succ || 0)), name] }
@@ -38,8 +38,13 @@ class MemcachedTest < PluginTest
       .metrics.map { |metric| metric.measures.keys }
   end
 
+  # Unix sockets: Windows's builds of memcached have none (see
+  # test_a_server_on_a_port).
+  def unix_sockets! = (skip "Windows's memcached has no Unix socket" if Duel::Native::WINDOWS)
+
   def test_a_server_of_the_workers_own
-    socket = worker(config) do |env|
+    unix_sockets!
+    socket = worker(config(tcp: false)) do |env|
       socket = env.fetch("DUEL_MEMCACHED_SERVERS")
 
       assert_equal socket, env.fetch("MEMCACHE_SERVERS")
@@ -51,6 +56,85 @@ class MemcachedTest < PluginTest
     end
 
     refute Duel::Memcached::Connection.ready?(socket), "stopped with the worker"
+  end
+
+  # With +tcp+ (Windows's, by default), on a port of its own, of
+  # 127.0.0.1's alone, with the same options, and those it's given.
+  def test_a_server_on_a_port
+    server = worker(config(tcp: true, args: ["-c", "77"])) do |env|
+      server = env.fetch("DUEL_MEMCACHED_SERVERS")
+      stats = @connection.value.stats
+
+      assert_match(/\A127\.0\.0\.1:\d+\z/, server)
+      assert_equal server, env.fetch("MEMCACHE_SERVERS")
+      assert_equal ["1", (32 << 20).to_s, "77"], stats.values_at("threads", "limit_maxbytes", "max_connections")
+      settings = Duel::Memcached::Connection.socket(server)
+      settings.write("stats settings\r\n")
+      lines = []
+      lines << settings.gets.chomp until lines.last == "END"
+      settings.close
+
+      assert_includes lines, "STAT tcpport #{server[/\d+\z/]}"
+      assert_includes lines, "STAT inter 127.0.0.1"
+      server
+    end
+
+    refute Duel::Memcached::Connection.ready?(server), "stopped with the worker"
+  end
+
+  # On Windows, by default.
+  def test_on_a_port_on_windows
+    windows = Duel::Native::WINDOWS
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, true)
+    server = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_MEMCACHED_SERVERS") }
+
+    assert_match(/\A127\.0\.0\.1:\d+\z/, server)
+  ensure
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, windows)
+  end
+
+  # A socket by server: a Unix socket's path, or HOST:PORT (a TCP one's,
+  # which sends a command at once, to that host and port).
+  def test_a_socket_by_server
+    path = File.join(@dir, "fake.sock")
+    unix = UNIXServer.new(path)
+    tcp = TCPServer.new("127.0.0.1", 0)
+    port = tcp.addr.fetch(1)
+    opened = []
+    connect = TCPSocket.method(:new)
+    TCPSocket.singleton_class.define_method(:new) { |*args| (opened << args) && connect.call(*args) }
+    begin
+      sockets = [path, "127.0.0.1:#{port}"].map { |server| Duel::Memcached::Connection.socket(server) }
+    ensure
+      TCPSocket.singleton_class.remove_method(:new)
+    end
+
+    assert_equal [UNIXSocket, TCPSocket], sockets.map(&:class)
+    assert_equal [["127.0.0.1", port]], opened
+    assert sockets.last.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool, "no delay"
+  ensure
+    sockets&.each(&:close)
+    unix&.close
+    tcp&.close
+  end
+
+  # HOST:PORT's host and port; a path's, none.
+  def test_an_address
+    assert_equal ["127.0.0.1", 11_211], Duel::Memcached::Connection.address("127.0.0.1:11211")
+    assert_equal ["cache", 1], Duel::Memcached::Connection.address("cache:1")
+    ["/tmp/m.sock", "m.sock", "127.0.0.1", "a:b:1", "/a:1", "a:1x", "a:1\n"].each do |server|
+      assert_nil Duel::Memcached::Connection.address(server), server
+    end
+  end
+
+  # A port the system chose, free again.
+  def test_a_free_port
+    ports = Array.new(3) { Duel::Memcached.free_port }
+
+    assert(ports.all? { |port| port.between?(1, 65_535) })
+    TCPServer.new("127.0.0.1", ports.last).close
   end
 
   def test_its_options
@@ -78,7 +162,7 @@ class MemcachedTest < PluginTest
   def test_measures_what_memcached_did
     config = self.config
     measured = shared do |env|
-      cache = UNIXSocket.new(env.fetch("MEMCACHE_SERVERS"))
+      cache = Duel::Memcached::Connection.socket(env.fetch("MEMCACHE_SERVERS"))
       Duel::Testing.measure(config) do
         cache.write("set k 0 0 1\r\nv\r\n") # 16 bytes
         cache.gets                         # STORED: 8
@@ -176,7 +260,7 @@ class MemcachedTest < PluginTest
   # opens a connection of its own.
   def test_for_benchmarks
     shared do |env|
-      cache = UNIXSocket.new(env.fetch("MEMCACHE_SERVERS"))
+      cache = Duel::Memcached::Connection.socket(env.fetch("MEMCACHE_SERVERS"))
       cache.write("set k 0 0 1\r\nv\r\n")
       cache.gets
 
@@ -205,7 +289,7 @@ class MemcachedTest < PluginTest
   def test_a_flush_measured
     config = self.config
     shared do |env|
-      cache = UNIXSocket.new(env.fetch("MEMCACHE_SERVERS"))
+      cache = Duel::Memcached::Connection.socket(env.fetch("MEMCACHE_SERVERS"))
       cache.write("set k 0 0 1\r\nv\r\n")
       cache.gets
       error = assert_raises(Duel::Error) { Duel::Testing.measure(config) { Duel::Memcached.flush } }
@@ -334,7 +418,7 @@ class MemcachedTest < PluginTest
   def test_an_around_iteration_hook_left_out
     config = self.config(cpu: true)
     measured = Duel::Testing.prepare(config) do |env|
-      cache = UNIXSocket.new(env.fetch("MEMCACHE_SERVERS"))
+      cache = Duel::Memcached::Connection.socket(env.fetch("MEMCACHE_SERVERS"))
       around = lambda do |iteration|
         iteration.call
         cache.write("delete k\r\n")
