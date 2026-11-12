@@ -285,8 +285,11 @@ class ProcessSampleTest < DuelTest
     requests.puts spec
     thread = Thread.new { noting { Duel::ProcessSample.main(input: input, output: output) } }
     # (A signal's, off Windows, which kills with none. The exit's the
-    # shell's: a JVM's start, JRuby's, takes more CPU than the work.)
-    commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), "exit 3", *(["kill -TERM $$"] unless windows?)]
+    # shell's, as a JVM's start, JRuby's, takes more CPU than the work,
+    # but on Windows, CRuby's alone, Ruby's: its cmd.exe, given no
+    # environment but PATH, didn't end.)
+    exit = windows? ? ruby("exit 3") : "exit 3"
+    commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), exit, *(["kill -TERM $$"] unless windows?)]
     reports = commands.map do |command|
       requests.puts JSON.generate(command)
 

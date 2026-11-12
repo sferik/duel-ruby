@@ -42,13 +42,14 @@ module Duel
     USER = "root"
 
     # The server's options (after --no-defaults: no my.cnf of the
-    # machine's): nothing to disk that needn't be, little
+    # machine's): errors to its output (its log: on Windows, they'd go to a
+    # file of their own), nothing to disk that needn't be, little
     # memory, no Linux AIO contexts (there are only so many, for every
     # server on the machine), and nothing running on its own
     # (recalculating a table's statistics would change its plans while
     # they're measured).
     OPTIONS = %w[
-      --mysqlx=OFF --skip-log-bin
+      --console --mysqlx=OFF --skip-log-bin
       --innodb-buffer-pool-size=32M --innodb-redo-log-capacity=8M --innodb-doublewrite=OFF --innodb-use-native-aio=OFF
       --innodb-flush-log-at-trx-commit=0 --innodb-stats-auto-recalc=OFF --event-scheduler=OFF --performance-schema=ON
     ].freeze
@@ -94,6 +95,10 @@ module Duel
           vars = {URL => url, SOCKET => address}
         end
         w.spawn(program, *(DataDir.options(data) + listen), "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}", *(RUNNING + args))
+        # (Stopped with SHUTDOWN, before it's killed: on Windows, mysqld is
+        # a monitor, the server its child, which killing it would leave
+        # running.)
+        w.at_stop { shutdown(address) }
         w.wait_until { Connection.ping(address) }
         run(address, setup) if setup
         vars.merge(env.to_h { |name| [name, url] })
@@ -128,6 +133,13 @@ module Duel
       ensure
         connection.close
       end
+    end
+
+    # Asks the server at +address+ to shut down, if it's there to ask.
+    def self.shutdown(address)
+      run(address, "SHUTDOWN")
+    rescue Error, SystemCallError, IOError
+      nil # (gone already, or gone as it answered)
     end
 
     # Server time isn't the worker's CPU time: another process's, on the

@@ -60,6 +60,9 @@ module Duel
     # returns the last statement's result.
     def self.run: (String address, String sql) -> Result
 
+    # Asks the server at +address+ to shut down, if it's there to ask.
+    def self.shutdown: (String address) -> void
+
     # What the worker's server has done so far, but for the plugin's own
     # connection, which reads it.
     def self.totals: (Connection connection) -> numbers
