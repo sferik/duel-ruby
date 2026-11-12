@@ -61,10 +61,6 @@ jobs:
           - plugin: redis
             packages: redis-server
             brew: redis
-    # macOS's and Windows's are advisory until they pass there: the
-    # plugins that start servers find and stop them the Unix way.
-    env:
-      ADVISORY: ${{ matrix.os != 'ubuntu-latest' }}
     # The plugin is a project of its own, in its directory: its Gemfile
     # (which takes Duel from ../..), Rakefile and tests.
     defaults:
@@ -129,19 +125,12 @@ jobs:
         shell: bash
         run: echo "$PGBIN" >> "$GITHUB_PATH"
       # (A bundle cached for each plugin's directory.)
-      - id: ruby
-        uses: ruby/setup-ruby@v1
-        continue-on-error: ${{ env.ADVISORY == 'true' }}
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
           working-directory: plugins/${{ matrix.plugin }}
       - name: Run tests
-        id: tests
-        continue-on-error: ${{ env.ADVISORY == 'true' }}
         env:
           COVERAGE: "false"
         run: bundle exec rake test
-      - name: Note an advisory failure
-        if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
-        run: echo "::warning title=${{ matrix.plugin }} on ${{ matrix.os }} (advisory)::A step failed for ${{ matrix.plugin }} on ${{ matrix.os }}, which its tests don't pass on yet"
