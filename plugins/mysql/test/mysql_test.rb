@@ -50,25 +50,43 @@ class MySQLTest < PluginTest
   def test_a_server_of_the_workers_own
     unix!
     File.write(File.join(@dir, ".my.cnf"), "[mysqld]\nmax_connections=7\n")
+    asked = []
+    shutdown = Duel::MySQL.method(:shutdown)
     socket = with_env("HOME" => @dir) do
-      prepare(config(tcp: false)) do |env|
-        socket = env.fetch("DUEL_MYSQL_SOCKET")
-        dir = File.dirname(socket)
-        url = "mysql2://root@localhost/duel?socket=#{socket}"
+      replacing(Duel::MySQL, :shutdown, ->(address) { asked << [address, Duel::MySQL::Connection.ping(address)] and shutdown.call(address) }) do
+        prepare(config(tcp: false)) do |env|
+          socket = env.fetch("DUEL_MYSQL_SOCKET")
+          dir = File.dirname(socket)
+          url = "mysql2://root@localhost/duel?socket=#{socket}"
 
-        assert_equal "mysqld.sock", File.basename(socket)
-        assert_equal url, env.fetch("DUEL_MYSQL_URL")
-        assert_equal url, env.fetch("DATABASE_URL")
-        assert_equal [["duel", 0, 0, dir, 2, 151]],
-          query("SELECT DATABASE(), @@skip_networking - 1, @@log_bin, @@tmpdir, @@innodb_fast_shutdown, @@max_connections")
-        assert_path_exists File.join(dir, "mysqld.pid")
-        assert Duel::MySQL::Connection.ping(socket)
-        assert_equal [["root@localhost"]], Duel::MySQL.execute("SELECT CURRENT_USER()").rows
-        socket
+          assert_equal "mysqld.sock", File.basename(socket)
+          assert_equal url, env.fetch("DUEL_MYSQL_URL")
+          assert_equal url, env.fetch("DATABASE_URL")
+          assert_equal [["duel", 0, 0, dir, 2, 151]],
+            query("SELECT DATABASE(), @@skip_networking - 1, @@log_bin, @@tmpdir, @@innodb_fast_shutdown, @@max_connections")
+          assert_path_exists File.join(dir, "mysqld.pid")
+          assert Duel::MySQL::Connection.ping(socket)
+          assert_equal [["root@localhost"]], Duel::MySQL.execute("SELECT CURRENT_USER()").rows
+          socket
+        end
       end
     end
 
     refute Duel::MySQL::Connection.ping(socket), "stopped with the worker"
+    assert_equal [[socket, true]], asked, "by SHUTDOWN first, as it stops (while it's up)"
+    assert_nil Duel::MySQL.shutdown(socket), "nothing to ask once it's gone"
+  end
+
+  # SHUTDOWN stops the server (it answers first, or as it goes).
+  def test_shutdown
+    prepare(config) do
+      address = Duel::MySQL.address
+      Duel::MySQL.shutdown(address)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 30
+      sleep 0.1 while Duel::MySQL::Connection.ping(address) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+
+      refute Duel::MySQL::Connection.ping(address), "gone"
+    end
   end
 
   def test_its_options
