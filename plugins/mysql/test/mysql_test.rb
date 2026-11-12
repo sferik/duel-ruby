@@ -735,7 +735,7 @@ class MySQLTest < PluginTest
     server = TCPServer.new("127.0.0.1", 0)
     socket = Duel::MySQL::Connection.socket("127.0.0.1:#{server.addr.fetch(1)}")
 
-    assert socket.getsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY).bool
+    assert no_delay?(socket)
   ensure
     socket&.close
     server&.close
