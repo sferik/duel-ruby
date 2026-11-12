@@ -14,7 +14,8 @@ class PostgreSQLTest < PluginTest
     FIRST = %w[test_registered test_totals test_texts_read_once test_a_first_reading test_a_reading_of_none_changed test_a_reading_of_some_changed
       test_statements_gone test_details_from_what_changed test_settle test_finding_postgres test_no_postgres].freeze
     LAST = %w[test_a_server_of_the_workers_own test_stopped_with_a_client_connected test_its_options test_a_server_that_doesnt_start
-      test_a_program_that_fails test_making_a_cluster test_a_cluster_made_once test_comparisons].freeze
+      test_a_program_that_fails test_making_a_cluster test_a_cluster_made_once test_a_server_pg_ctl_starts
+      test_a_server_pg_ctl_cant_start test_a_cluster_made_with_pg_ctl test_pg_ctl_on_windows test_comparisons].freeze
 
     def self.runnable_methods
       super.sort_by { |name| [FIRST.index(name) || (FIRST.size + (LAST.index(name)&.succ || 0)), name] }
@@ -54,8 +55,14 @@ class PostgreSQLTest < PluginTest
     end
   end
 
+  # Unix's alone: a Unix socket's, single-user mode's (which won't run
+  # with an administrator's rights, as CI's Windows runners have), and
+  # symbolic links and shell scripts of the tests'.
+  def unix! = (skip "Unix's alone: see the pg_ctl tests" if Duel::Native::WINDOWS)
+
   def test_a_server_of_the_workers_own
-    url = prepare(config) do |env|
+    unix!
+    url = prepare(config(pg_ctl: false)) do |env|
       dir = env.fetch("PGHOST")
       url = "postgres:///duel?host=#{dir}&port=5432&user=postgres"
 
@@ -71,17 +78,86 @@ class PostgreSQLTest < PluginTest
     refute_equal PG::PQPING_OK, PG::Connection.ping(url), "stopped with the worker"
   end
 
-  # Stopped by INT: its clients are disconnected, not waited for (as TERM
-  # would, until Duel's KILL, five seconds later).
+  # Stopped by INT (or with pg_ctl, its fast mode): its clients are
+  # disconnected, not waited for (as TERM would, until Duel's KILL, five
+  # seconds later).
   def test_stopped_with_a_client_connected
-    prepare(config) do
-      @pg = PG.connect
-      @stopping = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    [false, true].each do |pg_ctl|
+      next if pg_ctl == false && Duel::Native::WINDOWS
+
+      prepare(config(pg_ctl:)) do
+        @pg = PG.connect
+        @stopping = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - @stopping, :<, 4, "pg_ctl: #{pg_ctl}"
+    ensure
+      @pg&.close
+    end
+  end
+
+  # With pg_ctl (Windows's, by default): started, and stopped with the
+  # worker, by pg_ctl, on a port of 127.0.0.1's alone, with no Unix
+  # socket, its settings (the plugin's, and those it's given) in its
+  # postgresql.conf, and its log in the worker's directory.
+  def test_a_server_pg_ctl_starts
+    url = prepare(config(pg_ctl: true, settings: {work_mem: "5MB", search_path: "it's"})) do |env|
+      url = env.fetch("DUEL_POSTGRESQL_URL")
+      port = env.fetch("PGPORT")
+      settings = query("SELECT current_setting('fsync'), current_setting('work_mem'), current_setting('search_path'), " \
+        "current_setting('listen_addresses'), current_setting('unix_socket_directories'), current_setting('port'), " \
+        "current_setting('data_directory'), (SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements')").first
+      data = settings.pop(2).first
+
+      assert_match(/\A\d+\z/, port)
+      assert_equal "postgres:///duel?host=127.0.0.1&port=#{port}&user=postgres", url
+      assert_equal url, env.fetch("DATABASE_URL")
+      assert_equal ["127.0.0.1", "postgres", "duel"], env.values_at("PGHOST", "PGUSER", "PGDATABASE")
+      assert_equal ["off", "5MB", "it's", "127.0.0.1", "", port], settings, "the settings given (quoted), over the plugin's"
+      assert_equal "data", File.basename(data), "in the worker's directory"
+      assert_path_exists File.join(File.dirname(data), "postgres.log")
+      url
     end
 
-    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - @stopping, :<, 4
+    refute_equal PG::PQPING_OK, PG::Connection.ping(url), "stopped with the worker"
+  end
+
+  # One that doesn't start fails, with the end of its log.
+  def test_a_server_pg_ctl_cant_start
+    error = assert_raises(Duel::Failed) do
+      prepare(config(pg_ctl: true, settings: {"no_such_setting" => "1"})) { flunk "started" }
+    end
+
+    assert_match(/\Ahead-1's resource: postgres didn't start\n.*no_such_setting/m, error.message)
+  end
+
+  # Its cluster is made with pg_ctl (in a directory initdb makes itself,
+  # the database and pg_stat_statements created on a server pg_ctl
+  # starts there), and cached apart from one made without.
+  def test_a_cluster_made_with_pg_ctl
+    cache = own_cache
+    databases = prepare(config(pg_ctl: true), cache:) { query("SELECT count(*) FROM pg_database WHERE datname = 'duel'") }
+    built = Dir.children(cache)
+    postgres = File.realpath(File.join(POSTGRES, "postgres#{Duel::PostgreSQL::Cluster::EXE}"))
+    key = Digest::SHA256.hexdigest("#{postgres}\0#{File.mtime(postgres).to_f}\0cluster")[0, 16]
+
+    assert_equal [["1"]], databases
+    assert_equal ["postgresql-#{Duel::PostgreSQL::VERSION}-#{key}"], built
+    assert_equal ["cluster"], Dir.children(File.join(cache, built.first)), "initdb'd in a directory of its own"
+    refute_path_exists File.join(cache, built.first, "cluster", "postmaster.pid"), "its server stopped"
+  end
+
+  # On Windows, by default.
+  def test_pg_ctl_on_windows
+    windows = Duel::Native::WINDOWS
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, true)
+    host = prepare(config) { |env| env.fetch("PGHOST") }
+
+    assert_equal "127.0.0.1", host
   ensure
-    @pg&.close
+    Duel::Native.send(:remove_const, :WINDOWS)
+    Duel::Native.const_set(:WINDOWS, windows)
   end
 
   def test_its_options
@@ -96,8 +172,9 @@ class PostgreSQLTest < PluginTest
   end
 
   def test_a_server_that_doesnt_start
+    unix!
     error = assert_raises(Duel::Failed) do
-      prepare(config(settings: {"no_such_setting" => "1"})) { flunk "started" }
+      prepare(config(pg_ctl: false, settings: {"no_such_setting" => "1"})) { flunk "started" }
     end
 
     assert_match(/\Ahead-1's resource: postgres exited before it was ready\n.*no_such_setting/m, error.message)
@@ -113,6 +190,7 @@ class PostgreSQLTest < PluginTest
   end
 
   def test_finding_postgres
+    unix!
     bin = File.realpath(POSTGRES)
     linked = linked_bin
     File.write(File.join(@dir, "postgres"), "") # (not a program)
@@ -145,8 +223,9 @@ class PostgreSQLTest < PluginTest
   # copy it. It's made for the real postgres (by its path and time), of
   # bin: (~ expanded), wherever the PATH's is.
   def test_a_cluster_made_once
+    unix!
     linked_bin
-    config = config(bin: "~/linked")
+    config = config(bin: "~/linked", pg_ctl: false)
     cache = own_cache
     made = with_env("HOME" => @dir, "PATH" => "/usr/bin:/bin", "LC_ALL" => "en_US.UTF-8") do
       prepare(config, cache:, name: "base-1") do |env|
@@ -178,6 +257,7 @@ class PostgreSQLTest < PluginTest
   # empty, so it's made here whatever other tests have built. A statement
   # that fails in single-user mode fails it (exit_on_error).
   def test_making_a_cluster
+    unix!
     resource = Duel::Resource.new(File.join(@dir, "resource"), "head-1", @dir, timeout: 60, cache: own_cache)
     cluster = Duel::PostgreSQL::Cluster.new(resource, POSTGRES)
     data = File.join(@dir, "data")
@@ -193,6 +273,7 @@ class PostgreSQLTest < PluginTest
 
   # (bin:, or DUEL_POSTGRESQL_BIN.)
   def test_a_program_that_fails
+    unix!
     cache = own_cache # (this postgres's cluster would be copied)
     bin = File.join(@dir, "bin")
     FileUtils.mkdir_p(bin)

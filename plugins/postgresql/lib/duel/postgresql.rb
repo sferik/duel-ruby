@@ -4,6 +4,7 @@ require "duel"
 require "digest"
 require "fileutils"
 require "rbconfig"
+require "socket"
 require_relative "postgresql/version"
 
 module Duel
@@ -27,7 +28,8 @@ module Duel
   # Benchmarks can call Duel::PostgreSQL.url, and .execute and .reset in
   # setup (or untimed blocks): while a benchmark is measured, they fail.
   #
-  # The server listens only on a Unix socket in the worker's directory;
+  # The server listens only on a Unix socket in the worker's directory
+  # (or with +pg_ctl+, on a port of 127.0.0.1's alone: see .configure);
   # its URL is in DUEL_POSTGRESQL_URL, and in DATABASE_URL too (unless
   # +env+ names others), and libpq's PGHOST, PGPORT, PGUSER and
   # PGDATABASE point at it, so a client finds it and nothing reaches
@@ -65,27 +67,46 @@ module Duel
     # database runs when it's started (a schema, say), and +env+ the
     # variables given its URL besides DUEL_POSTGRESQL_URL. A cluster is
     # initdb'd once (Resource#cached), and each worker's is a copy.
+    #
+    # With +pg_ctl+ (by default on Windows), the server is started (and
+    # stopped) by pg_ctl, on a port of 127.0.0.1's: on Windows, postgres
+    # won't run with an administrator's rights (CI's runners have them),
+    # which pg_ctl drops, and its Unix sockets are new.
+    #
     # Returns the plugin's own connection to it, a worker's (see
     # Config#in_worker, and in tests, Duel::Testing.in_worker).
-    def self.configure(config, bin: ENV.fetch("DUEL_POSTGRESQL_BIN", nil), settings: {}, setup: nil, env: %w[DATABASE_URL])
+    def self.configure(config, bin: ENV.fetch("DUEL_POSTGRESQL_BIN", nil), settings: {}, setup: nil, env: %w[DATABASE_URL],
+      pg_ctl: Native::WINDOWS)
       config.prepare(:worker) do |w|
         require_pg
         programs = File.expand_path(bin || Cluster.find_bin ||
           w.failed("no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)"))
         data = w.path("data")
-        Cluster.new(w, programs).create(data)
-        # (Stopped by INT: its clients are disconnected, not waited for, as
-        # TERM would.)
-        # (Of a setting given twice, postgres takes the last: +settings+'.)
-        w.spawn(File.join(programs, "postgres"), "-D", data, "-k", w.dir, "-p", PORT.to_s,
-          *SETTINGS.merge(settings).flat_map { |name, value| ["-c", "#{name}=#{value}"] }, stop_signal: "INT")
+        cluster = Cluster.new(w, programs, pg_ctl: pg_ctl)
+        cluster.create(data)
+        if pg_ctl
+          host = "127.0.0.1"
+          port = free_port
+          # (Its settings in its postgresql.conf, as pg_ctl takes no
+          # others whole. +settings+' last, which it takes.)
+          cluster.start(data, SETTINGS.merge("listen_addresses" => host, "port" => port, "unix_socket_directories" => "").merge(settings))
+          w.at_stop { cluster.stop(data) }
+        else
+          host = w.dir
+          port = PORT
+          # (Stopped by INT: its clients are disconnected, not waited for, as
+          # TERM would.)
+          # (Of a setting given twice, postgres takes the last: +settings+'.)
+          w.spawn(File.join(programs, "postgres"), "-D", data, "-k", w.dir, "-p", PORT.to_s,
+            *SETTINGS.merge(settings).flat_map { |name, value| ["-c", "#{name}=#{value}"] }, stop_signal: "INT")
+        end
         # (The user in the query, with no authority at all: Ruby's URI, which
         # Rails parses DATABASE_URL with, takes a user without a host for
         # a malformed host.)
-        url = "postgres:///#{DATABASE}?host=#{w.dir}&port=#{PORT}&user=#{USER}"
+        url = "postgres:///#{DATABASE}?host=#{host}&port=#{port}&user=#{USER}"
         w.wait_until { PG::Connection.ping(url) == PG::PQPING_OK }
         run(url, setup) if setup
-        {URL => url, "PGHOST" => w.dir, "PGPORT" => PORT.to_s, "PGUSER" => USER, "PGDATABASE" => DATABASE}
+        {URL => url, "PGHOST" => host, "PGPORT" => port.to_s, "PGUSER" => USER, "PGDATABASE" => DATABASE}
           .merge(env.to_h { |name| [name, url] })
       end
       # (In the worker, libpq's environment is its server's.)
@@ -96,6 +117,21 @@ module Duel
       statements = Statements.new(connection)
       config.metric(METRICS) { statements.read }.costly.details { |stretches, sample| statements.details(stretches, sample.n) }
       connection
+    end
+
+    # A port of 127.0.0.1's that's free (one the system chose, let go of
+    # again), for a server of a worker's to listen on.
+    # mutant:disable -- any address the system binds to gives a port free
+    # alike: 127.0.0.1's is the one the server listens on
+    def self.free_port
+      # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
+      # before it.)
+      server = TCPServer.new("127.0.0.1", 0) # steep:ignore UnexpectedPositionalArgument
+      begin
+        server.addr.fetch(1)
+      ensure
+        server.close
+      end
     end
 
     # Loads pg, once Duel has loaded the worker's version: not as the
@@ -397,30 +433,80 @@ module Duel
         Dir[debian].max_by { |dir| File.basename(File.dirname(dir)).to_i }
       end
 
-      def initialize(resource, bin)
+      # Where pg_ctl's cluster is in its build (see #make).
+      PG_CTL = "cluster"
+
+      # +pg_ctl+: its cluster made, and its servers started, by pg_ctl
+      # (see PostgreSQL.configure).
+      def initialize(resource, bin, pg_ctl: false)
         @resource = resource
         @bin = bin
+        @pg_ctl = pg_ctl
       end
 
       # Makes one in +data+: a copy of the one made for these programs.
       def create(data)
-        FileUtils.cp_r(@resource.cached(key) { |dir| make(dir) }, data)
+        built = @resource.cached(key) { |dir| make(dir) }
+        FileUtils.cp_r(@pg_ctl ? File.join(built, PG_CTL) : built, data)
         File.chmod(0o700, data) # (as postgres insists)
       end
+
+      # Starts a server on the cluster in +data+ with pg_ctl, with
+      # +settings+ (added to its postgresql.conf), its log in the
+      # resource's directory: once it's ready. One that doesn't start
+      # fails, with the end of its log.
+      def start(data, settings)
+        File.write(File.join(data, "postgresql.conf"), settings.map { |name, value| "#{name} = '#{value.to_s.gsub("'", "''")}'\n" }.join,
+          mode: "a")
+        log = @resource.path("postgres.log")
+        begin
+          run("pg_ctl", "start", "-D", data, "-w", "-l", log)
+        rescue Failed
+          @resource.failed("postgres didn't start", log: log)
+        end
+      end
+
+      # Stops the server on the cluster in +data+ that #start started:
+      # its clients disconnected, not waited for.
+      def stop(data) = run("pg_ctl", "stop", "-D", data, "-m", "fast", "-w")
 
       private
 
       # What a cluster is good for: these programs (until they change),
-      # and this version of the plugin.
+      # this version of the plugin, and how it's made (with pg_ctl or not).
       def key
         postgres = File.realpath(File.join(@bin, "postgres#{EXE}"))
-        "postgresql-#{VERSION}-#{Digest::SHA256.hexdigest([postgres, File.mtime(postgres).to_f].join("\0"))[0, 16]}"
+        made = [postgres, File.mtime(postgres).to_f, *(PG_CTL if @pg_ctl)]
+        "postgresql-#{VERSION}-#{Digest::SHA256.hexdigest(made.join("\0"))[0, 16]}"
       end
 
       def make(data)
-        run("initdb", "--pgdata=#{data}", "-U", USER, "-A", "trust", "-E", "UTF8", "--locale=C", "--no-sync")
+        return make_with_pg_ctl(data) if @pg_ctl
+
+        initdb(data)
         single(data, "postgres", "CREATE DATABASE #{DATABASE}")
         single(data, DATABASE, "CREATE EXTENSION pg_stat_statements")
+      end
+
+      def initdb(data) = run("initdb", "--pgdata=#{data}", "-U", USER, "-A", "trust", "-E", "UTF8", "--locale=C", "--no-sync")
+
+      # With pg_ctl: initdb'd in a directory initdb makes (on Windows,
+      # initdb drops an administrator's rights, and then can't change the
+      # permissions of a directory one made), and the database and
+      # pg_stat_statements created on a server pg_ctl starts there, as
+      # single-user mode is postgres's alone, which won't run with them.
+      def make_with_pg_ctl(dir)
+        data = File.join(dir, PG_CTL)
+        initdb(data)
+        port = PostgreSQL.free_port
+        start(data, "listen_addresses" => "127.0.0.1", "port" => port, "unix_socket_directories" => "")
+        begin
+          url = "postgres:///%s?host=127.0.0.1&port=#{port}&user=#{USER}"
+          PostgreSQL.run(format(url, "postgres"), "CREATE DATABASE #{DATABASE}")
+          PostgreSQL.run(format(url, DATABASE), "CREATE EXTENSION pg_stat_statements")
+        ensure
+          stop(data)
+        end
       end
 
       # Runs a statement in the cluster's +database+, in single-user mode:

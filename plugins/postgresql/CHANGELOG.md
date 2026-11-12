@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pg_ctl: true` starts each worker's server with `pg_ctl`, on a port of
+  127.0.0.1's alone, rather than with `postgres` on a Unix socket, and
+  stops it with `pg_ctl stop`. It's the default on Windows, where
+  `postgres` won't run with an administrator's rights (CI's runners
+  have them), which `pg_ctl` drops: the cluster's made there in a
+  directory `initdb` makes itself, and its database on a server `pg_ctl`
+  starts, as single-user mode is `postgres`'s alone.
+
 ### Fixed
 
 - On Windows, `postgres.exe` on the `PATH` is found: the plugin
