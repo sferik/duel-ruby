@@ -690,9 +690,40 @@ class MySQLTest < PluginTest
       assert_equal %w[a b c d e f g é i j k l], result.fields
       assert_equal [1, -2, 3, 4.5, 0.25, "1.25", nil, "é", 2026, "7"], [a, b, c, d, e, f, g, h, k, l]
       assert_equal [[10]], db.query("CREATE TEMPORARY TABLE z (n INT(4) ZEROFILL); INSERT INTO z VALUES (10); SELECT n FROM z").rows
+      assert_equal [[(2**64) - 1, -(2**63), 0]], db.query("SELECT CAST(18446744073709551615 AS UNSIGNED), -9223372036854775808, 0").rows, "the widest"
       assert_equal [(1..300).to_a], db.query("SELECT #{(1..300).to_a.join(", ")}").rows
       assert_equal [Encoding::UTF_8, 300, 70_000], [h.encoding, i.size, j.size]
       assert_equal [[1, nil], [2, nil]], db.query("SELECT 1, NULL UNION SELECT 2, NULL").to_a, "each row, as Enumerable has it"
+    ensure
+      db&.close
+    end
+  end
+
+  # A query of 64KB and more: its length takes all three of its header's
+  # bytes.
+  def test_a_long_query
+    shared do
+      db = client
+      text = "x" * 70_000
+
+      assert_equal [[text]], db.query("SELECT '#{text}'").rows
+    ensure
+      db&.close
+    end
+  end
+
+  # A query allocates little more than its result (its fields, its rows,
+  # and each row and string value): each packet's read into, and each
+  # header written from, buffers the connection reuses.
+  def test_what_a_query_allocates
+    skip "CRuby's count" unless RUBY_ENGINE == "ruby"
+    shared do
+      db = client
+      db.query("SELECT 1, 'a'")
+      before = GC.stat(:total_allocated_objects)
+      10.times { db.query("SELECT 1, 'a'") }
+
+      assert_operator (GC.stat(:total_allocated_objects) - before) / 10.0, :<=, 12, "allocations a query"
     ensure
       db&.close
     end

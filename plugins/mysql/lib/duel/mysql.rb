@@ -258,11 +258,9 @@ module Duel
     # Where it is, for the plugin's own connections: its socket's path, or
     # (with +tcp+) its URL's HOST:PORT, in +env+ (a worker's).
     def self.address(env = ENV)
-      env.fetch(SOCKET) do
-        # (A URL the plugin made, with a HOST:PORT.)
-        host_and_port = env.fetch(URL)[%r{@([^/]+)/}, 1] #: String
-        host_and_port
-      end
+      # (Or the URL's: one the plugin made, so it has a HOST:PORT, which
+      # Steep can't tell.)
+      env.fetch(SOCKET) { env.fetch(URL)[%r{@([^/]+)/}, 1] } # steep:ignore BlockBodyTypeMismatch
     end
 
     # Runs SQL (statements, ;-separated) on it, over a connection of its
@@ -457,7 +455,9 @@ module Duel
 
       attr_reader :fields, :rows
 
-      def initialize(fields:, rows:)
+      # (Given in order, not by keyword: a keyword's Hash would be made for
+      # every query.)
+      def initialize(fields, rows)
         @fields = fields
         @rows = rows
       end
@@ -540,6 +540,15 @@ module Duel
 
       def initialize(address, database: DATABASE)
         @socket = Connection.socket(address)
+        # (Buffers of its own, binary (one byte a byte), read into
+        # and written from again and again: a packet's header, and its
+        # payload, which is read before the next one is, and what's written
+        # before a payload. Where the packet's read up to (@at), the last
+        # one's sequence number, and whether more results follow the last
+        # one read, are set as each is read.)
+        @header = "".b
+        @packet = "".b
+        @out = "".b
         begin
           authenticate(database)
         rescue Exception # rubocop:disable Lint/RescueException
@@ -551,10 +560,10 @@ module Duel
       # Runs +sql+ (statements, ;-separated); returns the last one's
       # result. A statement that fails raises its Error.
       def query(sql)
-        write(COM_QUERY.chr + sql, 0)
+        write(sql, 0, COM_QUERY)
         loop do
-          result, more = next_result
-          return result unless more
+          result = next_result
+          return result unless @more
         end
       end
 
@@ -580,7 +589,7 @@ module Duel
       # the server authenticates with), to +database+. Fails unless it's
       # let in.
       def authenticate(database)
-        greeting, = read
+        greeting = read
         error!(greeting) if greeting.getbyte(0) == ERR
         # (Its last string: the scramble before it has no NUL in it.)
         plugin = greeting.split("\0").last #: String
@@ -589,12 +598,12 @@ module Duel
         # (The greeting's numbered 0, and the reply 1.)
         write([CAPABILITIES, MAX_PACKET, UTF8MB4, USER, database, plugin].pack("VVCx23Z*xZ*Z*"), 1)
         loop do
-          reply, sequence = read
+          reply = read
           case reply.getbyte(0)
           when OK then return
           when ERR then error!(reply)
           # (Another plugin: an empty response again.)
-          when AUTH_SWITCH then write("", sequence + 1)
+          when AUTH_SWITCH then write("", @sequence + 1)
           # (caching_sha2_password's: the empty password matched.)
           when AUTH_MORE then raise Error, "MySQL wants a password (root's has none)" unless reply.getbyte(1) == FAST_AUTH
           else raise Error, "MySQL: an authentication reply the connection doesn't read: #{reply.getbyte(0)}"
@@ -602,31 +611,42 @@ module Duel
         end
       end
 
-      # A statement's result, and whether more follow: an OK's (no rows),
-      # or a result set's (its columns, then its rows, each ended by an
-      # EOF). An error raises it.
+      # A statement's result (and in @more, whether more follow): an OK's
+      # (no rows), or a result set's (its columns, then its rows, each
+      # ended by an EOF). An error raises it.
       def next_result
-        packet, = read
+        packet = read
         case packet.getbyte(0)
-        # (Its status after its affected rows and insert id.)
-        when OK then [Result.new(fields: [], rows: []), more?(packet, lenenc(packet, lenenc(packet, 1).last).last)]
+        when OK
+          # (Its status after its affected rows and insert id.)
+          @at = 1
+          lenenc(packet)
+          lenenc(packet)
+          @more = more?(packet, @at)
+          Result.new(NONE, NONE)
         when ERR then error!(packet)
         else
-          columns = Array.new(lenenc(packet, 0).first) { column(read.first) }
+          @at = 0
+          count = lenenc(packet)
+          names = [] #: Array[String]
+          types = [] #: Array[Integer]
+          count.times { column(read, names, types) }
           read # (the columns' EOF)
           rows = [] #: Array[Array[untyped]]
-          while (row = read.first) && !eof?(row)
-            rows << row(row, columns)
-          end
+          rows << row(packet, types) until eof?(packet = read)
           # (Its status after its warnings.)
-          [Result.new(fields: columns.map(&:first), rows: rows), more?(row, 3)]
+          @more = more?(packet, 3)
+          Result.new(names, rows)
         end
       end
 
+      # An OK's result: no fields, and no rows.
+      NONE = Array.new(0).freeze
+
       # Whether an OK's or an EOF's status, at +at+, says more results
-      # follow.
+      # follow. (Its first byte, of two, little-endian, has the flag.)
       def more?(packet, at)
-        status = packet.unpack1("v", offset: at) #: Integer
+        status = packet.getbyte(at) #: Integer
         (status & MORE_RESULTS).positive?
       end
 
@@ -634,78 +654,126 @@ module Duel
       # too, with a value's 8-byte length).
       def eof?(packet) = packet.getbyte(0) == EOF && packet.bytesize < 9
 
-      # A column's name, and its type: after six lenenc strings (its
-      # catalog, schema, table, original table, name, original name) and
-      # its fixed fields' length, its character set (2 bytes) and length
-      # (4), then its type.
-      def column(packet)
-        at = 0
-        strings = Array.new(6) do
-          string, at = lenenc_string(packet, at)
-          string
-        end
-        _, at = lenenc(packet, at)
-        [strings.fetch(4).force_encoding(Encoding::UTF_8), packet.getbyte(at + 6)]
+      # A column's name and its type, added to +names+ and +types+: after
+      # four lenenc strings (its catalog, schema, table, original table),
+      # its name, its original name, and its fixed fields' length, its
+      # character set (2 bytes) and length (4), then its type.
+      def column(packet, names, types)
+        @at = 0
+        4.times { skip(packet) }
+        names << string(packet, lenenc(packet)).force_encoding(Encoding::UTF_8)
+        skip(packet)
+        lenenc(packet)
+        type = packet.getbyte(@at + 6) #: Integer
+        types << type
       end
 
-      # A row's values, by its columns' types.
-      def row(packet, columns)
-        at = 0
-        columns.map do |_, type|
-          if packet.getbyte(at) == NULL
-            at += 1
+      # A row's values, by its columns' +types+.
+      def row(packet, types)
+        @at = 0
+        types.map do |type|
+          if packet.getbyte(@at) == NULL
+            @at += 1
             next
           end
 
-          value, at = lenenc_string(packet, at)
-          cast(value, type)
+          length = lenenc(packet)
+          if INTEGERS.include?(type)
+            integer(packet, length)
+          elsif FLOATS.include?(type)
+            Float(string(packet, length))
+          else
+            string(packet, length).force_encoding(Encoding::UTF_8)
+          end
         end
       end
 
-      def cast(value, type)
-        return Integer(value, 10) if INTEGERS.include?(type)
-        return Float(value) if FLOATS.include?(type)
-
-        value.force_encoding(Encoding::UTF_8)
+      # The integer written (in decimal, with a sign if it's negative) in
+      # the +length+ bytes at the packet's @at, read on past them. (Read
+      # byte by byte, so that no String is made of them.)
+      def integer(packet, length)
+        stop = @at + length
+        negative = packet.getbyte(@at) == MINUS
+        @at += 1 if negative
+        value = 0
+        while @at < stop
+          digit = packet.getbyte(@at) #: Integer
+          value = (value * 10) + digit - ZERO
+          @at += 1
+        end
+        negative ? -value : value
       end
 
-      # A length-encoded integer at +at+, and where what follows starts.
-      def lenenc(packet, at)
+      # A minus sign's byte, and a 0's.
+      MINUS = 0x2D
+      ZERO = 0x30
+
+      # The +length+ bytes at the packet's @at, as a String of their own,
+      # read on past them.
+      def string(packet, length)
+        string = packet.byteslice(@at, length) #: String
+        @at += length
+        string
+      end
+
+      # A length-encoded string at the packet's @at, skipped. (Its length
+      # read first: it moves @at past itself.)
+      def skip(packet)
+        length = lenenc(packet)
+        @at += length
+      end
+
+      # The length-encoded integer at the packet's @at, read on past it.
+      def lenenc(packet)
+        at = @at
         first = packet.getbyte(at) #: Integer
-        size = LENGTHS.fetch(first) { return [first, at + 1] }
-        # (Its bytes, little-endian, padded to 8.)
-        value = "#{packet.byteslice(at + 1, size)}\0\0\0\0\0\0".unpack1("Q<") #: Integer
-        [value, at + 1 + size]
+        # (Looked up, not fetched with a block, which would make a Proc
+        # for each one read.)
+        size = LENGTHS[first]
+        unless size
+          @at = at + 1
+          return first
+        end
+        # (Its bytes, little-endian.)
+        value = 0
+        size.times do |i|
+          byte = packet.getbyte(at + 1 + i) #: Integer
+          value += byte << (8 * i)
+        end
+        @at = at + 1 + size
+        value
       end
 
       # A length-encoded integer's prefixes, and its bytes after them (one
       # under 0xFB is the integer itself).
       LENGTHS = {0xFC => 2, 0xFD => 3, 0xFE => 8}.freeze
 
-      # A length-encoded string at +at+, and where what follows starts.
-      def lenenc_string(packet, at)
-        length, at = lenenc(packet, at)
-        string = packet.byteslice(at, length) #: String
-        [string, at + length]
-      end
-
-      # A packet's payload, and its sequence number.
+      # The next packet's payload (in a buffer that the one after it is
+      # read into), its sequence number in @sequence.
       def read
-        header = read_exactly(4)
-        size = header.unpack1("V") #: Integer
-        sequence = header.getbyte(3) #: Integer
-        [read_exactly(size & MAX_PACKET), sequence]
+        # (Its length in 3 bytes, then its sequence number.)
+        header = read_exactly(4, @header).unpack1("V") #: Integer
+        @sequence = header >> 24
+        read_exactly(header & MAX_PACKET, @packet)
       end
 
-      def read_exactly(size)
-        data = @socket.read(size)
+      def read_exactly(size, buffer)
+        data = @socket.read(size, buffer)
         raise IOError, CLOSED unless data && data.bytesize == size
 
         data
       end
 
-      # (Its header: its length in 3 bytes, then its sequence number.)
-      def write(payload, sequence) = @socket.write([payload.bytesize + (sequence << 24)].pack("V"), payload)
+      # Writes a packet: +payload+, after +command+'s byte if there's one,
+      # numbered +sequence+. (Its header: its length in 3 bytes, then its
+      # sequence number.)
+      def write(payload, sequence, command = nil)
+        size = payload.bytesize + (command ? 1 : 0)
+        out = @out.clear
+        out << (size & 0xFF) << ((size >> 8) & 0xFF) << (size >> 16) << sequence
+        out << command if command
+        @socket.write(out, payload)
+      end
 
       # Raises an error packet's error: its code (2 bytes), its SQL state
       # (# and 5 characters), and its message.

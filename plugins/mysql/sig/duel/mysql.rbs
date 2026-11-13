@@ -200,7 +200,7 @@ module Duel
       attr_reader fields: Array[String]
       attr_reader rows: Array[Array[untyped]]
 
-      def initialize: (fields: Array[String], rows: Array[Array[untyped]]) -> void
+      def initialize: (Array[String] fields, Array[Array[untyped]] rows) -> void
 
       def each: () { (Array[untyped] row) -> void } -> Array[Array[untyped]]
     end
@@ -233,11 +233,17 @@ module Duel
       CLOSED: String
       ESCAPES: Hash[String, String]
       LENGTHS: Hash[Integer, Integer]
-
-      # A column's name, and its type.
-      type column = [String, Integer?]
+      NONE: Array[untyped]
+      MINUS: Integer
+      ZERO: Integer
 
       @socket: UNIXSocket | TCPSocket
+      @header: String
+      @packet: String
+      @out: String
+      @at: Integer
+      @sequence: Integer
+      @more: bool
 
       # Whether a server answers at +address+.
       def self.ping: (String address) -> bool
@@ -265,29 +271,32 @@ module Duel
 
       def authenticate: (String database) -> void
 
-      # A statement's result, and whether more follow.
-      def next_result: () -> [Result, bool]
+      # A statement's result (and in @more, whether more follow).
+      def next_result: () -> Result
 
       def more?: (String packet, Integer at) -> bool
 
       def eof?: (String packet) -> bool
 
-      def column: (String packet) -> column
+      # A column's name and its type, the +i+th of +names+ and +types+.
+      def column: (String packet, Array[String] names, Array[Integer] types) -> Array[Integer]
 
-      def row: (String packet, Array[column] columns) -> Array[untyped]
+      def row: (String packet, Array[Integer] types) -> Array[untyped]
 
-      def cast: (String value, Integer? type) -> (Integer | Float | String)
+      def integer: (String packet, Integer length) -> Integer
 
-      def lenenc: (String packet, Integer at) -> [Integer, Integer]
+      def string: (String packet, Integer length) -> String
 
-      def lenenc_string: (String packet, Integer at) -> [String, Integer]
+      def skip: (String packet) -> Integer
 
-      # A packet's payload, and its sequence number.
-      def read: () -> [String, Integer]
+      def lenenc: (String packet) -> Integer
 
-      def read_exactly: (Integer size) -> String
+      # The next packet's payload.
+      def read: () -> String
 
-      def write: (String payload, Integer sequence) -> Integer
+      def read_exactly: (Integer size, String buffer) -> String
+
+      def write: (String payload, Integer sequence, ?Integer? command) -> Integer
 
       def error!: (String packet) -> bot
     end
