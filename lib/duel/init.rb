@@ -19,7 +19,9 @@ module Duel
   # a job that keeps a badge), or with
   # --gitlab, GitLab CI jobs to include, adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
-  # of regressions, on CRuby). It overwrites nothing without --force, and
+  # of regressions, on CRuby). With --reusable, its workflows are short
+  # ones that call Duel's reusable workflows (see Reusable), passing on
+  # what .duel.rb sets. It overwrites nothing without --force, and
   # writes nothing with --dry-run, or with --check, which says how the
   # workflows differ from what it writes.
   # @api private
@@ -46,6 +48,10 @@ module Duel
     # yellow, a warning's.
     LABEL_COLOR = "FBCA04"
 
+    # Where Duel's reusable workflows are (see Reusable), which the
+    # workflows it writes with --reusable call, at this release's tag.
+    REUSABLE = "sferik/duel-ruby/.github/workflows"
+
     def initialize(argv, out: $stdout, err: $stderr, input: $stdin, root: Dir.pwd)
       @argv = argv
       @out = out
@@ -60,6 +66,7 @@ module Duel
     def run
       rest = catch(:help) { parser.parse(@argv) } or return 0
       raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
+      raise OptionParser::InvalidOption, "--reusable with --gitlab (GitLab CI has no reusable workflows)" if @reusable && @gitlab
       return rails if File.exist?(File.join(@root, "config", "application.rb"))
 
       return check if @check
@@ -83,8 +90,10 @@ module Duel
       return written.merge(top.join(gitlab_file).to_s => render("duel.gitlab-ci.yml")) if @gitlab
 
       workflows = top.join(".github", "workflows")
-      written.merge(workflows.join(workflow_name).to_s => render("perf.yml"),
-        workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render("perf-comment.yml"))
+      # (With --reusable, ones that call Duel's.)
+      perf, comment = @reusable ? %w[perf-caller.yml perf-comment-caller.yml] : %w[perf.yml perf-comment.yml]
+      written.merge(workflows.join(workflow_name).to_s => render(perf),
+        workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render(comment))
     end
 
     private
@@ -97,6 +106,7 @@ module Duel
         o.on("--check", "Say how the workflows differ from what it writes (with the same options), and write nothing") { @check = true }
         o.on("--badge", "Write a job that keeps a badge for the README (it needs contents: write)") { @badge = true }
         o.on("--gitlab", "Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows") { @gitlab = true }
+        o.on("--reusable", "Write workflows that call Duel's reusable ones (at this release), not whole workflows") { @reusable = true }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
           throw :help
@@ -310,6 +320,48 @@ module Duel
 
     def render(name) = ERB.new(File.read(File.join(TEMPLATES, "#{name}.erb")), trim_mode: "-").result(binding)
 
+    # Whether the templates are rendered as Duel's reusable workflows (see
+    # Reusable).
+    # mutant:disable -- nil (a mutation's) renders as false does
+    def reusable? = false
+
+    # Whether the workflow's jobs write to the repository: to mark a push
+    # passed, comment on one, or keep the badge.
+    def writes? = mark_passed? || comment_on_pushes? || badge?
+
+    # What the workflow it writes with --reusable passes on to Duel's
+    # Perf workflow, as its inputs (see Reusable): what .duel.rb sets that
+    # isn't the input's default, each as YAML has it.
+    def perf_inputs
+      {
+        "ruby-version" => ruby_version,
+        "version-file" => (true if version_file),
+        "working-directory" => working_directory,
+        "accept-label" => accept_label,
+        "release-tags" => (set_release_tags unless set_release_tags == "v*"),
+        "comment-on-pushes" => (true if comment_on_pushes?),
+        "mark-passed" => (true if mark_passed?),
+        "badge" => (true if badge?),
+        "passed-branch" => (passed_branch if working_directory),
+        "badge-branch" => (badge_branch if working_directory && badge?),
+        "marker" => (marker if working_directory)
+      }.compact.transform_values(&:to_json)
+    end
+
+    # The glob release tags match, as .duel.rb sets it (c.release_tags),
+    # or nil where it doesn't load. (The whole workflows take the
+    # conventions', and say to set RELEASE_TAGS to match.)
+    def set_release_tags = settings&.release_tags
+
+    # The same, for Duel's Perf comment workflow.
+    def comment_inputs
+      {
+        "accept-label" => accept_label,
+        "perf-workflow" => ("Perf (#{working_directory})" if working_directory),
+        "marker" => (marker if working_directory)
+      }.compact.transform_values(&:to_json)
+    end
+
     # The project's configuration, as the conventions have it.
     def config = Config.new(@root)
 
@@ -438,5 +490,49 @@ module Duel
     # The branch that holds the workflow's badge: duel/badge, or for a
     # project in a subdirectory, duel/badge-<its path>.
     def badge_branch = ["duel/badge", working_directory&.tr("/", "-")].compact.join("-")
+
+    # Duel's reusable workflows, which the workflows `duel init --reusable`
+    # writes call: .github/workflows/duel.yml (the Perf workflow's jobs)
+    # and duel-comment.yml (the Perf comment workflow's), in Duel's
+    # repository. They're the templates `duel init` writes from, rendered
+    # with each setting of .duel.rb they need as an input (and a job or a
+    # step that would be left out run only where its input says to).
+    # `rake workflows` writes them, and a test says they're what's there.
+    # @api private
+    class Reusable < Init
+      def initialize = super([])
+
+      # The files, from the repository's root, to what's in them.
+      def files
+        workflows = File.join(".github", "workflows")
+        {File.join(workflows, "duel.yml") => render("perf.yml"), File.join(workflows, "duel-comment.yml") => render("perf-comment.yml")}
+      end
+
+      private
+
+      def reusable? = true
+
+      # Each an input's (see the templates' workflow_call).
+      def accept_label = "${{ inputs.accept-label }}"
+
+      def release_tags = "${{ inputs.release-tags }}"
+
+      def ruby_version = "${{ inputs.ruby-version }}"
+
+      def working_directory = "${{ inputs.working-directory }}"
+
+      def passed_branch = "${{ inputs.passed-branch }}"
+
+      def badge_branch = "${{ inputs.badge-branch }}"
+
+      # Each in, run only where its input says to.
+      def version_file = true
+
+      def comment_on_pushes? = true
+
+      def mark_passed? = true
+
+      def badge? = true
+    end
   end
 end

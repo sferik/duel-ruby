@@ -1,0 +1,43 @@
+name: Perf<%= " (#{working_directory})" if working_directory %>
+
+# Duel's performance regression guards, run by Duel's reusable workflow
+# (see Duel's docs/ci.md), which this one calls with what .duel.rb sets
+# that it needs: it compares a pull request with the branch it targets,
+# a merge queue's group with the queue's base, a push with what was there
+# before (or as c.push_base in .duel.rb says, the last commit Duel
+# passed), and on a schedule, the last release (slow creep).
+on:
+  pull_request:
+  merge_group: # (a merge queue's)
+  push:
+    branches: [main] # (and any other branch to guard, a stable one, say)
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+# A pull request's newer push cancels its run, if that's still going, as
+# only its newest commit's result counts. Every other run (a push's, say)
+# runs to the end, so that each push is compared.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+jobs:
+  duel:
+    uses: <%= REUSABLE %>/duel.yml@v<%= Duel::VERSION %>
+    # (Its Duel job, which runs the branch's code, only reads.)
+    permissions:
+<% if writes? -%>
+      contents: write # to mark a push passed, comment on it, or keep the badge
+<% else -%>
+      contents: read
+<% end -%>
+      pull-requests: read # for the pull request's labels (see c.accept_label)
+    # (And with setup:, shell commands that set up whatever else your
+    # tests need: packages, services.)
+    with:
+<% perf_inputs.each do |name, value| -%>
+      <%= name %>: <%= value %>
+<% end -%>

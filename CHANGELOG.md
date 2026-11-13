@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Duel's workflows are reusable: `.github/workflows/duel.yml` and
+  `duel-comment.yml`, in Duel's repository, are the Perf and Perf
+  comment workflows that `duel init` writes, with each setting of
+  `.duel.rb` they need as an input (and a `setup` input, for what else a
+  project's tests need). `duel init --reusable` writes short workflows
+  that call them, at the release's tag, passing on what `.duel.rb` sets,
+  and `--check --reusable` compares those. `rake workflows` renders the
+  reusable workflows from the templates, and a test keeps them the
+  same. See docs/ci.md.
 - The start of Windows support (CRuby). CPU time there is the cycles
   the thread (or the process) was charged, in nanoseconds at a rate
   the run measures once for every worker, as Windows's own CPU times
