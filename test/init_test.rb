@@ -1239,6 +1239,21 @@ class InitTest < DuelTest
     assert_includes @out.string, "  skip      label duel: accept (me/my_gem has it)\n"
   end
 
+  # A page of fewer than a hundred labels is the last: it asks for no more.
+  def test_the_last_page_of_gitlab_labels
+    command = init("--gitlab")
+    names = Array.new(99) { |i| "label #{i}" }
+    page = gitlab_labels(*names)
+    listed = []
+    command.define_singleton_method(:cli) do |*args|
+      listed << args.last
+      page
+    end
+
+    assert_equal 99, command.send(:gitlab_labels, "me/my_gem").size
+    assert_equal %w[1], listed
+  end
+
   # On GitLab, a label that's there already, on any page, isn't made again.
   def test_a_gitlab_label_that_exists
     calls = labeled("--gitlab", answers: GITLAB_REPO.merge(%w[glab label list] => gitlab_labels("bug", "duel: accept")))
@@ -1275,6 +1290,7 @@ class InitTest < DuelTest
               --check                      Say how the workflows differ from what it writes (with the same options), and write nothing
               --badge                      Write a job that keeps a badge for the README (it needs contents: write)
               --gitlab                     Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows
+              --reusable                   Write workflows that call Duel's reusable ones (at this release), not whole workflows
           -h, --help                       Print this help
     HELP
     assert_equal 0, init("-h").run
@@ -1301,5 +1317,133 @@ class InitTest < DuelTest
     _, err = capture_io { Duel::Init.new(["--nope"]).run }
 
     assert_equal "duel init: invalid option: --nope\n", err
+  end
+
+  # Duel's reusable workflows, in its repository, are what the templates
+  # render with each setting an input (see Init::Reusable): `rake
+  # workflows` writes them.
+  def test_the_reusable_workflows
+    files = Duel::Init::Reusable.new([]).files
+
+    assert_equal [".github/workflows/duel.yml", ".github/workflows/duel-comment.yml"], files.keys
+    files.each { |path, content| assert_equal content, File.read(File.expand_path(File.join("..", path), __dir__)), "#{path}: run `rake workflows`" }
+    perf, comment = files.values.map { |content| YAML.safe_load(content) }
+
+    assert_equal "Duel", perf.fetch("name")
+    assert_equal %w[ruby-version version-file working-directory setup accept-label release-tags comment-on-pushes mark-passed badge passed-branch badge-branch marker],
+      perf.dig(true, "workflow_call", "inputs").keys
+    refute perf.key?("concurrency"), "the caller's: one of its own would wait for the caller's run"
+    assert_equal %w[duel commit-comment passed badge], perf.fetch("jobs").keys, "every job"
+    assert_equal %w[inputs.comment-on-pushes inputs.mark-passed inputs.badge], perf.fetch("jobs").values.drop(1).map { |job| job.fetch("if")[/inputs\.[a-z-]+/] },
+      "each that's left out unless .duel.rb asks for it, run where its input says to"
+    steps = perf.dig("jobs", "duel", "steps")
+
+    assert_equal "inputs.version-file", steps.find { |step| step["name"] == "Find the baseline's Ruby" }.fetch("if")
+    assert_equal({"name" => "Set up", "if" => "inputs.setup != ''", "env" => {"SETUP" => "${{ inputs.setup }}"}, "run" => %(eval "$SETUP")}, steps.fetch(2))
+    assert_equal "${{ inputs.accept-label }}", steps.fetch(1).dig("env", "ACCEPT_LABEL")
+    assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
+    assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
+    assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
+  end
+
+  # With --reusable, workflows that call Duel's (at this release), with
+  # what .duel.rb sets that isn't an input's default, and the
+  # permissions their jobs need.
+  def test_reusable
+    gem
+
+    assert_equal 0, init("--reusable").run
+    perf = YAML.safe_load(read(".github/workflows/perf.yml"))
+    comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
+    job = perf.dig("jobs", "duel")
+
+    assert_equal "sferik/duel-ruby/.github/workflows/duel.yml@v#{Duel::VERSION}", job.fetch("uses")
+    assert_equal({"contents" => "read", "pull-requests" => "read"}, job.fetch("permissions"), "nothing it writes")
+    assert_equal({"ruby-version" => ruby_version, "accept-label" => "duel: accept"}, job.fetch("with"))
+    assert_equal %w[pull_request merge_group push schedule workflow_dispatch], perf.fetch(true).keys
+    assert perf.key?("concurrency")
+    assert_equal "sferik/duel-ruby/.github/workflows/duel-comment.yml@v#{Duel::VERSION}", comment.dig("jobs", "comment", "uses")
+    assert_equal({"actions" => "write", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"), "to run the Duel job again")
+    assert_equal({"accept-label" => "duel: accept"}, comment.dig("jobs", "comment", "with"))
+    assert_equal %w[workflow_run pull_request_target], comment.fetch(true).keys
+  end
+
+  # What .duel.rb asks for is passed on: the jobs for pushes (which write,
+  # as the badge's does), no label, other release tags, and the Ruby
+  # .ruby-version names.
+  def test_reusable_settings
+    gem
+    write(".ruby-version", "4.0.1\n")
+    write(".duel.rb", "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\n  c.accept_label = nil\n" \
+      "  c.release_tags = \"my_gem-v*\"\nend\n")
+    init("--reusable", "--badge").run
+    job = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
+    comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
+
+    assert_equal({"version-file" => true, "release-tags" => "my_gem-v*", "comment-on-pushes" => true, "mark-passed" => true, "badge" => true},
+      job.fetch("with"))
+    assert_equal "write", job.dig("permissions", "contents")
+    assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"))
+    write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
+    FileUtils.rm_rf(File.join(root, ".github"))
+    init("--reusable", "--badge").run
+
+    assert_equal "write", YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "permissions", "contents"), "the badge's"
+    refute comment.fetch("jobs").fetch("comment").key?("with"), "nothing to pass on"
+    assert_equal %w[workflow_run], comment.fetch(true).keys, "no label to run it again for"
+    %w[mark-passed comment-on-pushes].each do |input|
+      write(".duel.rb", (input == "mark-passed") ? "Duel.configure { |c| c.push_base = :last_passed }\n" : "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+      FileUtils.rm_rf(File.join(root, ".github"))
+      init("--reusable").run
+      written = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
+
+      assert_equal [true, "write"], [written.dig("with", input), written.dig("permissions", "contents")], input
+    end
+  end
+
+  # Where .duel.rb doesn't load, the workflow has both jobs for pushes (as
+  # the whole workflow does), and passes on no label or release tags.
+  def test_reusable_with_a_config_that_doesnt_load
+    gem
+    write(".duel.rb", "raise 'not here'\n")
+    init("--reusable").run
+
+    assert_equal({"ruby-version" => ruby_version, "comment-on-pushes" => true, "mark-passed" => true},
+      YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "with"))
+  end
+
+  # A project in a subdirectory: its directory, its branches, its marker,
+  # and its Perf workflow's name.
+  def test_reusable_in_a_subdirectory
+    system("git", "init", "--quiet", tmpdir, exception: true)
+    project = File.join(tmpdir, "gems", "parser")
+    FileUtils.mkdir_p(File.join(project, "lib"))
+    File.write(File.join(project, "lib", "parser.rb"), "")
+    init("--reusable", "--badge", at: project).run
+    perf = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
+    comment = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
+
+    assert_equal({"ruby-version" => ruby_version, "working-directory" => "gems/parser", "accept-label" => "duel: accept", "badge" => true,
+                  "passed-branch" => "duel/passed-gems-parser", "badge-branch" => "duel/badge-gems-parser", "marker" => "duel gems/parser"},
+      perf.dig("jobs", "duel", "with"))
+    assert_equal({"accept-label" => "duel: accept", "perf-workflow" => "Perf (gems/parser)", "marker" => "duel gems/parser"}, comment.dig("jobs", "comment", "with"))
+    assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [perf.fetch("name"), comment.dig(true, "workflow_run", "workflows")]
+    FileUtils.rm_rf(File.join(tmpdir, ".github"))
+    init("--reusable", at: project).run
+
+    refute YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml")).dig("jobs", "duel", "with").key?("badge-branch"),
+      "no badge, no branch for it"
+  end
+
+  # --check with --reusable compares the workflows that call Duel's, and
+  # --reusable is GitHub Actions': GitLab CI has no reusable workflows.
+  def test_reusable_checked
+    gem
+    init("--reusable").run
+
+    assert_equal 0, init("--check", "--reusable").run
+    assert_equal 1, init("--check").run, "not the whole workflows"
+    assert_equal 2, init("--reusable", "--gitlab").run
+    assert_equal "duel init: invalid option: --reusable with --gitlab (GitLab CI has no reusable workflows)\n", @err.string
   end
 end

@@ -19,6 +19,22 @@ class GeneratorTest < PluginTest
 
   def generator(root = @dir) = Duel::Generators::InstallGenerator.new([], {}, destination_root: root)
 
+  # Duel's own template +name+, as `duel init` writes it: without what's
+  # only Duel's reusable workflow's (an input in a condition, a line for
+  # one).
+  def own(name)
+    File.read(File.expand_path("../../../lib/duel/templates/#{name}.erb", __dir__))
+      .gsub(/<%= "[^"]*" if reusable\? %>/, "").gsub(/^<% if reusable\? -%>\n(?:(?!.*<%).*\n)*?<% end -%>\n/, "")
+  end
+
+  # What Duel's own template +name+ renders, as `duel init` writes it, with
+  # +values+.
+  def render_own(name, **values)
+    template = File.read(File.expand_path("../../../lib/duel/templates/#{name}.erb", __dir__))
+    init = Struct.new(*values.keys) { def reusable? = false }.new(*values.values)
+    ERB.new(template, trim_mode: "-").result(init.instance_eval { binding })
+  end
+
   # The workflow, written again where .duel.rb is +config+: by default, one
   # that asks for the jobs for pushes (a comment on a pushed commit, and
   # the last commit Duel passed marked), and with +badge+, the badge's job.
@@ -151,13 +167,12 @@ class GeneratorTest < PluginTest
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
     require "duel/comment" # (for the template's Duel::Comment::SINCE)
-    own = ERB.new(File.read(File.expand_path("../../../lib/duel/templates/perf-comment.yml.erb", __dir__)), trim_mode: "-")
 
     assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"\n)
     assert_equal({"contents" => "read", "pull-requests" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
     assert_equal({"fetch-depth" => 0, "persist-credentials" => false}, duel.fetch("steps").first.fetch("with"))
     assert_equal ["Keep the report", "duel-report"], [duel.fetch("steps").last.fetch("name"), duel.fetch("steps").last.dig("with", "name")]
-    assert_equal own.result_with_hash(working_directory: nil, marker: "duel", accept_label: "duel: accept"),
+    assert_equal render_own("perf-comment.yml", working_directory: nil, marker: "duel", accept_label: "duel: accept"),
       read(".github/workflows/perf-comment.yml"), "Duel's own"
   end
 
@@ -172,18 +187,18 @@ class GeneratorTest < PluginTest
 
     assert_equal({"comment" => "${{ steps.compare.outputs.comment }}", "status" => "${{ steps.compare.outputs.status }}",
                   "passed" => "${{ steps.compare.outputs.passed }}"}, duel.fetch("outputs"))
-    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^concurrency:\n.*?^\n/m],
+    assert_equal own("perf.yml")[/^concurrency:\n.*?^\n/m],
       workflow[/^concurrency:\n.*?^\n/m], "Duel's own"
-    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
+    assert_equal own("perf.yml")[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
       workflow[/^      - name: Say whether to comment\n.*?^      - name: Keep/m], "Duel's own"
-    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  commit-comment:\n.*?^          marker=/m],
+    assert_equal own("perf.yml")[/^  commit-comment:\n.*?^          marker=/m],
       workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
-    assert_equal File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  passed:\n.*?^          BRANCH:/m],
+    assert_equal own("perf.yml")[/^  passed:\n.*?^          BRANCH:/m],
       workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
     assert_equal "duel/passed/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
-    own = File.read(File.expand_path("../../../lib/duel/templates/perf.yml.erb", __dir__))[/^  # Duel's badge.*\z/m]
+    badge = own("perf.yml")[/^  # Duel's badge.*\z/m]
 
-    assert_equal own.gsub("<%= badge_branch %>", "duel/badge").delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
+    assert_equal badge.gsub("<%= badge_branch %>", "duel/badge").delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
   end
 
   # With --badge, the workflow keeps a badge for the README, by a job

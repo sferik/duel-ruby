@@ -1,3 +1,32 @@
+<% if reusable? -%>
+name: Duel comment
+
+# Duel's Perf comment workflow, reusable: a project's own Perf comment
+# workflow (as `duel init --reusable` writes it) calls it, triggered as
+# that workflow is (once the Perf workflow has run, and where there's a
+# label that accepts a regression, when it's added or taken off), and
+# passes on what .duel.rb sets that it needs as its inputs. Its jobs run
+# as the Perf comment workflow's that `duel init` writes do, and the
+# caller grants what they need (actions: read, or write to run the Duel
+# job again, and pull-requests: write), which each job narrows. See
+# Duel's docs/ci.md.
+on:
+  workflow_call:
+    inputs:
+      accept-label:
+        description: The label that accepts a regression (c.accept_label), or none
+        type: string
+        default: ""
+      perf-workflow:
+        description: The name of the Perf workflow, whose runs it comments on
+        type: string
+        default: Perf
+      marker:
+        description: What marks Duel's comments
+        type: string
+        default: duel
+
+<% else -%>
 name: Perf comment<%= " (#{working_directory})" if working_directory %>
 
 # Duel's report, as a new comment on the pull request, when Duel says to:
@@ -33,6 +62,7 @@ on:
     types: [labeled, unlabeled]
 <% end -%>
 
+<% end -%>
 permissions: {}
 
 jobs:
@@ -64,15 +94,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+<% if reusable? -%>
+          MARKER: ${{ inputs.marker }}
+<% end -%>
         run: |
           gem install duel --version '~> <%= Duel::Comment::SINCE %>' --no-document
-          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker '<%= marker.gsub("'") { "'\\''" } %>'
+          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker <%= reusable? ? '"$MARKER"' : "'#{marker.gsub("'") { "'\\''" }}'" %>
 <% if accept_label -%>
 
   again:
     name: Run Duel again
     if: >-
-      github.event_name == 'pull_request_target' && github.event.label.name == '<%= accept_label.gsub("'", "''") %>'
+      github.event_name == 'pull_request_target' && <%= reusable? ? "inputs.accept-label != '' && github.event.label.name == inputs.accept-label" : "github.event.label.name == '#{accept_label.gsub("'", "''")}'" %>
     runs-on: ubuntu-latest
     permissions:
       actions: write # to run the Perf workflow's jobs again
@@ -83,10 +116,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACTION: ${{ github.event.action }}
+<% if reusable? -%>
+          PERF_WORKFLOW: ${{ inputs.perf-workflow }}
+<% end -%>
         run: |
           # The newest Perf run of the pull request's head commit, once it's
           # done (one that's running may have read the labels already).
-          id=$(gh run list --workflow "Perf<%= " (#{working_directory})" if working_directory %>" --event pull_request --commit "$HEAD_SHA" --limit 1 \
+          id=$(gh run list --workflow "<%= reusable? ? "$PERF_WORKFLOW" : "Perf#{" (#{working_directory})" if working_directory}" %>" --event pull_request --commit "$HEAD_SHA" --limit 1 \
             --json databaseId --jq '.[0].databaseId // empty')
           [ -n "$id" ] || exit 0
           gh run watch "$id" --interval 30 > /dev/null || true

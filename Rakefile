@@ -43,6 +43,15 @@ namespace :test do
   end
 end
 
+desc "Write Duel's reusable workflows (.github/workflows/duel*.yml) from the templates duel init writes from"
+task :workflows do
+  require_relative "lib/duel/init"
+  Duel::Init::Reusable.new([]).files.each do |path, content|
+    File.write(path, content)
+    puts "wrote #{path}"
+  end
+end
+
 desc "Check the RBS signatures (sig/), and lib/ against them with Steep (CRuby)"
 task :typecheck do
   sh "rbs", "-I", "sig", "-I", "steep", "-r", "net-http", "-r", "open3", "-r", "openssl", "-r", "optparse", "-r", "socket", "-r", "timeout", "-r", "uri", "validate"

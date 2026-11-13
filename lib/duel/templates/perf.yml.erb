@@ -1,3 +1,66 @@
+<% if reusable? -%>
+name: Duel
+
+# Duel's Perf workflow, reusable: a project's own Perf workflow (as
+# `duel init --reusable` writes it) calls it, with its triggers and its
+# concurrency, and passes on what .duel.rb sets that it needs as its
+# inputs. Its jobs run as the Perf workflow's that `duel init` writes
+# do, and the caller grants what they need (contents: write to mark a
+# push passed, comment on it, or keep the badge, and pull-requests: read
+# for the labels), which each job narrows. See Duel's docs/ci.md.
+on:
+  workflow_call:
+    inputs:
+      ruby-version:
+        description: The Ruby the Duel job runs (default, as .ruby-version names it)
+        type: string
+        default: default
+      version-file:
+        description: Whether each version runs on the Ruby its .ruby-version names (c.ruby = :version_file)
+        type: boolean
+        default: false
+      working-directory:
+        description: The project's directory, from the repository's root
+        type: string
+        default: .
+      setup:
+        description: Shell commands that set up what else the tests need (packages, services), before Ruby's
+        type: string
+        default: ""
+      accept-label:
+        description: The label that accepts a regression (c.accept_label), or none
+        type: string
+        default: ""
+      release-tags:
+        description: The glob release tags match (c.release_tags)
+        type: string
+        default: v*
+      comment-on-pushes:
+        description: Whether to comment on a pushed commit (c.fail_on = :pull_requests)
+        type: boolean
+        default: false
+      mark-passed:
+        description: Whether to mark a push passed (c.push_base = :last_passed)
+        type: boolean
+        default: false
+      badge:
+        description: Whether to keep a badge for the README
+        type: boolean
+        default: false
+      passed-branch:
+        description: What names the branches that mark the last commit Duel passed
+        type: string
+        default: duel/passed
+      badge-branch:
+        description: The branch that holds the badge
+        type: string
+        default: duel/badge
+      marker:
+        description: What marks Duel's comments
+        type: string
+        default: duel
+
+<% else -%>
 name: Perf<%= " (#{working_directory})" if working_directory %>
 
 on:
@@ -16,6 +79,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+<% end -%>
 # The Duel job runs the branch's code (its benchmarks too), so it only
 # reads. Commenting on a commit is the Comment on the commit job's, which
 # runs none of it, and commenting on a pull request is the Perf comment
@@ -58,7 +122,7 @@ jobs:
 <% end -%>
       - name: Find the pull request's labels
         id: labels
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'<% if accept_label %> || github.event_name == 'schedule'<% end %>
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'<% if accept_label %><%= reusable? ? " || (github.event_name == 'schedule' && inputs.accept-label != '')" : " || github.event_name == 'schedule'" %><% end %>
         continue-on-error: true # (without them, nothing's accepted)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -92,7 +156,17 @@ jobs:
             labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
           fi
           echo "labels=$labels" >> "$GITHUB_OUTPUT"
+<% if reusable? -%>
+      # What else the tests need set up (packages, services), as the
+      # caller says.
+      - name: Set up
+        if: inputs.setup != ''
+        env:
+          SETUP: ${{ inputs.setup }}
+        run: eval "$SETUP"
+<% else -%>
       # (And whatever else your tests need set up: packages, services.)
+<% end -%>
 <% if version_file -%>
       # Each version runs on the Ruby its own .ruby-version names (see
       # .duel.rb). When the baseline's names another Ruby than this code's,
@@ -108,6 +182,9 @@ jobs:
       # RELEASE_TAGS to match.)
       - name: Find the baseline's Ruby
         id: baseline
+<% if reusable? -%>
+        if: inputs.version-file
+<% end -%>
         env:
           BEFORE: ${{ github.event.before }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
@@ -212,7 +289,7 @@ jobs:
   commit-comment:
     name: Comment on the commit
     needs: duel
-    if: ${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
+    if: ${{ <%= "inputs.comment-on-pushes && " if reusable? %>!cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # to comment on the commit with the report
@@ -230,8 +307,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           COMMENT: ${{ needs.duel.outputs.comment }}
           STATUS: ${{ needs.duel.outputs.status }}
+<% if reusable? -%>
+          MARKER: ${{ inputs.marker }}
+<% end -%>
         run: |
-          marker="<!-- <%= marker %>"
+          marker="<!-- <%= reusable? ? "$MARKER" : marker %>"
           last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
             --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\"))" | tail -n 1)
           if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
@@ -259,7 +339,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-passed-${{ github.ref_name }}
       cancel-in-progress: false
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
+    if: ${{ <%= "inputs.mark-passed && " if reusable? %>!cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # to move the branch
@@ -330,7 +410,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-badge
       cancel-in-progress: false
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
+    if: ${{ <%= "inputs.badge && " if reusable? %>!cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # to move the badge's branch
