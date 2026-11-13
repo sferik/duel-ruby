@@ -20,7 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in MySQL's protocol, so it no longer needs the trilogy gem (or a
   build of it for Windows). `Duel::MySQL.execute` and `.reset`
   return a `Duel::MySQL::Result`, and a statement that fails raises
-  `Duel::MySQL::Error`.
+  `Duel::MySQL::Error`. Reading a server's statistics allocates a few
+  more objects than it did with Trilogy, which parsed MySQL's replies in
+  C (58 a reading, against 53.5, in the plugin's own benchmark), and
+  takes the same time. It gives up on a server that hasn't answered in
+  10 seconds, raising `IOError`, where it would wait forever.
 
 ### Fixed
 
