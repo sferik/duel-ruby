@@ -1,0 +1,90 @@
+name: Duel comment
+
+# Duel's Perf comment workflow, reusable: a project's own Perf comment
+# workflow (as `duel init --reusable` writes it) calls it, triggered as
+# that workflow is (once the Perf workflow has run, and where there's a
+# label that accepts a regression, when it's added or taken off), and
+# passes on what .duel.rb sets that it needs as its inputs. Its jobs run
+# as the Perf comment workflow's that `duel init` writes do, and the
+# caller grants what they need (actions: read, or write to run the Duel
+# job again, and pull-requests: write), which each job narrows. See
+# Duel's docs/ci.md.
+on:
+  workflow_call:
+    inputs:
+      accept-label:
+        description: The label that accepts a regression (c.accept_label), or none
+        type: string
+        default: ""
+      perf-workflow:
+        description: The name of the Perf workflow, whose runs it comments on
+        type: string
+        default: Perf
+      marker:
+        description: What marks Duel's comments
+        type: string
+        default: duel
+
+permissions: {}
+
+jobs:
+  comment:
+    name: Comment
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # to get the report from the Perf run
+      pull-requests: write # to comment on the pull request with the report
+    steps:
+      - name: Get the report
+        id: report
+        continue-on-error: true # there's none when the Duel job failed before comparing
+        uses: actions/download-artifact@v8
+        with:
+          name: duel-report
+          path: ${{ runner.temp }}/report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: ruby/setup-ruby@v1
+        if: steps.report.outcome == 'success'
+        with:
+          ruby-version: ruby
+      # Duel's own code, from RubyGems (none of the pull request's), so a
+      # fix to how it comments comes with a release of Duel.
+      - name: Comment on the pull request
+        if: steps.report.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          MARKER: ${{ inputs.marker }}
+        run: |
+          gem install duel --version '~> 0.1.8' --no-document
+          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker "$MARKER"
+
+  again:
+    name: Run Duel again
+    if: >-
+      github.event_name == 'pull_request_target' && inputs.accept-label != '' && github.event.label.name == inputs.accept-label
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # to run the Perf workflow's jobs again
+    steps:
+      - name: Run Duel again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ACTION: ${{ github.event.action }}
+          PERF_WORKFLOW: ${{ inputs.perf-workflow }}
+        run: |
+          # The newest Perf run of the pull request's head commit, once it's
+          # done (one that's running may have read the labels already).
+          id=$(gh run list --workflow "$PERF_WORKFLOW" --event pull_request --commit "$HEAD_SHA" --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')
+          [ -n "$id" ] || exit 0
+          gh run watch "$id" --interval 30 > /dev/null || true
+          conclusion=$(gh run view "$id" --json conclusion --jq .conclusion)
+          case "$ACTION:$conclusion" in
+            labeled:failure) gh run rerun "$id" --failed ;;
+            unlabeled:success) gh run rerun "$id" ;;
+          esac

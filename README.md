@@ -86,6 +86,9 @@ out are Duel's.
 use `--dry-run`. For a badge in your README that turns red when Duel
 fails a push, use `--badge` (see
 [Show that a project is guarded](#show-that-a-project-is-guarded)).
+To write short workflows that call Duel's reusable ones instead of
+copies of them, use `--reusable` (see
+[Call Duel's reusable workflows](docs/ci.md#call-duels-reusable-workflows)).
 When it's done, `duel init` lists the next steps.
 
 For a Rails app, use

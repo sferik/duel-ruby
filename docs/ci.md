@@ -739,6 +739,59 @@ duel-rails's generator with `--check` instead:
 bin/rails generate duel:install --check
 ```
 
+## Call Duel's reusable workflows
+
+Rather than copy Duel's whole workflows into your repository, you can
+call Duel's reusable ones, which are the same workflows with each
+setting as an input. `duel init --reusable` writes a Perf workflow and a
+Perf comment workflow that call them, at the tag of the Duel release you
+run it with, and pass on what your `.duel.rb` sets:
+
+```yaml
+# .github/workflows/perf.yml
+jobs:
+  duel:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: read
+      pull-requests: read # for the pull request's labels (see c.accept_label)
+    with:
+      ruby-version: "3.4"
+      accept-label: "duel: accept"
+```
+
+Your workflows keep their triggers, their concurrency and their
+permissions, which Duel's jobs can only narrow. The job that runs the
+pull request's code only reads, as it does in the whole workflow.
+
+Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
+
+| Input | Default | What it is |
+| --- | --- | --- |
+| `ruby-version` | `default` | The Ruby the Duel job runs (`default`: the one `.ruby-version` names). |
+| `version-file` | `false` | Whether each version runs on the Ruby its own `.ruby-version` names ([`c.ruby = :version_file`](configuration.md)). |
+| `working-directory` | `.` | The project's directory, from the repository's root. |
+| `setup` | none | Shell commands that set up whatever else your tests need (packages, services), before Ruby is set up. |
+| `accept-label` | none | The label that [accepts a regression](#accept-a-regression-with-a-label) (`c.accept_label`). |
+| `release-tags` | `v*` | The glob your release tags match (`c.release_tags`). |
+| `comment-on-pushes` | `false` | Whether to [comment on a pushed commit](#comment-on-a-pushed-commit) (`c.fail_on = :pull_requests`). |
+| `mark-passed` | `false` | Whether to [mark a push passed](#compare-a-push-with-the-last-commit-that-passed) (`c.push_base = :last_passed`). |
+| `badge` | `false` | Whether to [keep a badge](#show-whether-the-last-push-passed) for the README. |
+| `passed-branch`, `badge-branch` | `duel/passed`, `duel/badge` | The branches those jobs move. |
+| `marker` | `duel` | What marks Duel's comments. |
+
+Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
+takes `accept-label`, `marker`, and `perf-workflow` (the name of your
+Perf workflow, `Perf` by default).
+
+A job that `mark-passed`, `comment-on-pushes` or `badge` turns on writes
+to the repository, so your Perf workflow grants `contents: write` for
+it. With an accept label, your Perf comment workflow grants
+`actions: write`, to run the Duel job again. The checks are named for
+your job and Duel's, as in `duel / Duel`. To update Duel's workflows,
+change the tag. `duel init --check --reusable` compares the workflows
+that call them.
+
 ## Run Duel on GitLab CI
 
 `duel init --gitlab` writes GitLab CI jobs, in

@@ -18,6 +18,9 @@ module Duel
     # The color of the label it creates.
     LABEL_COLOR: String
 
+    # Where Duel's reusable workflows are.
+    REUSABLE: String
+
     # Where it reads an answer.
     interface _Input
       def tty?: () -> bool
@@ -33,6 +36,7 @@ module Duel
     @label: bool?
     @force: bool?
     @dry_run: bool?
+    @reusable: bool?
     @check: bool?
     @gitlab: bool?
     @badge: bool?
@@ -108,6 +112,21 @@ module Duel
 
     def render: (String name) -> String
 
+    # Whether the templates are rendered as Duel's reusable workflows.
+    def reusable?: () -> bool
+
+    # Whether the workflow's jobs write to the repository.
+    def writes?: () -> bool?
+
+    # What a workflow it writes with --reusable passes on to Duel's, as
+    # its inputs, each as YAML has it.
+    def perf_inputs: () -> Hash[String, String]
+
+    def comment_inputs: () -> Hash[String, String]
+
+    # The glob release tags match, as .duel.rb sets it.
+    def set_release_tags: () -> String?
+
     # The project's configuration, as the conventions have it.
     def config: () -> Config
 
@@ -180,5 +199,34 @@ module Duel
 
     # The Ruby image's tag for GitLab CI.
     def gitlab_ruby: () -> String
+
+    # Duel's reusable workflows: the templates, each setting an input.
+    class Reusable < Init
+      def files: () -> Hash[String, String]
+
+      private
+
+      def reusable?: () -> true
+
+      def accept_label: () -> String
+
+      def release_tags: () -> String
+
+      def ruby_version: () -> String
+
+      def working_directory: () -> String
+
+      def passed_branch: () -> String
+
+      def badge_branch: () -> String
+
+      def version_file: () -> true
+
+      def comment_on_pushes?: () -> true
+
+      def mark_passed?: () -> true
+
+      def badge?: () -> true
+    end
   end
 end
