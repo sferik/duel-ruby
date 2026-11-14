@@ -89,9 +89,7 @@ there rather than on a Unix socket. A few things work differently:
   can ask one to stop first.
 
 JRuby on Windows isn't supported yet
-([#4](https://github.com/sferik/duel-ruby/issues/4)), and a process
-benchmark of a shell command that exits at once can hang
-([#5](https://github.com/sferik/duel-ruby/issues/5)). The workflow that
+([#4](https://github.com/sferik/duel-ruby/issues/4)). The workflow that
 `duel init` writes runs on Linux, and Duel's reusable one on Linux or
 macOS.
 

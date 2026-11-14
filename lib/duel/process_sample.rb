@@ -108,11 +108,17 @@ module Duel
     # nil), and how it failed (or nil). On Windows, whose children's CPU
     # time Process.times doesn't have, what its own handle on the process
     # says (see Native::Windows::Spawned), its cycles in nanoseconds (see
-    # CycleClock).
+    # CycleClock). A command that can't start (there's no such program,
+    # say, or on Windows, a shell command with no COMSPEC in +env+ to
+    # find cmd.exe by) failed, and took nothing.
     def self.once(command, env, chdir, log, windows: Native::WINDOWS)
       before = cpu
-      pid = Process.spawn(env, *command, chdir: chdir, in: File::NULL, out: [log, "w"], err: [:child, :out], unsetenv_others: true,
-        close_others: true)
+      begin
+        pid = Process.spawn(env, *command, chdir: chdir, in: File::NULL, out: [log, "w"], err: [:child, :out], unsetenv_others: true,
+          close_others: true)
+      rescue SystemCallError => e
+        return {"cpu" => 0, "peak" => nil, "failed" => "couldn't start: #{e}"}
+      end
       spawned = Native::Windows::Spawned.open(pid) if windows
       begin
         code, signal, peak = Native::Child.wait(pid)
