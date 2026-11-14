@@ -231,7 +231,7 @@ the Perf workflow completes (`workflow_run`), with your repository's
 own copy of the workflow and a token that can write, so a pull request
 from a fork gets a comment too. It checks nothing out and runs none of
 the pull request's code. It installs Duel from RubyGems (the newest
-0.1 release, 0.1.8 or later) and runs `duel comment`, so a fix to how it comments comes
+0.2 release, 0.2.0 or later) and runs `duel comment`, so a fix to how it comments comes
 with a release of Duel, without a change to the workflow. The pull
 request's code ran in the Duel job, and could have written anything
 into the artifact, so `duel comment` trusts only what Duel could have
@@ -307,7 +307,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gem install duel --version '~> 0.1.8' --no-document
+          gem install duel --version '~> 0.2.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel'
 
   again:
@@ -971,7 +971,7 @@ duel:comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '~> 0.1.8' --no-document
+    - gem install duel --version '~> 0.2.0' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
     - duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'

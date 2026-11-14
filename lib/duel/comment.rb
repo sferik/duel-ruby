@@ -34,9 +34,11 @@ module Duel
       "request's head is still SHA: what the Perf comment workflow runs (or with --gitlab, the comment job).\n\n"
 
     # The first release of Duel whose `duel comment` the Perf comment
-    # workflow that this one writes can run: it installs the newest
-    # release of the same minor version (~>), so a fix comes with one.
-    SINCE = "0.1.8"
+    # workflow that this one writes can run (0.2.0's merges the reports
+    # of a workflow that called Duel's reusable one more than once): it
+    # installs the newest release of the same minor version (~>), so a
+    # fix comes with one.
+    SINCE = "0.2.0"
 
     # Where GitLab CI has what Duel said (comment.env's, on GitHub): the
     # merge request's, and the Duel job's dotenv report's.

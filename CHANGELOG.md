@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counted for benchmarks with threads of their own. Where the thread's
   can't be counted (in a virtual machine, say), they're the whole
   process's, as before.
+- The Perf comment workflow and GitLab CI's comment job that `duel
+  init` writes install Duel 0.2 (`~> 0.2.0`), whose `duel comment`
+  merges the reports of a workflow that called Duel's reusable one more
+  than once. `duel init --check` says to update an older one.
 
 ### Fixed
 
