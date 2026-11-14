@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-14
+
+No changes of its own: released in step with the other Duel gems.
+
 ## [0.1.8] - 2026-11-12
 
 No changes of its own: released in step with the other Duel gems.
@@ -64,7 +68,8 @@ and Ruby 3.4 or later (or JRuby 10, or TruffleRuby 40).
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.1.8...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.2.0...HEAD
+[0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.1.8...duel-activerecord-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.1.7...duel-activerecord-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.1.6...duel-activerecord-v0.1.7
 [0.1.6]: https://github.com/sferik/duel-ruby/compare/duel-activerecord-v0.1.5...duel-activerecord-v0.1.6

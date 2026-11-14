@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-14
+
 ### Added
 
 - `pg_ctl: true` starts each worker's server with `pg_ctl`, on a port of
@@ -126,7 +128,8 @@ later, with `pg_stat_statements`.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.8...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.2.0...HEAD
+[0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.8...duel-postgresql-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.7...duel-postgresql-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.6...duel-postgresql-v0.1.7
 [0.1.6]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.5...duel-postgresql-v0.1.6
