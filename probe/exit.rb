@@ -28,9 +28,16 @@ CASES = [
 ]
 
 puts RUBY_DESCRIPTION
+puts "COMSPEC=#{ENV["COMSPEC"].inspect} SystemRoot=#{ENV["SystemRoot"].inspect} PATH key=#{ENV.keys.grep(/\Apath\z/i).inspect}"
 results = CASES.map do |name, environment, command, options, handle|
   started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  pid = Process.spawn(environment, *command, **options)
+  begin
+    pid = Process.spawn(environment, *command, **options)
+  rescue SystemCallError => e
+    line = format("%-42s RAISED %s", name, e.inspect)
+    puts line
+    next line
+  end
   spawned = Duel::Native::Windows::Spawned.open(pid) if handle
   waiter = Thread.new { Duel::Native::Child.wait(pid) }
   outcome =
@@ -53,8 +60,12 @@ results = CASES.map do |name, environment, command, options, handle|
 end
 
 # And the way the test hung: ProcessSample.once itself.
-thread = Thread.new { Duel::ProcessSample.once(["exit 3"], env, Dir.tmpdir, LOG) }
-once = thread.join(WAIT) ? thread.value.inspect : "HUNG #{WAIT}s"
+thread = Thread.new do
+  Duel::ProcessSample.once(["exit 3"], env, Dir.tmpdir, LOG).inspect
+rescue SystemCallError => e
+  "RAISED #{e.inspect}"
+end
+once = thread.join(WAIT) ? thread.value : "HUNG #{WAIT}s"
 puts format("%-42s %s", "ProcessSample.once: PATH only", once)
 
 File.open(ENV.fetch("GITHUB_STEP_SUMMARY", File::NULL), "a") do |summary|
