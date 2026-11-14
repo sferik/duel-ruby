@@ -76,6 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A process benchmark's process that doesn't end once its input is
   closed is killed ten seconds later, with what it started, rather
   than waited for without end.
+- A process benchmark's command that can't start (there's no such
+  program, say) fails saying why ("couldn't start: No such file or
+  directory - ..."), not "the process running ... exited", and the next
+  run goes on in the same Ruby process. It was that process that
+  ended.
 
 ## [0.1.8] - 2026-11-12
 

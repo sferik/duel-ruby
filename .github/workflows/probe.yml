@@ -21,4 +21,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
-      - run: ruby probe/exit.rb
+          bundler-cache: true
+      - env:
+          COVERAGE: "false"
+        run: bundle exec ruby -Itest test/process_sample_test.rb -v

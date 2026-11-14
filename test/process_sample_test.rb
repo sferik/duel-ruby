@@ -168,6 +168,35 @@ class ProcessSampleTest < DuelTest
     assert_equal 1, @spawned.size
   end
 
+  # One that can't start says why, and the Ruby process of its own runs
+  # the next all the same.
+  def test_a_process_that_cant_start
+    runs = sampler
+    error = assert_raises(Duel::Failed) { noting { runs.run(["duel-no-such-program", "x"]) } }
+
+    assert_match(/\Ahead-1: duel-no-such-program x couldn't start: No such file or directory\b.*duel-no-such-program/, error.message)
+    noting { runs.run(ruby("1")) }
+
+    assert_equal 1, @spawned.size
+  end
+
+  # On Windows, a shell command whose environment has no COMSPEC: Ruby
+  # can't find cmd.exe to run it.
+  def test_a_shell_command_without_comspec_on_windows
+    skip "Windows's alone" unless windows?
+
+    ran = noting { Duel::ProcessSample.once(["exit 3"], {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) }
+
+    assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - exit 3"}, ran)
+  end
+
+  # What a command that can't start took: nothing.
+  def test_once_that_cant_start
+    ran = Duel::ProcessSample.once(["duel-no-such-program"], {"PATH" => ENV.fetch("PATH")}, tmpdir, @log)
+
+    assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - duel-no-such-program"}, ran)
+  end
+
   # One a signal killed says which.
   def test_a_process_a_signal_killed
     skip "Windows kills with no signal" if windows?
@@ -278,18 +307,17 @@ class ProcessSampleTest < DuelTest
   # part of the next run's CPU time.)
   def test_main
     other = ended_child
-    spec = JSON.generate({"env" => {"PATH" => ENV.fetch("PATH")}, "chdir" => tmpdir, "log" => @log})
+    # (On Windows, with COMSPEC, by which Ruby finds the shell, cmd.exe.)
+    env = {"PATH" => ENV.fetch("PATH"), **({"COMSPEC" => ENV.fetch("COMSPEC")} if windows?)}
+    spec = JSON.generate({"env" => env, "chdir" => tmpdir, "log" => @log})
     input, requests = IO.pipe
     replies, output = IO.pipe
     output.sync = false
     requests.puts spec
     thread = Thread.new { noting { Duel::ProcessSample.main(input: input, output: output) } }
     # (A signal's, off Windows, which kills with none. The exit's the
-    # shell's, as a JVM's start, JRuby's, takes more CPU than the work,
-    # but on Windows, CRuby's alone, Ruby's: its cmd.exe, given no
-    # environment but PATH, didn't end.)
-    exit = windows? ? ruby("exit 3") : "exit 3"
-    commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), exit, *(["kill -TERM $$"] unless windows?)]
+    # shell's, as a JVM's start, JRuby's, takes more CPU than the work.)
+    commands = [ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"), "exit 3", *(["kill -TERM $$"] unless windows?)]
     reports = commands.map do |command|
       requests.puts JSON.generate(command)
 
