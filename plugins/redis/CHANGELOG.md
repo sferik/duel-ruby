@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-14
+
 ### Added
 
 - `tcp: true` starts each worker's server on a port of 127.0.0.1's
@@ -84,7 +86,8 @@ license. It needs Ruby 3.4 or later, Duel 0.1, and `redis-server`
   read the next reply out of step.
 
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.8...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.2.0...HEAD
+[0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.8...duel-redis-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.7...duel-redis-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.6...duel-redis-v0.1.7
 [0.1.6]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.5...duel-redis-v0.1.6
