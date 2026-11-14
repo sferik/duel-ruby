@@ -79,7 +79,13 @@ jobs:
         continue-on-error: true # there's none when the Duel job failed before comparing
         uses: actions/download-artifact@v8
         with:
+<% if reusable? -%>
+          # (Every call's, where the Perf workflow called Duel's more than
+          # once, each in a directory of its own, which make one comment.)
+          pattern: duel-report*
+<% else -%>
           name: duel-report
+<% end -%>
           path: ${{ runner.temp }}/report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}

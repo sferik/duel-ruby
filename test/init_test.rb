@@ -1330,8 +1330,10 @@ class InitTest < DuelTest
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")
-    assert_equal %w[ruby-version version-file working-directory setup accept-label release-tags comment-on-pushes mark-passed badge passed-branch badge-branch marker],
-      perf.dig(true, "workflow_call", "inputs").keys
+    inputs = %w[ruby-version version-file yjit runs-on timeout-minutes working-directory gemfile submodules setup report accept-label release-tags
+      comment-on-pushes mark-passed badge passed-branch badge-branch marker]
+
+    assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
     refute perf.key?("concurrency"), "the caller's: one of its own would wait for the caller's run"
     assert_equal %w[duel commit-comment passed badge], perf.fetch("jobs").keys, "every job"
     assert_equal %w[inputs.comment-on-pushes inputs.mark-passed inputs.badge], perf.fetch("jobs").values.drop(1).map { |job| job.fetch("if")[/inputs\.[a-z-]+/] },
@@ -1340,10 +1342,38 @@ class InitTest < DuelTest
 
     assert_equal "inputs.version-file", steps.find { |step| step["name"] == "Find the baseline's Ruby" }.fetch("if")
     assert_equal({"name" => "Set up", "if" => "inputs.setup != ''", "env" => {"SETUP" => "${{ inputs.setup }}"}, "run" => %(eval "$SETUP")}, steps.fetch(2))
+    gemfile = {"name" => "Use the caller's Gemfile", "if" => "inputs.gemfile != ''", "env" => {"GEMFILE" => "${{ inputs.gemfile }}"},
+               "run" => %(echo "BUNDLE_GEMFILE=$PWD/$GEMFILE" >> "$GITHUB_ENV")}
+    yjit = {"name" => "Turn on YJIT", "if" => "inputs.yjit", "run" => %(echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV")}
+
+    assert_equal [gemfile, yjit], steps[3, 2]
+    assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 4
     assert_equal "${{ inputs.accept-label }}", steps.fetch(1).dig("env", "ACCEPT_LABEL")
     assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
     assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
+  end
+
+  # The reusable Perf workflow's Duel job runs where the caller says (on
+  # a runner, within a limit, with submodules), names its check and its
+  # report for a call that's one of several, and says what Duel said, for
+  # the caller's own jobs. The Perf comment workflow comments with every
+  # call's report.
+  def test_the_reusable_workflows_calls
+    perf, comment = Duel::Init::Reusable.new([]).files.values.map { |content| YAML.safe_load(content) }
+    job = perf.dig("jobs", "duel")
+    named = "duel-report${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}"
+
+    assert_equal ["Duel${{ inputs.report != '' && format(' ({0})', inputs.report) || '' }}", "${{ inputs.runs-on }}", "${{ inputs.timeout-minutes }}"],
+      job.values_at("name", "runs-on", "timeout-minutes")
+    assert_equal [["string", "ubuntu-latest"], ["number", 60], ["string", "false"]],
+      perf.dig(true, "workflow_call", "inputs").values_at("runs-on", "timeout-minutes", "submodules").map { |input| input.values_at("type", "default") }
+    assert_equal "${{ inputs.submodules }}", job.dig("steps", 0, "with", "submodules")
+    assert_equal [named, named], [job.fetch("steps").find { |step| step["name"] == "Keep the report" }.dig("with", "name"),
+      perf.dig("jobs", "commit-comment", "steps", 0, "with", "name")]
+    assert_equal(%w[comment status passed].to_h { |name| [name, "${{ jobs.duel.outputs.#{name} }}"] },
+      perf.dig(true, "workflow_call", "outputs").transform_values { |output| output.fetch("value") })
+    assert_equal({"pattern" => "duel-report*"}, comment.dig("jobs", "comment", "steps", 0, "with").slice("pattern", "name"))
   end
 
   # With --reusable, workflows that call Duel's (at this release), with

@@ -770,8 +770,14 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | --- | --- | --- |
 | `ruby-version` | `default` | The Ruby the Duel job runs (`default`: the one `.ruby-version` names). |
 | `version-file` | `false` | Whether each version runs on the Ruby its own `.ruby-version` names ([`c.ruby = :version_file`](configuration.md)). |
+| `yjit` | `false` | Whether the benchmarks run with YJIT on (`RUBY_YJIT_ENABLE=1`), as a Rails app runs, say. |
+| `runs-on` | `ubuntu-latest` | The runner the Duel job runs on, Linux or macOS: a larger one, say, for steadier timings. |
+| `timeout-minutes` | `60` | How long the Duel job may take before it's cancelled. |
 | `working-directory` | `.` | The project's directory, from the repository's root. |
+| `gemfile` | none | A Gemfile of Duel's own, from the project's directory (`gemfiles/duel.gemfile`, say), which keeps Duel out of the project's other bundles. Duel and both versions' workers run in its bundle, so it needs what the benchmarks load (`eval_gemfile "../Gemfile"`, say). |
+| `submodules` | `false` | Whether to check out the repository's submodules too (`true`, or `recursive`), as [actions/checkout](https://github.com/actions/checkout) takes it. |
 | `setup` | none | Shell commands that set up whatever else your tests need (packages, services), before Ruby is set up. |
+| `report` | none | A name for the call's report and check (`yjit`, say), where your workflow calls Duel's more than once: see below. |
 | `accept-label` | none | The label that [accepts a regression](#accept-a-regression-with-a-label) (`c.accept_label`). |
 | `release-tags` | `v*` | The glob your release tags match (`c.release_tags`). |
 | `comment-on-pushes` | `false` | Whether to [comment on a pushed commit](#comment-on-a-pushed-commit) (`c.fail_on = :pull_requests`). |
@@ -779,6 +785,40 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | `badge` | `false` | Whether to [keep a badge](#show-whether-the-last-push-passed) for the README. |
 | `passed-branch`, `badge-branch` | `duel/passed`, `duel/badge` | The branches those jobs move. |
 | `marker` | `duel` | What marks Duel's comments. |
+
+It says what Duel said, as its outputs, for jobs of your own (a notice
+in a channel, say): `comment` (`post` or `change`, or nothing),
+`status` (`passed`, `failed` or `neutral`) and `passed` (`true`, or
+nothing).
+
+To measure each version more than one way, call Duel's Perf workflow
+more than once, each call with a `report` of its own:
+
+```yaml
+jobs:
+  yjit:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      yjit: true
+      report: yjit
+  interpreter:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      report: interpreter
+```
+
+Each call is a check of its own (`yjit / Duel (yjit)`), and the Perf
+comment workflow comments with every call's report, as one comment,
+each under its name. The comment's status is the most any call's
+says: failed, if any failed, and passed only if every one passed. Turn
+on `mark-passed`, `comment-on-pushes` or `badge` in one call at most,
+as each call's jobs run on their own.
 
 Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
 takes `accept-label`, `marker`, and `perf-workflow` (the name of your

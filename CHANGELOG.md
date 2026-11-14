@@ -12,8 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Duel's workflows are reusable: `.github/workflows/duel.yml` and
   `duel-comment.yml`, in Duel's repository, are the Perf and Perf
   comment workflows that `duel init` writes, with each setting of
-  `.duel.rb` they need as an input (and a `setup` input, for what else a
-  project's tests need). `duel init --reusable` writes short workflows
+  `.duel.rb` they need as an input, plus a `setup` input, for what else a
+  project's tests need, a `gemfile` input, for a bundle of Duel's own
+  that keeps it out of the project's other bundles, a `yjit` input, to
+  measure with YJIT on, and `runs-on`, `timeout-minutes` and
+  `submodules` inputs for the Duel job. A workflow can call Duel's more
+  than once (with YJIT and without, say), each call with a `report`
+  input of its own, and the Perf comment workflow comments with every
+  call's report, as one comment (`duel comment` merges the reports it's
+  given as `duel-report*` directories). Duel's Perf workflow says what
+  Duel said as its outputs. `duel init --reusable` writes short workflows
   that call them, at the release's tag, passing on what `.duel.rb` sets,
   and `--check --reusable` compares those. `rake workflows` renders the
   reusable workflows from the templates, and a test keeps them the

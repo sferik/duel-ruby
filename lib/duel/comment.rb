@@ -45,6 +45,15 @@ module Duel
     # What Duel says in comment.env, as each line must have it.
     SAID = {"pr" => /\A[0-9]+\z/, "comment" => /\A(?:post|change)\z/, "status" => /\A(?:passed|failed|neutral)\z/}.freeze
 
+    # The characters a comment of reports has room for (GitHub takes
+    # 65,536, the marker and the names' headings among them), which each
+    # report's cut to its share of.
+    ROOM = 65_000
+
+    # A report's, in a comment of them, where its Duel job failed before
+    # it compared.
+    NONE = "No report: its Duel job failed before it compared.\n"
+
     # The comments on a pull request, a page at a time (gh api graphql
     # --paginate follows endCursor): GraphQL's, which say whether each is
     # hidden, as REST's don't.
@@ -94,7 +103,7 @@ module Duel
     def parser
       OptionParser.new do |o|
         o.banner = USAGE
-        o.on("--report DIR", "The directory of the Perf run's report (duel.md and comment.env)") { |v| @report = v }
+        o.on("--report DIR", "The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)") { |v| @report = v }
         o.on("--head SHA", "The commit the run compared, the pull request's head") { |v| @head = v }
         o.on("--marker TEXT", "What marks Duel's comments (default: duel)") { |v| @marker = v }
         o.on("--gitlab", "Comment on a GitLab merge request, from GitLab CI (with DUEL_COMMENT_TOKEN)") { @gitlab = true }
@@ -105,10 +114,11 @@ module Duel
       end
     end
 
-    # Comments with the report in +report+, if Duel said to, and the pull
-    # request's head is still the run's.
-    def comment(report)
-      pr, mode, status = SAID.keys.map { |name| said(name, report) }
+    # Comments with the report in +dir+ (or the reports: see reports), if
+    # Duel said to, and the pull request's head is still the run's.
+    def comment(dir)
+      reports = reports(dir)
+      pr, mode, status = SAID.keys.map { |name| merged(name, reports.map { |report| said(name, report) }) }
       return quiet("Duel said not to") unless pr && mode && status
 
       head = (@gitlab ? merge_request(pr)&.fetch("sha") : gh("repos/#{repository}/pulls/#{pr}", "--jq", ".head.sha")&.chomp) or return 1
@@ -120,7 +130,7 @@ module Duel
       stale = last && !last.eql?("#{marker} status=#{status} -->")
       return quiet("the last comment says #{status} already") unless mode == "post" || stale
 
-      post(pr, "#{marker} status=#{status} -->\n#{File.read(File.join(report, "duel.md"))}") or return 1
+      post(pr, "#{marker} status=#{status} -->\n#{body(reports)}") or return 1
       @out.puts "duel comment: commented on #{@gitlab ? "merge request !" : "pull request "}#{pr}"
       ours.reject { |earlier| earlier.fetch("hidden") }.each { |earlier| hide(earlier.fetch("id")) } unless @gitlab
       0
@@ -132,6 +142,54 @@ module Duel
       return gh("repos/#{repository}/issues/#{pr}/comments", "--method", "POST", "-f", "body=#{body}") unless @gitlab
 
       gitlab(:Post, "#{project}/merge_requests/#{pr}/notes", {"body" => body})
+    end
+
+    # The reports' directories in +dir+: +dir+, or where there's no
+    # report there (no comment.env), each of the Perf run's in a directory
+    # of its own, as the reusable Perf comment workflow gets them,
+    # duel-report and duel-report-NAME (where a call of the Perf workflow
+    # named its report), in order (Dir.glob's).
+    def reports(dir)
+      return [dir] if @gitlab || File.file?(File.join(dir, "comment.env"))
+
+      Dir.glob("duel-report{,-*}", base: dir).map { |name| File.join(dir, name) }
+    end
+
+    # What +values+, each report's, say together for +name+: the pull
+    # request, where every one that names one names the same; a post, if
+    # any says to (or else a change); and a status, failed if any failed,
+    # passed if every one passed, and otherwise neutral. Nil where none
+    # says it.
+    def merged(name, values)
+      said = values.compact
+      return if said.empty?
+
+      case name
+      when "pr" then said.first if said.uniq.one?
+      when "comment" then said.max # (post, where any says to)
+      else
+        return "failed" if said.include?("failed")
+
+        values.all?("passed") ? "passed" : "neutral"
+      end
+    end
+
+    # The comment's Markdown: the report's, or for more than one, each
+    # under its name (its directory's, after duel-report-, or Duel, for
+    # the one not named), cut to its share of ROOM, or where it has none,
+    # NONE.
+    def body(reports)
+      case reports
+      in [report] then File.read(File.join(report, "duel.md"))
+      else
+        share = ROOM / reports.size
+        reports.map do |each|
+          name = File.basename(each).delete_prefix("duel-report").delete_prefix("-")
+          path = File.join(each, "duel.md")
+          text = File.file?(path) ? File.read(path) : NONE
+          "## #{name.empty? ? "Duel" : name}\n\n#{text[0, share].chomp}\n"
+        end.join("\n")
+      end
     end
 
     # What Duel said, as SAID has it, or nil: in +report+'s comment.env

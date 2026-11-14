@@ -100,6 +100,74 @@ class CommentTest < DuelTest
     assert_equal [0, []], comment(nil), "not a file"
   end
 
+  # Writes a report of the Perf run's, in a directory of its own named
+  # +name+, as the reusable Perf comment workflow gets them: +said+
+  # (comment.env) and +markdown+ (duel.md), where they're not nil.
+  def kept(name, said, markdown = "#{name}'s\n")
+    dir = FileUtils.mkdir_p(File.join(report, name)).first
+    File.write(File.join(dir, "comment.env"), said) if said
+    File.write(File.join(dir, "duel.md"), markdown) if markdown
+  end
+
+  # A Perf workflow that called Duel's reusable one more than once (with
+  # YJIT and without, say) kept a report for each call, which make one
+  # comment: each under its name (Duel's, for the one not named), and in
+  # order.
+  def test_the_reports_of_each_call
+    kept("duel-report-yjit", "pr=12\ncomment=post\nstatus=failed\n", "YJIT's")
+    kept("duel-report", "pr=12\ncomment=change\nstatus=passed\n")
+    kept("duel-reports", "pr=12\ncomment=post\nstatus=failed\n")
+    status, calls = comment(nil)
+
+    assert_equal [0, ["<!-- duel status=failed -->\n## Duel\n\nduel-report's\n\n## yjit\n\nYJIT's\n"]], [status, posted(calls)]
+    kept("duel-report-a", "pr=12\ncomment=change\nstatus=passed\n", nil)
+
+    assert_includes posted(comment(nil).last).first, "## a\n\nNo report: its Duel job failed before it compared.\n\n## yjit"
+  end
+
+  # Together, they say what the most of them says: the pull request each
+  # names (but none where they name two), a post if any says to (or a
+  # change if any does), and failed if any failed, passed if all passed,
+  # and neutral otherwise.
+  def test_what_the_reports_say_together
+    said = lambda do |*each|
+      FileUtils.rm_rf(report)
+      each.each_with_index { |text, i| kept("duel-report-#{i}", text) }
+      posted(comment(nil).last).first&.lines&.first
+    end
+
+    assert_equal "<!-- duel status=neutral -->\n", said.call("pr=12\ncomment=post\nstatus=passed\n", "pr=12\nstatus=neutral\n")
+    assert_equal "<!-- duel status=neutral -->\n", said.call("pr=12\ncomment=post\nstatus=passed\n", "pr=12\n"), "one said nothing"
+    assert_equal "<!-- duel status=neutral -->\n", said.call("pr=12\ncomment=post\nstatus=passed\n", nil), "one has no comment.env"
+    assert_equal "<!-- duel status=passed -->\n", said.call("pr=12\ncomment=post\nstatus=passed\n", "comment=change\nstatus=passed\n")
+    assert_equal "<!-- duel status=failed -->\n", said.call("pr=12\nstatus=neutral\n", "pr=12\ncomment=post\nstatus=failed\n")
+    assert_nil said.call("pr=12\ncomment=post\nstatus=failed\n", "pr=13\ncomment=post\nstatus=failed\n"), "two pull requests"
+    assert_nil said.call("pr=12\nstatus=failed\n", "pr=12\nstatus=failed\n"), "neither says to comment"
+    FileUtils.rm_rf(report)
+    kept("duel-report", "pr=12\ncomment=change\nstatus=failed\n")
+    kept("duel-report-yjit", "pr=12\nstatus=failed\n")
+
+    assert_equal [], posted(comment(nil, listed: [ours("A")]).last), "a change, where the last said failed already"
+    assert_equal "duel comment: no comment (the last comment says failed already)\n", @out.string
+    assert_equal 1, posted(comment(nil, listed: [ours("A", "<!-- duel status=passed -->")]).last).size
+    FileUtils.rm_rf(report)
+
+    assert_equal [0, []], comment(nil), "no reports"
+  end
+
+  # Each report is cut to its share of a comment's room, as GitHub takes
+  # no more, but one alone is as it is.
+  def test_the_reports_room
+    kept("duel-report", "pr=12\ncomment=post\nstatus=failed\n", "x" * 40_000)
+    _, calls = comment(nil)
+
+    assert_equal 40_000, posted(calls).first.count("x"), "one alone"
+    kept("duel-report-yjit", "pr=12\ncomment=post\nstatus=failed\n", "w" * 40_000)
+    body = posted(comment(nil).last).first
+
+    assert_equal [32_500, 32_500], [body.count("x"), body.count("w")]
+  end
+
   # A pull request whose head has moved on since the run gets nothing.
   def test_a_pull_request_that_moved_on
     status, calls = comment(head: "def")
@@ -390,7 +458,7 @@ class CommentTest < DuelTest
       Comments on a pull request with the report a Perf run kept in DIR, when Duel said to, and only if the pull
       request's head is still SHA: what the Perf comment workflow runs (or with --gitlab, the comment job).
 
-              --report DIR                 The directory of the Perf run's report (duel.md and comment.env)
+              --report DIR                 The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)
               --head SHA                   The commit the run compared, the pull request's head
               --marker TEXT                What marks Duel's comments (default: duel)
               --gitlab                     Comment on a GitLab merge request, from GitLab CI (with DUEL_COMMENT_TOKEN)
