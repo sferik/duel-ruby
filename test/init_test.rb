@@ -199,7 +199,7 @@ class InitTest < DuelTest
     assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
     assert_equal ["steps.report.outcome == 'success'"] * 2, [ruby, post].map { |step| step.fetch("if") }
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "HEAD_SHA" => "${{ github.event.workflow_run.head_sha }}"}, post.fetch("env"))
-    assert_equal "gem install duel --version '~> 0.1.8' --no-document\n" \
+    assert_equal "gem install duel --version '~> 0.2.0' --no-document\n" \
       "duel comment --report \"$RUNNER_TEMP/report\" --head \"$HEAD_SHA\" --marker 'duel'\n", post.fetch("run")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
@@ -997,7 +997,7 @@ class InitTest < DuelTest
       assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
-    assert_equal ["ruby:slim", ["gem install duel --version '~> 0.1.8' --no-document",
+    assert_equal ["ruby:slim", ["gem install duel --version '~> 0.2.0' --no-document",
       %(duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
       jobs.fetch("duel:comment").values_at("image", "script"), "Duel's own code, from RubyGems"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
