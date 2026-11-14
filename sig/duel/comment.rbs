@@ -14,6 +14,12 @@ module Duel
     # What Duel says in comment.env, as each line must have it.
     SAID: Hash[String, Regexp]
 
+    # The characters a comment of reports has room for.
+    ROOM: Integer
+
+    # A report's, in a comment of them, where its Duel job failed first.
+    NONE: String
+
     # The comments on a pull request, a page at a time.
     COMMENTS: String
 
@@ -41,7 +47,16 @@ module Duel
 
     # Comments, if Duel said to, and the pull request's head is still the
     # run's.
-    def comment: (String report) -> Integer
+    def comment: (String dir) -> Integer
+
+    # The reports' directories in +dir+.
+    def reports: (String dir) -> Array[String]
+
+    # What each report's +values+ say together for +name+, or nil.
+    def merged: (String name, Array[String?] values) -> String?
+
+    # The comment's Markdown, of +reports+.
+    def body: (Array[String] reports) -> String
 
     # Posts +body+ as a new comment, or nil.
     def post: (String pr, String body) -> untyped

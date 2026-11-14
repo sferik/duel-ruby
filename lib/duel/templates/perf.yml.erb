@@ -19,12 +19,36 @@ on:
         description: Whether each version runs on the Ruby its .ruby-version names (c.ruby = :version_file)
         type: boolean
         default: false
+      yjit:
+        description: Whether the benchmarks run with YJIT on (RUBY_YJIT_ENABLE=1)
+        type: boolean
+        default: false
+      runs-on:
+        description: The runner the Duel job runs on (a larger one, say, for steadier timings), Linux or macOS
+        type: string
+        default: ubuntu-latest
+      timeout-minutes:
+        description: The minutes the Duel job may take before it's cancelled
+        type: number
+        default: 60
       working-directory:
         description: The project's directory, from the repository's root
         type: string
         default: .
+      gemfile:
+        description: The Gemfile of the bundle Duel runs in (BUNDLE_GEMFILE), from the project's directory, or none for the project's own
+        type: string
+        default: ""
+      submodules:
+        description: Whether to check out the repository's submodules too (true, or recursive), as actions/checkout takes it
+        type: string
+        default: "false"
       setup:
         description: Shell commands that set up what else the tests need (packages, services), before Ruby's
+        type: string
+        default: ""
+      report:
+        description: A name for this call's report (yjit, say), where the workflow calls this one more than once. The Perf comment workflow comments with every call's, each under its name
         type: string
         default: ""
       accept-label:
@@ -59,6 +83,17 @@ on:
         description: What marks Duel's comments
         type: string
         default: duel
+    # What Duel said, for the caller's own jobs (a notice, say).
+    outputs:
+      comment:
+        description: Whether Duel said to comment (post or change), or nothing
+        value: ${{ jobs.duel.outputs.comment }}
+      status:
+        description: The run's status (passed, failed or neutral), or nothing where Duel didn't get to compare
+        value: ${{ jobs.duel.outputs.status }}
+      passed:
+        description: Whether to mark a push passed (true), or nothing
+        value: ${{ jobs.duel.outputs.passed }}
 
 <% else -%>
 name: Perf<%= " (#{working_directory})" if working_directory %>
@@ -90,8 +125,14 @@ permissions:
 
 jobs:
   duel:
+<% if reusable? -%>
+    name: Duel${{ inputs.report != '' && format(' ({0})', inputs.report) || '' }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+<% else -%>
     name: Duel
     runs-on: ubuntu-latest
+<% end -%>
     # Whether to comment (post, change or none), the run's status (passed,
     # failed or neutral), and whether to mark a push passed (true, or
     # nothing), from Duel.
@@ -111,6 +152,9 @@ jobs:
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
           persist-credentials: false
+<% if reusable? -%>
+          submodules: ${{ inputs.submodules }}
+<% end -%>
       # The labels of the pull request (or for a push, of the one that
       # merged it), for c.accept_label in .duel.rb, as a JSON array. They're
       # read as the job runs, and adding the label (or taking it off) runs
@@ -164,6 +208,18 @@ jobs:
         env:
           SETUP: ${{ inputs.setup }}
         run: eval "$SETUP"
+      # The bundle Duel and both versions' workers run in, where the caller
+      # names one of its own (a Gemfile for Duel alone, say): an absolute
+      # path, as the baseline's checkout is elsewhere.
+      - name: Use the caller's Gemfile
+        if: inputs.gemfile != ''
+        env:
+          GEMFILE: ${{ inputs.gemfile }}
+        run: echo "BUNDLE_GEMFILE=$PWD/$GEMFILE" >> "$GITHUB_ENV"
+      # YJIT, where the caller says to, for every worker of both versions.
+      - name: Turn on YJIT
+        if: inputs.yjit
+        run: echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV"
 <% else -%>
       # (And whatever else your tests need set up: packages, services.)
 <% end -%>
@@ -274,7 +330,7 @@ jobs:
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
         uses: actions/upload-artifact@v7
         with:
-          name: duel-report
+          name: duel-report<%= "${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}" if reusable? %>
           path: ${{ runner.temp }}/duel/
           if-no-files-found: ignore # none when Duel didn't get to compare
           retention-days: 1
@@ -299,7 +355,7 @@ jobs:
         continue-on-error: true # there's none when the Duel job failed before comparing
         uses: actions/download-artifact@v8
         with:
-          name: duel-report
+          name: duel-report<%= "${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}" if reusable? %>
           path: ${{ runner.temp }}/report
       - name: Comment on the commit
         if: steps.report.outcome == 'success'
