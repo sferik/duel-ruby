@@ -69,6 +69,32 @@ out are Duel's.
    It adds StackProf to your `Gemfile`, for profiles of regressions, so
    run `bundle install` again.
 
+Duel needs Ruby 3.4 or later. It runs on Linux and macOS, on CRuby and
+JRuby 10 (and on Linux, TruffleRuby), and on Windows, on CRuby.
+
+### Windows
+
+Duel runs on Windows with CRuby, as do its plugins, which start their
+servers (MySQL, PostgreSQL, Redis, memcached) on a port of 127.0.0.1's
+there rather than on a Unix socket. A few things work differently:
+
+- **CPU time** is the cycles Windows charged the thread or the process,
+  as its own CPU times move in ticks of 15.6 ms, longer than a sample
+  takes. There are no instruction counts, so CPU time judges alone.
+- **A process benchmark** measures its own process's CPU time and peak
+  memory, but not that of the processes it starts, as Windows keeps no
+  account of a child's for its parent.
+- **Stopping:** Windows can send a process no signal but to kill it,
+  so a resource's processes are killed as it stops. An `at_stop` block
+  can ask one to stop first.
+
+JRuby on Windows isn't supported yet
+([#4](https://github.com/sferik/duel-ruby/issues/4)), and a process
+benchmark of a shell command that exits at once can hang
+([#5](https://github.com/sferik/duel-ruby/issues/5)). The workflow that
+`duel init` writes runs on Linux, and Duel's reusable one on Linux or
+macOS.
+
 ### Set up a project
 
 `duel init` sets Duel up in a gem or an app, and writes the following:
