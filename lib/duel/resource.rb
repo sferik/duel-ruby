@@ -3,6 +3,8 @@
 require "fileutils"
 require "rbconfig"
 require_relative "native"
+require_relative "spawn"
+require_relative "process_sample"
 
 module Duel
   # What a prepare block (see Config#prepare) gets: a worker's, or a
@@ -94,8 +96,10 @@ module Duel
       end
     end
 
+    # (+redirects+: whether Process.spawn redirects output, or its
+    # processes start through Open3: see Spawn.)
     # @api private
-    def initialize(dir, name, root, timeout:, cache:, ruby: RbConfig.ruby, env: {})
+    def initialize(dir, name, root, timeout:, cache:, ruby: RbConfig.ruby, env: {}, redirects: Spawn::REDIRECTS)
       @name = name
       @dir = dir
       @root = root
@@ -103,6 +107,7 @@ module Duel
       @env = env
       @timeout = timeout
       @cache = cache
+      @redirects = redirects
       @processes = {}
       @stops = []
       FileUtils.mkdir_p(dir)
@@ -143,8 +148,8 @@ module Duel
     # environment (on its Ruby: see Config#ruby), under any it's given.
     def spawn(*command, log: nil, stop_signal: "TERM", **options)
       log = log_path(command, log)
-      pid = start(command, log, options)
-      @processes[pid] = [File.basename(log, ".log"), log, stop_signal]
+      pid, waiter = start(command, log, options)
+      @processes[pid] = [File.basename(log, ".log"), log, stop_signal, waiter]
       pid
     end
 
@@ -153,7 +158,7 @@ module Duel
     # succeeds.
     def run(*command, log: nil, **options)
       log = log_path(command, log)
-      _, status = Process.wait2(start(command, log, options))
+      status = start(command, log, options).last.value #: Process::Status
       return if status.success?
 
       code = status.exitstatus
@@ -166,7 +171,7 @@ module Duel
     def wait_until
       deadline = monotonic + @timeout
       until yield
-        ended = @processes.find { |pid, _| Process.wait(pid, Process::WNOHANG) }
+        ended = @processes.find { |_, (*, waiter)| !waiter.alive? }
         if ended
           # (It may have got ready, and ended, since the last look.)
           break if yield
@@ -185,7 +190,8 @@ module Duel
     # Fails, saying it's this resource that did, with the end of +log+ (a
     # path) to say why.
     def failed(message, log: nil)
-      tail = log ? File.readlines(log).last(LOG_LINES).join : ""
+      # (Its lines without CRLF's CR, a Windows program's.)
+      tail = log ? File.readlines(log, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join : ""
       raise Failed, "#{@name}'s resource: #{message}#{"\n#{tail}" unless tail.empty?}"
     end
 
@@ -193,13 +199,8 @@ module Duel
     # @api private
     def stop
       @stops.reverse_each(&:call)
-      @processes.each { |pid, (_, _, signal)| end_process(pid, signal) }
+      @processes.each { |pid, (_, _, signal, waiter)| end_process(pid, signal, waiter) }
     end
-
-    # The signal that stops a process whose stop signal is +signal+: that
-    # one, but on Windows, KILL, the only one it can send another process.
-    # @api private
-    def self.stop_signal(signal, windows: Native::WINDOWS) = windows ? "KILL" : signal
 
     private
 
@@ -230,29 +231,34 @@ module Duel
       path("#{name || File.basename(program)}.log")
     end
 
+    # Starts +command+, its output added to +log+, and returns its pid and
+    # a thread whose value is how it ended. (Waited for on a thread of its
+    # own: a Timeout can't interrupt a wait on JRuby.)
     def start(command, log, options)
       # (Its own environment, if it's given one, over its version's.)
       none = {} #: Hash[String, String?]
       env, *program = command.first.is_a?(Hash) ? command : [none, *command]
-      out = File.new(log, "a") # (here, so it's there for a failure to show)
-      begin
-        Process.spawn(@env.merge(env), *program, in: File::NULL, out: out, err: out, close_others: true, **options)
-      ensure
-        out.close
-      end
+      pid, waiter = Spawn.logged(@env.merge(env), program, log: log, mode: "a", redirects: @redirects, close_others: true, **options)
+      [pid, waiter || Process.detach(pid)]
     end
 
-    # (Waited for on a thread of its own: a Timeout can't interrupt a wait
-    # on JRuby.)
-    def end_process(pid, signal)
-      Process.kill(Resource.stop_signal(signal), pid)
-      waiter = Process.detach(pid)
+    def end_process(pid, signal, waiter)
+      send_signal(pid, signal)
       return if waiter.join(STOP_WAIT)
 
-      Process.kill("KILL", pid)
+      send_signal(pid, "KILL")
       waiter.join
-    rescue Errno::ESRCH # gone already
+    # (Gone already: JRuby's EPERM, on Windows, for a process that ended.)
+    rescue Errno::ESRCH, Errno::EPERM
       nil
+    end
+
+    # Sends +pid+ +signal+, but on Windows, which can send another process
+    # no signal but KILL, kills it, with what it started (taskkill /T): a
+    # process it started would go on otherwise (JRuby's JVM, started by
+    # its jruby.exe, say).
+    def send_signal(pid, signal, windows: Native::WINDOWS)
+      windows ? ProcessSample.kill_tree(pid) : Process.kill(signal, pid)
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

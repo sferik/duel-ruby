@@ -3,6 +3,7 @@
 require "json"
 require_relative "native"
 require_relative "metric"
+require_relative "spawn"
 
 module Duel
   # The runs of a process benchmark (see DSL#duel_process) for one worker:
@@ -19,16 +20,16 @@ module Duel
     # The lines of its output a failure shows.
     LOG_LINES = 10
     # Seconds the Ruby process of its own may take to end once its input
-    # is closed, before it's killed, with what it started (see #stop),
-    # and between looks at it meanwhile.
+    # is closed, before it's killed, with what it started (see #stop).
     STOP_WAIT = 10
-    POLL = 0.01
 
     # Runs for the worker +label+, in +chdir+ with +env+ (over the
     # runner's own), each process's output to +log+. A run that takes
-    # more than +timeout+ seconds fails.
-    def initialize(label, env:, chdir:, log:, timeout:)
+    # more than +timeout+ seconds fails. (+redirects+: whether its Ruby
+    # process is spawned with pipes, or started through Open3: see Spawn.)
+    def initialize(label, env:, chdir:, log:, timeout:, redirects: Spawn::REDIRECTS)
       @label = label
+      @redirects = redirects
       @env = env
       @chdir = chdir
       @log = log
@@ -52,11 +53,17 @@ module Duel
     def run(command)
       start unless @pid
       @requests.puts JSON.generate(command)
-      unless @replies.wait_readable(@timeout)
+      # (Read on a thread of its own, waited for until the timeout: on JRuby
+      # on Windows, IO.select takes Open3's pipe for ready before it is,
+      # and wait_readable never does, on JRuby 10.0.)
+      replies = @replies #: IO
+      reading = Thread.new { replies.gets }
+      reading.report_on_exception = false
+      unless reading.join(@timeout)
         kill
         raise Failed, "#{@label}: #{command.join(" ")} didn't end within #{@timeout}s (killed)"
       end
-      reply = @replies.gets
+      reply = reading.value
       unless reply
         stop
         raise Failed, "#{@label}: the process running #{command.join(" ")} exited"
@@ -65,7 +72,8 @@ module Duel
       ended = JSON.parse(reply)
       failed = ended.fetch("failed")
       if failed
-        tail = File.readlines(@log).last(LOG_LINES).join
+        # (Its lines without CRLF's CR, a Windows program's.)
+        tail = File.readlines(@log, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join
         raise Failed, "#{@label}: #{command.join(" ")} #{failed}#{"\n#{tail}" unless tail.empty?}"
       end
       {"timed" => {"cpu" => ended.fetch("cpu")}, "counted" => {}, "heap" => 0, "peak" => ended.fetch("peak")}
@@ -80,11 +88,10 @@ module Duel
       return unless pid
 
       @requests.close
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
-      sleep POLL until (gone = Process.wait(pid, Process::WNOHANG)) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-      unless gone
+      waiter = @waiter #: Thread
+      unless waiter.join(wait)
         ProcessSample.kill_tree(pid)
-        Process.wait(pid)
+        waiter.join
       end
       @replies.close
       @pid = nil
@@ -111,17 +118,17 @@ module Duel
     # CycleClock). A command that can't start (there's no such program,
     # say, or on Windows, a shell command with no COMSPEC in +env+ to
     # find cmd.exe by) failed, and took nothing.
-    def self.once(command, env, chdir, log, windows: Native::WINDOWS)
+    def self.once(command, env, chdir, log, windows: Native::WINDOWS, redirects: Spawn::REDIRECTS)
       before = cpu
       begin
-        pid = Process.spawn(env, *command, chdir: chdir, in: File::NULL, out: [log, "w"], err: [:child, :out], unsetenv_others: true,
+        pid, waiter = Spawn.logged(env, command, log: log, mode: "w", redirects: redirects, chdir: chdir, unsetenv_others: true,
           close_others: true)
       rescue SystemCallError => e
         return {"cpu" => 0, "peak" => nil, "failed" => "couldn't start: #{e}"}
       end
       spawned = Native::Windows::Spawned.open(pid) if windows
       begin
-        code, signal, peak = Native::Child.wait(pid)
+        code, signal, peak = waiter ? Native::Child.ended(waiter.value) : Native::Child.wait(pid)
         if spawned
           taken = CycleClock.ns(spawned.cycles)
           peak = spawned.peak
@@ -146,7 +153,12 @@ module Duel
       return "exited with #{code}" if code
 
       killed = signal #: Integer
-      "was killed by SIG#{Signal.signame(killed)}"
+      name = begin
+        Signal.signame(killed)
+      rescue ArgumentError # (JRuby's, on Windows, which names few signals)
+        nil
+      end
+      name ? "was killed by SIG#{name}" : "was killed by signal #{killed}"
     end
 
     # The Ruby process of its own's group, for .kill_tree to kill it with
@@ -160,7 +172,13 @@ module Duel
     def self.kill_tree(pid, windows: Native::WINDOWS)
       return Process.kill("KILL", -pid) unless windows
 
-      system("taskkill", "/T", "/F", "/PID", pid.to_s, out: File::NULL, err: File::NULL)
+      # (Through Open3: JRuby's system on Windows ignores out: and err:.
+      # Where there's no taskkill, the process alone is killed.)
+      begin
+        Open3.capture2e("taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
+      rescue Errno::ENOENT
+        Process.kill("KILL", pid)
+      end
     end
 
     private
@@ -172,22 +190,19 @@ module Duel
     # spaces, and the environment can be longer than Windows lets a
     # command be.)
     def start
-      requests, @requests = IO.pipe
-      @replies, replies = IO.pipe
       # (Out of the runner's bundle: it needs nothing of it.)
-      @pid = Process.spawn({"RUBYOPT" => nil, "RUBYLIB" => nil}, RbConfig.ruby,
-        *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-        "Duel::ProcessSample.main", in: requests, out: replies, **ProcessSample.group, close_others: true)
-      requests.close
-      replies.close
+      @pid, @requests, @replies, @waiter = Spawn.piped({"RUBYOPT" => nil, "RUBYLIB" => nil},
+        [RbConfig.ruby, *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
+          "Duel::ProcessSample.main"], redirects: @redirects, **ProcessSample.group, close_others: true)
       @requests.puts JSON.generate({"env" => {**ENV, **@env}, "chdir" => @chdir, "log" => @log})
     end
 
     # Kills the Ruby process of its own, and what it started.
     def kill
       pid = @pid #: Integer
+      waiter = @waiter #: Thread
       ProcessSample.kill_tree(pid)
-      Process.wait(pid)
+      waiter.join
       @requests.close
       @replies.close
       @pid = nil

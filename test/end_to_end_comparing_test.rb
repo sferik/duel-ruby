@@ -109,8 +109,9 @@ class EndToEndComparingTest < DuelTest
     counts = results.find { |r| r.name == "counts" }
 
     process = results.find { |r| r.name == "process" }
+    failed = results.reject(&:passed?).map { |r| [r.name, r.error || r.regressed, r.timed, r.counted] }
 
-    assert results.all?(&:passed?)
+    assert_empty failed, "the same code, every benchmark passed"
     assert_empty process.counted, "only: :timing"
     assert_equal timed_metrics(cpu: :process), process.timed.keys
     assert_equal Duel::COUNTS_ONLY, counts.n

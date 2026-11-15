@@ -406,8 +406,9 @@ class RakeTaskTest < DuelTest
   # (rake test, say) load nothing more for it.
   # Duel loads as the task runs, in a process that hadn't loaded it.
   def test_the_task_loads_duel_as_it_runs
-    said = IO.popen([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e",
-      'require "duel/rake_task"; Duel::RakeTask.new(:perf, "--help"); Rake::Task[:perf].invoke'], err: [:child, :out], &:read)
+    # (On JRuby on Windows, its JVM: jruby.exe takes the code's quotes out.)
+    said, = Duel::Spawn.open3(:capture2e, *RUBY_COMMAND, "-I", File.expand_path("../lib", __dir__), "-e",
+      'require "duel/rake_task"; Duel::RakeTask.new(:perf, "--help"); Rake::Task[:perf].invoke')
 
     assert_includes said, "Usage: duel"
   end

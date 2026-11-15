@@ -70,7 +70,22 @@ class LockTest < DuelTest
     def file.read = raise(Errno::EACCES, "lock")
 
     assert_equal "", Duel::Lock.whose(file)
+    def file.read = raise(SystemCallError, "lock") # (JRuby's, of no errno)
+
+    assert_equal "", Duel::Lock.whose(file)
     assert_equal "123", Duel::Lock.whose(StringIO.new("123"))
+  end
+
+  # JRuby on Windows says another process holds a lock by raising a Java
+  # NullPointerException. Anything else raised is raised.
+  def test_a_lock_another_process_holds_on_jruby_on_windows
+    npe = Class.new(StandardError) { def self.name = "Java::JavaLang::NullPointerException" }
+    other = Class.new(StandardError) { def self.name = "Java::JavaLang::IllegalStateException" }
+    file = Struct.new(:raised) { def flock(_) = raise(raised) }
+
+    assert_same false, Duel::Lock.lock(file.new(npe)), "false, not nil"
+    assert_raises(other) { Duel::Lock.lock(file.new(other)) }
+    File.open(File.join(tmpdir, "lock"), "w") { |f| assert_equal 0, Duel::Lock.lock(f) }
   end
 
   # And a run removes its lock once it has closed it, Windows removing

@@ -456,6 +456,27 @@ class ContextTest < DuelTest
     refute_predicate sample.instance_variable_get(:@watcher), :alive?
   end
 
+  # The watcher reads, and pausing and resuming change what it reads
+  # against, each holding the sample's lock: on JRuby, whose threads run
+  # at once, a reading could land between a pause's two changes
+  # otherwise.
+  def test_a_memory_sample_reads_holding_its_lock
+    sample = Duel::MemorySample.new
+    held = []
+    lock = nil
+    used = -> { lock && (held << lock.owned?) && 100 }
+    stub(Duel::Native::Memory, :used, -> { used.call || 100 }) do
+      stub(Duel::Native::Memory, :collect, -> {}) { sample.start }
+      sample.instance_variable_get(:@watcher).kill.join
+      lock = sample.instance_variable_get(:@lock)
+      sample.pause { nil }
+      sample.send(:watch)
+    end
+
+    assert_equal [true] * 3, held, "as it's paused, resumed, and read"
+    assert_instance_of Thread::Mutex, lock
+  end
+
   # A paused block isn't watched: a spike in it, gone by its end, isn't
   # the peak, nor is what it leaves. Memory that only falls peaks at 0.
   def test_a_memory_sample_doesnt_watch_paused_blocks

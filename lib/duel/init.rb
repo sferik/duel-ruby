@@ -10,6 +10,7 @@ require "pathname"
 require "tempfile"
 require_relative "../duel"
 require_relative "comment"
+require_relative "spawn"
 
 module Duel
   # `duel init`: sets Duel up in a gem or an app that isn't a Rails app
@@ -210,7 +211,7 @@ module Duel
     # What +program+ (gh, or glab) prints, run in the project, or nil where
     # it fails (which it says) or isn't there.
     def cli(program, *args)
-      out, err, status = Open3.capture3(program, *args, chdir: @root)
+      out, err, status = Spawn.open3(:capture3, program, *args, chdir: @root)
       return out if status.success?
 
       @err.puts "duel init: #{program} #{args.first(2).join(" ")}: #{err.strip}"
@@ -228,7 +229,7 @@ module Duel
         file.binmode
         file.write(lines)
         file.close
-        Open3.capture2("diff", "-u", "-L", path, "-L", "#{path} (duel init)", file.path, "-", stdin_data: content).first
+        Spawn.open3(:capture2, "diff", "-u", "-L", path, "-L", "#{path} (duel init)", file.path, "-", stdin_data: content).first
       end
     end
 
@@ -318,7 +319,10 @@ module Duel
       "\nNext:\n#{steps.each_with_index.map { |step, i| "  #{i + 1}. #{step}\n" }.join}"
     end
 
-    def render(name) = ERB.new(File.read(File.join(TEMPLATES, "#{name}.erb")), trim_mode: "-").result(binding)
+    # The template +name+, rendered. (Read with LF line endings, as Git
+    # may check it out with CRLF on Windows, where CRuby reads text that
+    # way, but JRuby doesn't.)
+    def render(name) = ERB.new(File.read(File.join(TEMPLATES, "#{name}.erb")).gsub("\r\n", "\n"), trim_mode: "-").result(binding)
 
     # Whether the templates are rendered as Duel's reusable workflows (see
     # Reusable).
@@ -447,7 +451,7 @@ module Duel
     # The root of the project's git repository: the project's own
     # directory, outside one.
     def repository
-      top, _, status = Open3.capture3("git", "-C", @root, "rev-parse", "--show-toplevel")
+      top, _, status = Spawn.open3(:capture3, "git", "-C", @root, "rev-parse", "--show-toplevel")
       status.success? ? top.chomp : @root
     end
 

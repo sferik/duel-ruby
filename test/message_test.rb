@@ -7,7 +7,7 @@ class MessageTest < DuelTest
   cover "Duel::Message*"
 
   def test_sends_messages_in_turn_and_keeps_their_strings_encodings
-    ours, theirs = UNIXSocket.pair
+    ours, theirs = socket_pair
     name = "caf\xE9".dup.force_encoding(Encoding::ISO_8859_1)
     Duel::Message.write(ours, {"name" => name, "n" => 3, "ratio" => 1.5, "ok" => true, "none" => nil})
     Duel::Message.write(ours, ["second"])
@@ -23,7 +23,7 @@ class MessageTest < DuelTest
   end
 
   def test_reads_nothing_once_the_other_end_has_closed
-    ours, theirs = UNIXSocket.pair
+    ours, theirs = socket_pair
     ours.close
 
     assert_nil Duel::Message.read(theirs)

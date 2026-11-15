@@ -5,6 +5,7 @@ require "socket"
 require_relative "../duel"
 require_relative "context"
 require_relative "message"
+require_relative "control"
 require_relative "profile"
 
 module Duel
@@ -12,7 +13,7 @@ module Duel
   # benchmarks, and answers the runner's requests. Started (see
   # WorkerProcess) with Worker.main(VERSION_ROOT, CANDIDATE_ROOT, CONTROL
   # [, CONFIG]), it gives its main object the DSL, loads the benchmarks,
-  # connects to the runner's Unix socket at CONTROL, sends what it has
+  # connects to the runner at CONTROL (see Control), sends what it has
   # (see #hello), and answers each request with a reply (see Message).
   # (Not over stdin: a JRuby started by JRuby sees its stdin pipe
   # closed.)
@@ -21,8 +22,16 @@ module Duel
     # The built-in metrics, outermost first: allocations (CRuby's objects,
     # or JRuby's bytes) inside instructions, whose counter allocates as
     # it's read (a sample's own allocations are none but the benchmark's),
-    # and CPU time innermost.
-    BUILT_IN = [Metrics::Instructions, Metrics::Allocations, Metrics::AllocatedBytes, Metrics::CPU].freeze
+    # and CPU time innermost. But on JRuby on Windows, JRuby's bytes are
+    # innermost, inside CPU time, whose readings of Windows's cycles
+    # (through Fiddle: see CycleClock) allocate there.
+    # simplecov:disable JRuby on Windows's (its test run covers it).
+    BUILT_IN = if RUBY_ENGINE == "jruby" && Native::WINDOWS
+      [Metrics::Instructions, Metrics::Allocations, Metrics::CPU, Metrics::AllocatedBytes].freeze
+    else
+      [Metrics::Instructions, Metrics::Allocations, Metrics::AllocatedBytes, Metrics::CPU].freeze
+    end
+    # simplecov:enable
 
     def self.main(version_root, candidate_root, control, config_path = nil)
       config = config_path ? Duel.load_config(config_path) : (Duel.config = Config.new(candidate_root))
@@ -40,7 +49,7 @@ module Duel
         GC.start
         worker = new(config.metrics, config.measures, hooks: config.hooks, before: before)
         begin
-          socket = UNIXSocket.new(control)
+          socket = Control.connect(control)
           Message.write(socket, worker.hello)
           while (request = Message.read(socket))
             Message.write(socket, worker.handle(request))

@@ -215,11 +215,7 @@ class CommentTest < DuelTest
       {"id" => "C", "isMinimized" => true, "author" => {"login" => "github-actions"}, "body" => "plain"},
       {"id" => "D", "isMinimized" => false, "author" => nil, "body" => "ghost"}]
     page = {"data" => {"repository" => {"pullRequest" => {"comments" => {"nodes" => nodes}}}}}
-    listed = IO.popen(["jq", "-c", Duel::Comment::LISTED], "r+") do |io|
-      io.write(JSON.generate(page))
-      io.close_write
-      io.read
-    end
+    listed, = Duel::Spawn.open3(:capture2, "jq", "-c", Duel::Comment::LISTED, stdin_data: JSON.generate(page))
 
     assert_equal [{"id" => "A", "hidden" => false, "marked" => "<!-- duel status=failed -->"}, {"id" => "C", "hidden" => true, "marked" => "plain"}],
       listed.lines.map { |line| JSON.parse(line) }

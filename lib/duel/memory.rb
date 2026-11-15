@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "native"
+require_relative "spawn"
 
 module Duel
   # The memory a run's workers can take (see Runner#fit): what the
@@ -49,9 +50,10 @@ module Duel
       # A file's contents, or nil where there's none.
       def read(path) = (File.read(path) if File.file?(path))
 
-      # What a command prints, or nil where there's no such command.
+      # What a command prints, or nil where there's no such command. (Its
+      # errors read, not shown: JRuby's IO.popen on Windows ignores err:.)
       def command(*args)
-        IO.popen(args, err: File::NULL, &:read)
+        Spawn.open3(:capture3, *args).first
       rescue SystemCallError
         nil
       end

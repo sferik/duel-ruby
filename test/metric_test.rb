@@ -472,7 +472,11 @@ class MetricTest < DuelTest
                    "limit" => nil, "tolerance" => 32, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
       Duel::Metrics::AllocatedBytes.specs)
     assert_equal RUBY_ENGINE == "jruby", Duel::Metrics::AllocatedBytes.available?
-    assert_equal [Duel::Metrics::Instructions, Duel::Metrics::Allocations, Duel::Metrics::AllocatedBytes, Duel::Metrics::CPU],
+    # (On JRuby on Windows, JRuby's bytes innermost: reading Windows's
+    # cycles allocates there.)
+    innermost = (RUBY_ENGINE == "jruby" && Duel::Native::WINDOWS) ? [Duel::Metrics::CPU, Duel::Metrics::AllocatedBytes] : [Duel::Metrics::AllocatedBytes, Duel::Metrics::CPU]
+
+    assert_equal [Duel::Metrics::Instructions, Duel::Metrics::Allocations, *innermost],
       Duel::Worker::BUILT_IN, "allocations (either) inside instructions, CPU time innermost"
     bytes = Duel::Metrics::AllocatedBytes.new
     if RUBY_ENGINE == "jruby"

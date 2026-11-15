@@ -32,7 +32,8 @@ module Duel
     @timeout: Float
     @cache: String
     # Each process's program, log and stop signal, by pid.
-    @processes: Hash[Integer, [String, String, String]]
+    @processes: Hash[Integer, [String, String, String, Thread]]
+    @redirects: bool
     @stops: Array[^() -> void]
 
     # +env+ with +vars+ too: two prepare blocks that set a variable differently
@@ -66,7 +67,7 @@ module Duel
 
     # @api private
     def initialize: (String dir, String name, String root, timeout: Float, cache: String, ?ruby: String,
-                     ?env: Hash[String, String?]) -> void
+                     ?env: Hash[String, String?], ?redirects: bool) -> void
 
     # A path in its directory.
     def path: (String file) -> String
@@ -99,10 +100,6 @@ module Duel
     # @api private
     def stop: () -> void
 
-    # The signal that stops a process whose stop signal is +signal+ (KILL,
-    # on Windows).
-    # @api private
-    def self.stop_signal: (String signal, ?windows: bool) -> String
 
     private
 
@@ -112,9 +109,12 @@ module Duel
     # The log a command's output goes to.
     def log_path: (Array[untyped] command, String? name) -> String
 
-    def start: (Array[untyped] command, String log, Hash[Symbol, untyped] options) -> Integer
+    def start: (Array[untyped] command, String log, Hash[Symbol, untyped] options) -> [Integer, Thread]
 
-    def end_process: (Integer pid, String signal) -> void
+    def end_process: (Integer pid, String signal, Thread waiter) -> void
+
+    # Sends +pid+ +signal+: on Windows, kills it with what it started.
+    def send_signal: (Integer pid, String signal, ?windows: bool) -> untyped
 
     def monotonic: () -> Float
   end

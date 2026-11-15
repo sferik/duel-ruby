@@ -304,7 +304,9 @@ class BaselineTest < DuelTest
     root = baseline(base: "v1.0").root
 
     assert_equal baseline.checkout, root
-    assert_equal "module Sample\n", File.read(File.join(root, "lib", "sample.rb")).lines.first
+    # (Its line, whether Git checked it out with CRLF, as on Windows, which
+    # JRuby reads as it is.)
+    assert_equal "module Sample", File.read(File.join(root, "lib", "sample.rb")).lines.first.chomp
     built = File.readlines(builds, chomp: true)
 
     assert_equal 1, built.size
@@ -314,7 +316,7 @@ class BaselineTest < DuelTest
     assert_equal 1, File.readlines(builds).size, "the same commit isn't checked out or built again"
     baseline(base: @second).root
 
-    assert_equal "module Sample; def self.work = 2; end\n", File.read(File.join(root, "lib", "sample.rb"))
+    assert_equal "module Sample; def self.work = 2; end", File.read(File.join(root, "lib", "sample.rb")).chomp
     assert_equal 2, File.readlines(builds).size
     assert_equal 2, `git -C #{@repo} worktree list`.lines.size, "the one checkout"
   end
@@ -478,7 +480,7 @@ class BaselineTest < DuelTest
     assert_equal File.join(File.dirname(File.realpath(@repo)), ".#{Digest::SHA256.hexdigest(File.realpath(app))[0, 3]}"), checkout,
       "next to the repository, named for the project"
     assert_equal [File.realpath(app).length, File.realpath(app).count("/")], [root.length, root.count("/")], "as long, and as deep"
-    assert_equal "module Sample\n", File.read(File.join(root, "lib", "sample.rb")).lines.first, "the baseline's"
+    assert_equal "module Sample", File.read(File.join(root, "lib", "sample.rb")).lines.first.chomp, "the baseline's"
     assert_path_exists File.join(checkout, "README"), "the whole repository"
     assert File.identical?(root, File.readlines(builds, chomp: true).last), "built there"
     refute_predicate of_app.call(base: "main"), :unchanged?, "lib/ is the app's"

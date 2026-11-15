@@ -126,13 +126,16 @@ module Duel
     @dir: String
     @env: Hash[String, String?]
     @ruby: String
+    @engine: String
+    @waiter: Thread
+    @launch: Array[String]?
     @runs: ProcessSample?
     @description: String
     @extensions: Hash[String, String]
     @twice: Hash[String, Array[String]]
     @gem_dirs: Array[String]
     @pid: Integer
-    @socket: UNIXSocket
+    @socket: UNIXSocket | TCPSocket
     @benchmarks: Hash[String, Definition::summary]
     @metrics: Array[Metric::spec]
     @memory: bool
@@ -167,7 +170,7 @@ module Duel
     def self.load_path: (String ruby, ?specs: Hash[String, Gem::BasicSpecification]) -> Array[String]
 
     def initialize: (String label, String root, String candidate_root, String dir, config_path: String?,
-                     env: Hash[String, String?], timeout: Float, ruby: String, engine: String) -> void
+                     env: Hash[String, String?], timeout: Float, ruby: String, engine: String, ?unix: bool) -> void
 
     # Sends a request, and returns the reply, or raises Failed with its
     # error.
@@ -185,7 +188,7 @@ module Duel
 
     private
 
-    def accept: (UNIXServer server, String path) -> UNIXSocket
+    def accept: (UNIXServer | TCPServer server, String path) -> (UNIXSocket | TCPSocket)
 
     def read: () -> reply
 

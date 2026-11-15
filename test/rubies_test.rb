@@ -65,7 +65,9 @@ class RubiesTest < DuelTest
     assert_equal ruby, Duel::Rubies.find(ruby, tmpdir, "baseline")
     assert_equal ruby, Duel::Rubies.find(->(root) { (roots << root) && ruby }, "/version", "baseline")
     assert_equal ["/version"], roots, "given the version's tree"
-    [File.join(tmpdir, "nope"), File.join(tmpdir, "bin"), File.join(tmpdir, "plain").tap { |plain| File.write(plain, "") }].each do |nope|
+    # (JRuby on Windows takes any file for executable.)
+    plain = File.join(tmpdir, "plain").tap { |path| File.write(path, "") } unless Duel::Spawn::JAVA
+    [File.join(tmpdir, "nope"), File.join(tmpdir, "bin"), *plain].each do |nope|
       error = assert_raises(Duel::Error) { Duel::Rubies.find(nope, tmpdir, "candidate") }
 
       assert_equal "the candidate's Ruby (#{nope}) isn't there", error.message
@@ -198,11 +200,36 @@ class RubiesTest < DuelTest
     assert_nil Duel::Rubies.command("duel-no-such-program")
   end
 
+  # What starts a Ruby: itself, but on JRuby on Windows, the JVM's own
+  # command, as `jruby -Xcommand` says it (one argument a line, the
+  # arguments it was given last), with the environment given.
+  def test_launch
+    jvm = %([ "$1" = -Xcommand ] || exit 1; printf 'java.exe\r\n-Dopts=%s\r\norg/jruby/Main\r\n' "$JRUBY_OPTS"; shift; for a in "$@"; do printf '%s\r\n' "$a"; done)
+    jruby = fake_command(File.join(tmpdir, "jruby"), jvm)
+    env = {"JRUBY_OPTS" => "-J-Xbatch"}
+
+    assert_equal %w[java.exe -Dopts=-J-Xbatch org/jruby/Main], Duel::Rubies.launch(jruby, "jruby", env, windows: true)
+    assert_equal [jruby], Duel::Rubies.launch(jruby, "jruby", env, windows: false), "off Windows"
+    assert_equal [jruby], Duel::Rubies.launch(jruby, "ruby", env, windows: true), "on CRuby"
+    assert_equal %w[java.exe -Dopts=-J-Xbatch org/jruby/Main], with_constants(Duel::Native, WINDOWS: true) { Duel::Rubies.launch(jruby, "jruby", env) },
+      "by default, on Windows"
+    assert_equal [RbConfig.ruby], Duel::Rubies.launch(RbConfig.ruby, RUBY_ENGINE, env), "by default, here" unless windows? && RUBY_ENGINE == "jruby"
+    failing = fake_command(File.join(tmpdir, "failing"), "#{jvm}\nexit 1")
+
+    assert_equal [failing], Duel::Rubies.launch(failing, "jruby", env, windows: true), "one that fails: itself"
+    old = fake_command(File.join(tmpdir, "old"), "echo jruby 9.1")
+
+    assert_equal [old], Duel::Rubies.launch(old, "jruby", env, windows: true), "one that doesn't say: itself"
+    missing = File.join(tmpdir, "missing")
+
+    assert_equal [missing], Duel::Rubies.launch(missing, "jruby", env, windows: true), "one that isn't there: itself"
+  end
+
   # A Ruby's engine: the runner's own, or what the Ruby says (without the
   # runner's RUBYOPT, which may load its bundle), or "ruby" where it can't
   # say.
   def test_engine
-    assert_equal RUBY_ENGINE, stub(IO, :popen, ->(*) { flunk "asked the runner's" }) { Duel::Rubies.engine(RbConfig.ruby) }, "its own"
+    assert_equal RUBY_ENGINE, stub(Open3, :capture3, ->(*) { flunk "asked the runner's" }) { Duel::Rubies.engine(RbConfig.ruby) }, "its own"
     jruby = fake_command(File.join(tmpdir, "jruby"), %(echo noise >&2\n[ -z "$RUBYOPT" ] && [ "$*" = "--disable-gems -e print RUBY_ENGINE" ] && printf jruby))
 
     found = nil
@@ -251,6 +278,7 @@ class RubiesTest < DuelTest
   # directory first on PATH, and none of the runner's Ruby's variables.
   def test_environment
     assert_empty Duel::Rubies.environment(RbConfig.ruby)
+    skip_links_on_jruby_on_windows
     link = File.join(tmpdir, "ruby")
     File.symlink(RbConfig.ruby, link)
 

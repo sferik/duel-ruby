@@ -9,9 +9,11 @@ require_relative "stats"
 require_relative "profile"
 require_relative "across"
 require_relative "message"
+require_relative "control"
 require_relative "resource"
 require_relative "rubies"
 require_relative "process_sample"
+require_relative "spawn"
 require_relative "memory"
 
 module Duel
@@ -104,7 +106,7 @@ module Duel
   # @api private
   class WorkerProcess
     LIB = File.expand_path("..", __dir__)
-    # Seconds between looks at a worker that's loading, or ending.
+    # Seconds between looks at a worker that's loading.
     POLL = 0.01
     # Seconds a worker may take to end, once its connection is closed,
     # before it's killed.
@@ -138,21 +140,24 @@ module Duel
     # engine is +engine+), with +env+, and on JRuby, the JVM's options for
     # a worker (see Rubies.worker_environment), not given to the processes
     # it starts for a process benchmark (see #run): their boot is measured
-    # as it is.
-    def initialize(label, root, candidate_root, dir, config_path:, env:, timeout:, ruby:, engine:)
+    # as it is. It connects over a Unix socket, unless +unix+ is false
+    # (see Control).
+    def initialize(label, root, candidate_root, dir, config_path:, env:, timeout:, ruby:, engine:, unix: Control::UNIX)
       @label = label
       @timeout = timeout
       @root = root
       @dir = dir
       @env = env
       @ruby = ruby
-      control = File.join(dir, "#{label}.sock")
-      server = UNIXServer.new(control)
+      @engine = engine
+      server, control = Control.listen(File.join(dir, "#{label}.sock"), unix: unix)
       # (A nil config_path is left out. And the worker gets no other
       # worker's connection: TruffleRuby's sockets aren't close-on-exec,
       # and one left open in another worker would keep it from ending.)
-      @pid = Process.spawn(Rubies.worker_environment(env, engine), ruby, *WorkerProcess.load_path(ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/worker",
-        "-e", "Duel::Worker.main(*ARGV)", root, candidate_root, control, *[config_path].compact, in: File::NULL, close_others: true)
+      worker_env = Rubies.worker_environment(env, engine)
+      @pid, @waiter = Spawn.started(worker_env, [*Rubies.launch(ruby, engine, worker_env),
+        *WorkerProcess.load_path(ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/worker", "-e", "Duel::Worker.main(*ARGV)", root,
+        candidate_root, control, *[config_path].compact], close_others: true)
       @socket = accept(server, control)
       hello = read
       @benchmarks = hello.fetch("benchmarks").to_h { |b| [b.fetch("name"), b] }
@@ -186,7 +191,7 @@ module Duel
     def run(process)
       # (Code, without a command.)
       code = process.fetch("ruby") #: String
-      command = process.fetch("command") || [@ruby, "-I", File.join(@root, "lib"), "-e", code]
+      command = process.fetch("command") || [*(@launch ||= Rubies.launch(@ruby, @engine, @env)), "-I", File.join(@root, "lib"), "-e", code]
       runs = @runs ||= ProcessSample.new(@label, env: @env, chdir: @root, log: File.join(@dir, "#{@label}.log"), timeout: @timeout)
       runs.run(command)
     end
@@ -196,11 +201,7 @@ module Duel
     def stop(wait: STOP_WAIT)
       @runs&.stop
       @socket.close
-      deadline = monotonic + wait
-      sleep POLL until (gone = Process.wait(@pid, Process::WNOHANG)) || monotonic > deadline
-      kill unless gone
-    rescue Errno::ECHILD # gone already
-      nil
+      kill unless @waiter.join(wait)
     end
 
     private
@@ -210,13 +211,13 @@ module Duel
     def accept(server, path)
       deadline = monotonic + @timeout
       until server.wait_readable(POLL)
-        raise Failed, "#{@label} worker exited while loading" if Process.wait(@pid, Process::WNOHANG)
+        raise Failed, "#{@label} worker exited while loading" unless @waiter.alive?
         hung("load") if monotonic > deadline
       end
       server.accept
     ensure
       server.close
-      File.delete(path)
+      Control.remove(path)
     end
 
     def read
@@ -230,9 +231,12 @@ module Duel
       raise Failed, "#{@label} worker didn't #{what} within #{@timeout}s (killed: a benchmark that hangs?)"
     end
 
+    # (Gone already: JRuby's EPERM, on Windows, for a process that ended.)
     def kill
       Process.kill("KILL", @pid)
-      Process.wait(@pid)
+      @waiter.join
+    rescue Errno::ESRCH, Errno::EPERM
+      nil
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

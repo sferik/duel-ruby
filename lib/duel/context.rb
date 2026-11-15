@@ -508,6 +508,10 @@ module Duel
 
     def start
       @started = true
+      # (Held as the watcher reads, and as it's paused and resumed: on
+      # JRuby, whose threads run at once, a reading could land between
+      # the two otherwise.)
+      @lock = Mutex.new
       Native::Memory.collect
       @base = resident
       @peak = 0
@@ -559,15 +563,19 @@ module Duel
     # From now on, nothing is watched, and what's left resident isn't
     # counted.
     def unwatched
-      @paused = true
-      @unwatched = resident
+      @lock.synchronize do
+        @paused = true
+        @unwatched = resident
+      end
     end
 
     # From now on, what's resident is watched again, above what was left
     # while it wasn't.
     def watched
-      @base += resident - @unwatched
-      @paused = false
+      @lock.synchronize do
+        @base += resident - @unwatched
+        @paused = false
+      end
     end
 
     def resident
@@ -576,10 +584,12 @@ module Duel
     end
 
     def watch
-      return if @paused
-
-      above = resident - @base
-      @peak = above if above > @peak
+      @lock.synchronize do
+        unless @paused
+          above = resident - @base
+          @peak = above if above > @peak
+        end
+      end
     end
   end
 

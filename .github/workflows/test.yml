@@ -60,8 +60,8 @@ jobs:
         if: steps.ruby.outcome == 'failure' || steps.tests.outcome == 'failure'
         run: echo "::warning title=${{ matrix.ruby-version }} (advisory)::A step failed on ${{ matrix.ruby-version }}, a development version"
 
-  # The tests on macOS and Windows, on the latest CRuby, and on macOS on
-  # JRuby 10.0 and 10.1 too.
+  # The tests on macOS and Windows, on the latest CRuby, and on JRuby 10.0
+  # and 10.1 too.
   os:
     # (CRuby's named for the system alone, as they were.)
     name: ${{ matrix.ruby-version == '4.0' && matrix.os || format('{0} {1}', matrix.os, matrix.ruby-version) }}
@@ -73,15 +73,14 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
         ruby-version: ["4.0", "jruby-10.0", "jruby-10.1"]
-        # (Not JRuby on Windows yet: its spawn splits an argument at its
-        # spaces there, and its workers hang. CRuby's is Windows's.)
-        exclude:
-          - os: windows-latest
-            ruby-version: jruby-10.0
-          - os: windows-latest
-            ruby-version: jruby-10.1
     steps:
       - uses: actions/checkout@v7
+      # (JRuby 10 needs Java 21, and Windows's runner has 17 first.)
+      - if: matrix.os == 'windows-latest' && startsWith(matrix.ruby-version, 'jruby')
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}

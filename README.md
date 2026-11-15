@@ -69,14 +69,15 @@ out are Duel's.
    It adds StackProf to your `Gemfile`, for profiles of regressions, so
    run `bundle install` again.
 
-Duel needs Ruby 3.4 or later. It runs on Linux and macOS, on CRuby and
-JRuby 10 (and on Linux, TruffleRuby), and on Windows, on CRuby.
+Duel needs Ruby 3.4 or later. It runs on Linux, macOS and Windows, on
+CRuby and JRuby 10 (and on Linux, TruffleRuby).
 
 ### Windows
 
-Duel runs on Windows with CRuby, as do its plugins, which start their
-servers (MySQL, PostgreSQL, Redis, memcached) on a port of 127.0.0.1's
-there rather than on a Unix socket. A few things work differently:
+Duel runs on Windows with CRuby and JRuby 10. Its plugins run there on
+CRuby, and start their servers (MySQL, PostgreSQL, Redis, memcached) on
+a port of 127.0.0.1's rather than on a Unix socket. A few things work
+differently:
 
 - **CPU time** is the cycles Windows charged the thread or the process,
   as its own CPU times move in ticks of 15.6 ms, longer than a sample
@@ -87,11 +88,18 @@ there rather than on a Unix socket. A few things work differently:
 - **Stopping:** Windows can send a process no signal but to kill it,
   so a resource's processes are killed as it stops. An `at_stop` block
   can ask one to stop first.
+- **JRuby** starts its JVM in a process of its own there (`jruby.exe`
+  starts `javaw.exe`), so Duel starts each worker's JVM itself, and a
+  process benchmark's of `ruby:` code, with the command `jruby -Xcommand`
+  prints: what it measures and stops is the JVM. (A process benchmark of
+  a command of its own that starts JRuby is measured as that command's
+  process, not the JVM it starts.) JRuby has no Unix sockets there, so a
+  worker talks to the runner over a port of 127.0.0.1's, and its spawn
+  redirects no output, so Duel starts processes through Open3, copying
+  their output to their logs.
 
-JRuby on Windows isn't supported yet
-([#4](https://github.com/sferik/duel-ruby/issues/4)). The workflow that
-`duel init` writes runs on Linux, and Duel's reusable one on Linux or
-macOS.
+The workflow that `duel init` writes runs on Linux, and Duel's reusable
+one on Linux or macOS.
 
 ### Set up a project
 

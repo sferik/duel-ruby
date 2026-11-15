@@ -315,6 +315,7 @@ module Duel
     # Resident memory when it last stopped watching.
     @unwatched: Integer
     @watcher: Thread
+    @lock: Thread::Mutex
 
     attr_reader started: true?
 

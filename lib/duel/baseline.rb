@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require_relative "../duel"
 require_relative "rubies"
+require_relative "spawn"
 
 module Duel
   # The version to compare against: a directory (Settings#base_dir), or a
@@ -86,7 +87,7 @@ module Duel
 
       # (There's a ref: CLI#run checks first.)
       commit = ref #: String
-      _, status = Open3.capture2e("git", "-C", @config.root, "diff", "--quiet", commit, "--", *watched)
+      _, status = Spawn.open3(:capture2e, "git", "-C", @config.root, "diff", "--quiet", commit, "--", *watched)
       status.success?
     end
 
@@ -176,7 +177,7 @@ module Duel
       command = @config.build
       return unless command
 
-      output, status = Open3.capture2e(command, chdir: dir)
+      output, status = Spawn.open3(:capture2e, command, chdir: dir)
       raise Error, "building #{what} (#{command}) failed:\n#{output}" unless status.success?
     end
 
@@ -205,7 +206,7 @@ module Duel
           "or compare with a directory (--base DIR)"
       end
       branch = main_branch
-      out, err, status = Open3.capture3("git", "-C", @config.root, "merge-base", "HEAD", branch)
+      out, err, status = Spawn.open3(:capture3, "git", "-C", @config.root, "merge-base", "HEAD", branch)
       return out.chomp if status.success?
       raise Error, "git merge-base HEAD #{branch} failed: #{err.chomp}" unless err.empty?
 
@@ -236,7 +237,7 @@ module Duel
     def common_dir(dir) = git("-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir", allow_failure: true)
 
     def git(*args, allow_failure: false)
-      out, err, status = Open3.capture3("git", "-C", @config.root, *args)
+      out, err, status = Spawn.open3(:capture3, "git", "-C", @config.root, *args)
       return out.chomp if status.success?
       raise Error, "git #{args.join(" ")} failed: #{err.chomp}" unless allow_failure
     end

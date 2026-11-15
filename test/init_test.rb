@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "json"
 require "yaml"
+require "shellwords"
 
 # `duel init`, in a project of the test's own.
 class InitTest < DuelTest
@@ -13,6 +14,25 @@ class InitTest < DuelTest
   def init(*argv, at: root, input: StringIO.new) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), input: input, root: at)
 
   def read(path) = File.read(File.join(root, path))
+
+  # A file of Duel's repository, with LF line endings: as Git may check it
+  # out with CRLF on Windows, which JRuby reads as it is.
+  def repo_file(path) = File.read(File.expand_path(File.join("..", path), __dir__)).gsub("\r\n", "\n")
+
+  # Runs +script+ with +shell+ (and -e), in +env+, as a file of its own
+  # (JRuby on Windows passes an argument's quotes on as they are, not
+  # escaped), in +chdir+ and its output to +out+, as the script itself
+  # says (JRuby's system on Windows ignores chdir: and out:).
+  # (Through Duel::Spawn.open3: JRuby's system on Windows may not give it
+  # +env+. What it says is kept in @shell, for a failure, and shown.)
+  def shell(env, script, shell: "bash", chdir: nil, out: nil)
+    file = File.join(tmpdir, "script-#{@scripts = (@scripts || 0) + 1}.sh")
+    File.binwrite(file, [*("cd #{Shellwords.escape(chdir)}" if chdir), *("exec > #{Shellwords.escape(out)}" if out), script].join("\n"))
+    said, status = Duel::Spawn.open3(:capture2e, env, shell, "-e", file)
+    @shell = said
+    print said unless out
+    status.success?
+  end
 
   def write(path, content = "")
     FileUtils.mkdir_p(File.dirname(File.join(root, path)))
@@ -97,6 +117,19 @@ class InitTest < DuelTest
 
   # The jobs for pushes, where .duel.rb asks for them: a comment on a
   # pushed commit, and the last commit Duel passed marked.
+  # Templates checked out with CRLF (as Git may on Windows), and read
+  # without CRuby's text mode (as JRuby reads them there), write files of
+  # LF line endings all the same.
+  def test_templates_checked_out_with_crlf
+    gem
+    read = File.method(:read)
+    crlf = ->(path, *args, **options) { read.call(path, *args, **options).then { |text| path.end_with?(".erb") ? text.gsub(/\r?\n/, "\r\n") : text } }
+
+    assert_equal 0, stub(File, :read, crlf) { init.run }
+    assert_includes read(".github/workflows/perf.yml"), "name: Perf\n\non:\n"
+    refute_includes read(".github/workflows/perf.yml") + read(".duel.rb"), "\r"
+  end
+
   def test_the_jobs_for_pushes
     gem
     push_settings
@@ -164,7 +197,7 @@ class InitTest < DuelTest
                                                                                  "COMMENT" => "${{ steps.compare.outputs.comment }}", "STATUS" => "${{ steps.compare.outputs.status }}"}], said.values_at("if", "env")
     env = {"PR" => "12", "COMMENT" => "post", "STATUS" => "failed", "RUNNER_TEMP" => tmpdir}
 
-    assert system(env, "bash", "-ec", said.fetch("run"))
+    assert shell(env, said.fetch("run"))
     assert_equal "pr=12\ncomment=post\nstatus=failed\n", File.read(File.join(tmpdir, "duel", "comment.env"))
   end
 
@@ -259,10 +292,10 @@ class InitTest < DuelTest
     FileUtils.chmod(0o755, File.join(bin, "gh"))
     output = File.join(tmpdir, "output")
     File.write(output, "")
-    env = step.fetch("env").merge("PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_EVENT_NAME" => "schedule", "GITHUB_OUTPUT" => output,
+    env = step.fetch("env").merge("PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "GITHUB_EVENT_NAME" => "schedule", "GITHUB_OUTPUT" => output,
       "GITHUB_REPOSITORY" => "me/my_gem")
 
-    assert system(env, "bash", "-ec", step.fetch("run"), chdir: root)
+    assert shell(env, step.fetch("run"), chdir: root)
     [File.read(output), accepted, File.read(File.join(tmpdir, "gh-args"))]
   end
 
@@ -310,9 +343,9 @@ class InitTest < DuelTest
     SH
     FileUtils.chmod(0o755, File.join(bin, "gh"))
     step = job.dig("steps", 0)
-    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "HEAD_SHA" => "abc", "ACTION" => action}
+    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "HEAD_SHA" => "abc", "ACTION" => action}
 
-    assert system(env, "bash", "-ec", step.fetch("run"))
+    assert shell(env, step.fetch("run"))
     rerun = File.join(tmpdir, "rerun")
     File.read(rerun).chomp.tap { File.delete(rerun) } if File.exist?(rerun)
   end
@@ -420,11 +453,11 @@ class InitTest < DuelTest
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "gh"))
-    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
+    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
            "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "COMPARE_ERROR" => compare_error,
            "BLOCKER" => blocker, "MADE" => made, "AHEAD" => (ahead ? "1" : nil), "MADE_IT" => File.join(tmpdir, "made")}
 
-    assert_equal success, system(env, "bash", "-ec", run, out: (@said = File.join(tmpdir, "said")))
+    assert_equal success, shell(env, run, out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
   end
 
@@ -545,18 +578,18 @@ class InitTest < DuelTest
     SH
     File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl $*" >> #{log}\nexit 1\n))
     FileUtils.chmod(0o755, Dir[File.join(bin, "*")])
-    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
+    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
            "GITHUB_SHA" => "abc", "BRANCH" => "duel/badge", "LAST" => nil, "COMPARED" => nil,
            "NO_BRANCH" => nil}.merge(env)
 
-    assert system(env, "bash", "-ec", run)
+    assert shell(env, run)
     calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
     [calls, (JSON.parse(File.read(tree)) if File.exist?(tree))]
   end
 
   # Each version of the badge's image, as the job writes it.
   def image(name) = {"tree" => [{"path" => "badge.svg", "mode" => "100644", "type" => "blob",
-                                 "content" => File.read(File.expand_path("../assets/#{name}.svg", __dir__))}]}
+                                 "content" => repo_file("assets/#{name}.svg")}]}
 
   def test_a_green_badge
     calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed")
@@ -611,7 +644,7 @@ class InitTest < DuelTest
 
   # The red badge is the green one, wider for its words.
   def test_the_red_badge
-    green, red = %w[badge badge-regressed].map { |name| File.read(File.expand_path("../assets/#{name}.svg", __dir__)) }
+    green, red = %w[badge badge-regressed].map { |name| repo_file("assets/#{name}.svg") }
 
     assert_equal green.sub('width="133"', 'width="142"').gsub("perf guarded", "perf regressed").sub("#34D058", "#EA4A5A")
       .sub("#28A745", "#D73A49").sub("M0 0h76.939C78.629 0 80 1.343 80 3v14c0 1.657-1.37 3-3.061 3H0V0z",
@@ -620,7 +653,7 @@ class InitTest < DuelTest
 
   # The grey badge is the green one, wider for its words too.
   def test_the_grey_badge
-    green, grey = %w[badge badge-not-measured].map { |name| File.read(File.expand_path("../assets/#{name}.svg", __dir__)) }
+    green, grey = %w[badge badge-not-measured].map { |name| repo_file("assets/#{name}.svg") }
 
     assert_equal green.sub('width="133"', 'width="138"').gsub("perf guarded", "not measured").sub("#34D058", "#959DA5")
       .sub("#28A745", "#6A737D").sub("M0 0h76.939C78.629 0 80 1.343 80 3v14c0 1.657-1.37 3-3.061 3H0V0z",
@@ -707,7 +740,7 @@ class InitTest < DuelTest
   # the workflow's.
   def test_the_guides_steps_for_the_baseline_ruby
     write(".ruby-version", "3.4.1\n")
-    steps = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n      # \(Before the step that sets up the candidate's Ruby\.\)\n(.*?)^```$/m, 1]
+    steps = repo_file("docs/ci.md")[/^```yaml\n      # \(Before the step that sets up the candidate's Ruby\.\)\n(.*?)^```$/m, 1]
 
     assert_includes init.files.fetch(".github/workflows/perf.yml"), "      # (And whatever else your tests need set up: packages, services.)\n#{steps}      - uses: ruby/setup-ruby@v1\n"
   end
@@ -926,7 +959,7 @@ class InitTest < DuelTest
 
   # The workflow is the guide's, in docs/ci.md (with this Ruby).
   def test_the_guides_workflow
-    workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
+    workflow = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
 
     assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
   end
@@ -937,7 +970,7 @@ class InitTest < DuelTest
     gem
     push_settings
     workflow = init.files.fetch(".github/workflows/perf.yml")
-    guide = File.read(File.expand_path("../docs/ci.md", __dir__))
+    guide = repo_file("docs/ci.md")
     {"c.fail_on = :pull_requests" => ["  # The report, as a new comment on a pushed commit", "  # With c.push_base = :last_passed"],
      "c.push_base = :last_passed" => ["  # With c.push_base = :last_passed", nil]}.each do |setting, (from, to)|
       job = guide[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with #{Regexp.escape(setting)}\)\n(.*?)^```$/m, 1]
@@ -951,14 +984,14 @@ class InitTest < DuelTest
     init = init("--badge")
     init.send(:parser).parse(["--badge"])
     workflow = init.files.fetch(".github/workflows/perf.yml")
-    job = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with duel init --badge\)\n(.*?)^```$/m, 1]
+    job = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with duel init --badge\)\n(.*?)^```$/m, 1]
 
     assert_equal workflow[workflow.index("  # Duel's badge")..].rstrip, job.rstrip
   end
 
   # And the GitLab CI jobs.
   def test_the_guides_gitlab_jobs
-    jobs = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.gitlab\/duel\.gitlab-ci\.yml\n(.*?)^```$/m, 1]
+    jobs = repo_file("docs/ci.md")[/^```yaml\n# \.gitlab\/duel\.gitlab-ci\.yml\n(.*?)^```$/m, 1]
     init = init("--gitlab")
     init.send(:parser).parse(["--gitlab"])
 
@@ -967,7 +1000,7 @@ class InitTest < DuelTest
 
   # And the one that comments on a pull request.
   def test_the_guides_comment_workflow
-    workflow = File.read(File.expand_path("../docs/ci.md", __dir__))[/^```yaml\n# \.github\/workflows\/perf-comment\.yml\n(.*?)^```$/m, 1]
+    workflow = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf-comment\.yml\n(.*?)^```$/m, 1]
 
     assert_equal workflow, init.files.fetch(".github/workflows/perf-comment.yml")
   end
@@ -1028,10 +1061,10 @@ class InitTest < DuelTest
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "curl"))
-    env = {"PATH" => "#{bin}:#{ENV.fetch("PATH")}", "DUEL_PASSED" => "true", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
+    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "DUEL_PASSED" => "true", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
            "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base, "BLOCKER" => blocker}
 
-    assert_equal success, system(env, "sh", "-ec", "set -o pipefail\n#{script}", out: (@said = File.join(tmpdir, "said")))
+    assert_equal success, shell(env, "set -o pipefail\n#{script}", shell: "sh", out: (@said = File.join(tmpdir, "said")))
     File.readlines(log, chomp: true)
   end
 
@@ -1326,7 +1359,7 @@ class InitTest < DuelTest
     files = Duel::Init::Reusable.new([]).files
 
     assert_equal [".github/workflows/duel.yml", ".github/workflows/duel-comment.yml"], files.keys
-    files.each { |path, content| assert_equal content, File.read(File.expand_path(File.join("..", path), __dir__)), "#{path}: run `rake workflows`" }
+    files.each { |path, content| assert_equal content, repo_file(path), "#{path}: run `rake workflows`" }
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")

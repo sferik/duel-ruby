@@ -7,6 +7,7 @@ require_relative "test_helper"
 # took.
 class ProcessSampleTest < DuelTest
   cover "Duel::ProcessSample*"
+  hangs_after 10
 
   # (What it spawns is noted: the Ruby process of its own. And it runs
   # in a directory of its own, where what a mutation writes where it
@@ -27,30 +28,68 @@ class ProcessSampleTest < DuelTest
     super
   end
 
-  # Runs the block with what's spawned, and waited for, noted.
+  # Runs the block with what's spawned (or on JRuby on Windows, started
+  # through Open3), and waited for, noted.
   def noting(&)
     spawned = @spawned
     waited = @waited
     spawn = Process.method(:spawn)
     wait = Process.method(:wait)
+    opened = %i[popen2 popen2e].to_h { |name| [name, Open3.method(name)] }
+    # (Open3's, where it starts them: not taskkill, run through it too.)
+    open3 = lambda do |name|
+      lambda do |*args, **options, &block|
+        opened.fetch(name).call(*args, **options, &block).tap do |*, waiter|
+          spawned << [waiter.pid, args, options] if Duel::Spawn::JAVA && args.first != "taskkill"
+        end
+      end
+    end
     stub(Process, :spawn, ->(*args, **options) { spawn.call(*args, **options).tap { |pid| spawned << [pid, args, options] } }) do
-      stub(Process, :wait, ->(*args) { (waited << args) && wait.call(*args) }, &)
+      stub(Open3, :popen2, open3.call(:popen2)) do
+        stub(Open3, :popen2e, open3.call(:popen2e)) do
+          stub(Process, :wait, ->(*args) { (waited << args) && wait.call(*args) }, &)
+        end
+      end
     end
   end
 
+  # Whether JRuby runs a program it can't find through the shell: but on
+  # Windows, where Duel finds it first.
+  def jruby_shell? = RUBY_ENGINE == "jruby" && !Duel::Spawn::JAVA
+
+  # Its log, with LF line endings (JRuby reads CRLF as it is, on Windows).
+  def logged = File.read(@log).gsub("\r\n", "\n")
+
+  # (A test of how a process is spawned: where it's started through
+  # Open3, see the _through_open3 tests.)
+  def skip_unless_spawned
+    skip "started through Open3 here: see the _through_open3 tests" unless Duel::Spawn::REDIRECTS
+  end
+
   # A ProcessSample, stopped after the test.
-  def sampler(env: {}, chdir: tmpdir, timeout: 30.0)
-    Duel::ProcessSample.new("head-1", env: env, chdir: chdir, log: @log, timeout: timeout).tap { |sample| @samples << sample }
+  # (Long enough for two JVMs, JRuby's, to start one after the other on a
+  # busy machine: its Ruby process's, and a run's.)
+  def sampler(env: {}, chdir: tmpdir, timeout: (RUBY_ENGINE == "jruby") ? 60.0 : 30.0, **options)
+    Duel::ProcessSample.new("head-1", env: env, chdir: chdir, log: @log, timeout: timeout, **options).tap { |sample| @samples << sample }
   end
 
   def run_once(*command, **options) = noting { sampler(**options).run(command) }
 
-  def ruby(code) = [RbConfig.ruby, "-e", code]
+  # (On JRuby on Windows, its JVM's command: see Duel::Rubies.launch.)
+  def ruby(code) = [*RUBY_COMMAND, "-e", code]
+
+  # Whether +pid+ is running, or ended but not yet waited for.
+  def alive?(pid)
+    Process.kill(0, pid) && true
+  rescue Errno::ESRCH, Errno::EPERM # (JRuby's EPERM, on Windows, for one that ended)
+    false
+  end
 
   # Its Ruby process, out of the runner's bundle (its RUBYOPT and RUBYLIB
   # unset), with Duel's load path, given nothing else: started with the
   # first run, kept for the rest, and waited for once it's stopped.
   def test_the_ruby_process_of_its_own
+    skip_unless_spawned
     other = ended_child
     runs = sampler
     pipes = []
@@ -79,16 +118,13 @@ class ProcessSampleTest < DuelTest
     assert_equal [input, output, true], options.values_at(:in, :out, :close_others), "a pipe each way"
     assert_equal Duel::ProcessSample.group, options.slice(:pgroup, :new_pgroup), "in a group of its own"
     assert_equal [true, false, false, true], [input, requests, replies, output].map(&:closed?), "its ends, not this process's"
-    assert_empty @waited
+    assert alive?(pid)
     noting { runs.stop }
-    waits = @waited.size
 
-    assert_equal [[pid, Process::WNOHANG]], @waited.uniq, "waited for, as it ended"
+    refute alive?(pid), "ended, and waited for"
     assert_equal [true, true], [requests, replies].map(&:closed?)
-    assert_equal 3, Process.wait2(other).last.exitstatus, "and only it"
-    noting { runs.stop }
-
-    assert_equal waits, @waited.size, "once"
+    assert_still_to_wait_for(other, "and only it")
+    stub(Duel::ProcessSample, :kill_tree, ->(*) { flunk "stopped once" }) { noting { runs.stop(wait: 0) } }
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "and started again"
@@ -112,7 +148,8 @@ class ProcessSampleTest < DuelTest
     assert_equal [{}, 0], heavy.values_at("counted", "heap")
     assert_operator heavy.fetch("timed").fetch("cpu"), :>, light.fetch("timed").fetch("cpu")
     assert_operator again.fetch("timed").fetch("cpu"), :<, heavy.fetch("timed").fetch("cpu"), "each run's own"
-    if Duel::Native::FIDDLE
+    # (On Windows, by a handle on it, JRuby's too.)
+    if Duel::Native::FIDDLE || windows?
       assert_operator heavy.fetch("peak"), :>, 50_000_000
       assert_operator light.fetch("peak"), :<, heavy.fetch("peak")
       assert_operator again.fetch("peak"), :<, heavy.fetch("peak"), "each run's own"
@@ -126,7 +163,7 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     noting { %w[one two].each { |word| runs.run(["echo #{word}"]) } }
 
-    assert_equal "two\n", File.read(@log)
+    assert_equal "two\n", logged
   end
 
   # Where it's told, with what it's given in its environment (over this
@@ -137,7 +174,7 @@ class ProcessSampleTest < DuelTest
     run_once(*ruby("$stdout.sync = true; puts [*ENV.values_at('DUEL_TEST_GIVEN', 'DUEL_TEST_KEPT'), ENV.fetch('DUEL_TEST_UNSET', 'unset'), 'in', " \
       "File.realpath(Dir.pwd)].join(' '); warn 'err'"), env: {"DUEL_TEST_GIVEN" => "given", "DUEL_TEST_UNSET" => nil})
 
-    assert_equal "given kept unset in #{File.realpath(tmpdir)}\nerr\n", File.read(@log)
+    assert_equal "given kept unset in #{File.realpath(tmpdir)}\nerr\n", logged
   ensure
     ENV.delete("DUEL_TEST_KEPT")
     ENV.delete("DUEL_TEST_UNSET")
@@ -150,7 +187,7 @@ class ProcessSampleTest < DuelTest
     # (Not Ruby's, which RUBYOPT would stop: the shell's.)
     run_once(windows? ? "echo %RUBYOPT%" : "echo $RUBYOPT")
 
-    assert_equal "-rduel-no-such-library\n", File.read(@log)
+    assert_equal "-rduel-no-such-library\n", logged
   ensure
     ENV.delete("RUBYOPT")
   end
@@ -161,7 +198,7 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     error = assert_raises(Duel::Failed) { noting { runs.run(ruby("12.times { |i| puts i }; exit 3")) } }
 
-    assert_equal "head-1: #{RbConfig.ruby} -e 12.times { |i| puts i }; exit 3 exited with 3\n#{(2..11).map { |i| "#{i}\n" }.join}",
+    assert_equal "head-1: #{ruby("12.times { |i| puts i }; exit 3").join(" ")} exited with 3\n#{(2..11).map { |i| "#{i}\n" }.join}",
       error.message
     noting { runs.run(["true"]) }
 
@@ -171,11 +208,11 @@ class ProcessSampleTest < DuelTest
   # One that can't start says why, and the Ruby process of its own runs
   # the next all the same.
   # (JRuby runs a program it can't find through the shell, which says
-  # so, and exits with 127.)
+  # so, and exits with 127: but on Windows, where Duel finds it first.)
   def test_a_process_that_cant_start
     runs = sampler
     error = assert_raises(Duel::Failed) { noting { runs.run(["duel-no-such-program", "x"]) } }
-    why = (RUBY_ENGINE == "jruby") ? /exited with 127\n.*duel-no-such-program: not found/ : /couldn't start: No such file or directory\b.*duel-no-such-program/
+    why = jruby_shell? ? /exited with 127\n.*duel-no-such-program: not found/ : /couldn't start: No such file or directory\b.*duel-no-such-program/
 
     assert_match(/\Ahead-1: duel-no-such-program x #{why}/, error.message)
     noting { runs.run(ruby("1")) }
@@ -189,8 +226,12 @@ class ProcessSampleTest < DuelTest
     skip "Windows's alone" unless windows?
 
     ran = noting { Duel::ProcessSample.once(["exit 3"], {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) }
-
-    assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - exit 3"}, ran)
+    # (Duel runs one by cmd.exe itself, on JRuby: see Duel::Spawn.program.)
+    if Duel::Spawn::JAVA
+      assert_equal "exited with 3", ran.fetch("failed")
+    else
+      assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - exit 3"}, ran)
+    end
   end
 
   # What a command that can't start took: nothing.
@@ -198,11 +239,20 @@ class ProcessSampleTest < DuelTest
   def test_once_that_cant_start
     ran = Duel::ProcessSample.once(["duel-no-such-program"], {"PATH" => ENV.fetch("PATH")}, tmpdir, @log)
 
-    if RUBY_ENGINE == "jruby"
+    if jruby_shell?
       assert_equal "exited with 127", ran.fetch("failed")
     else
       assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - duel-no-such-program"}, ran)
     end
+  end
+
+  # Its output's lines, a Windows program's ending with CRLF, shown with
+  # LF.
+  def test_a_process_that_fails_saying_crlf_lines
+    command = ruby("$stdout.binmode; $stdout.write([97, 13, 10, 98, 13, 10].pack('C*')); exit 3")
+    error = assert_raises(Duel::Failed) { sampler.run(command) }
+
+    assert_equal "head-1: #{command.join(" ")} exited with 3\na\nb\n", error.message
   end
 
   # One a signal killed says which.
@@ -229,17 +279,19 @@ class ProcessSampleTest < DuelTest
     runs = sampler
     noting { runs.run(["true"]) }
     runs.instance_variable_set(:@timeout, timeout)
+    # (Not Process.wait: JRuby's on Windows waits for nothing.)
     command = [*ruby("File.write(ARGV[1], ''); pid = Process.spawn(RbConfig.ruby, '-e', 'sleep 60'); File.write(ARGV[0], pid.to_s); " \
-      "Process.wait(pid)"), pids, started]
+      "sleep 0.1 while (Process.kill(0, pid) rescue nil)"), pids, started]
     error = assert_raises(Duel::Failed) { noting { runs.run(command) } }
 
     assert_equal "head-1: #{command.join(" ")} didn't end within #{timeout}s (killed)", error.message
     assert_path_exists started
-    assert_equal [[@spawned.first.first]], @waited, "waited for"
-    assert_equal 3, Process.wait2(other).last.exitstatus, "and only it"
+    refute alive?(@spawned.first.first), "killed, and waited for"
+    assert_still_to_wait_for(other, "and only it")
     pid = Integer(File.read(pids))
 
-    assert_raises(Errno::ESRCH, "what it started, killed too") do
+    # (JRuby on Windows says EPERM of a process that's gone.)
+    assert_raises(Errno::ESRCH, Errno::EPERM, "what it started, killed too") do
       10.times { Process.kill(0, pid) && sleep(0.1) }
     end
     assert_equal [true, true], %i[@requests @replies].map { |pipe| runs.instance_variable_get(pipe).closed? }
@@ -247,6 +299,26 @@ class ProcessSampleTest < DuelTest
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "another, for the next"
+  end
+
+  # A reply read past the timeout, its pipe closed under it as its process
+  # is killed, says nothing more.
+  def test_a_reply_read_past_the_timeout
+    runs = sampler
+    noting { runs.run(["true"]) }
+    runs.instance_variable_set(:@timeout, 0.1)
+    real = runs.instance_variable_get(:@replies)
+    replies = Object.new
+    def replies.gets = sleep(0.3) && raise(IOError, "closed stream")
+    runs.instance_variable_set(:@replies, replies)
+    _, err = capture_io do
+      stub(runs, :kill, -> {}) { assert_raises(Duel::Failed) { runs.run(["true"]) } }
+      sleep 0.5
+    end
+
+    assert_empty err
+  ensure
+    runs&.instance_variable_set(:@replies, real)
   end
 
   # The timeout it's given is a run's. (The test above sets it once its
@@ -259,12 +331,14 @@ class ProcessSampleTest < DuelTest
   # A Ruby process of its own that ends (killed, say, here by what it
   # runs) fails the run, and is waited for: the next run starts another.
   def test_its_ruby_process_ends
+    skip "JRuby's Process.ppid on Windows isn't its parent's" if Duel::Spawn::JAVA
+
     runs = sampler
     command = ruby("Process.kill('KILL', Process.ppid); sleep")
     error = assert_raises(Duel::Failed) { noting { runs.run(command) } }
 
     assert_equal "head-1: the process running #{command.join(" ")} exited", error.message
-    assert_equal [[@spawned.first.first, Process::WNOHANG]], @waited.uniq, "waited for"
+    refute alive?(@spawned.first.first), "waited for"
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size
@@ -281,19 +355,93 @@ class ProcessSampleTest < DuelTest
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     killed = []
     kill_tree = Duel::ProcessSample.method(:kill_tree)
-    slept = []
-    stub(runs, :sleep, ->(seconds) { (slept << seconds) && Kernel.sleep(seconds) }) do
-      stub(Duel::ProcessSample, :kill_tree, ->(*args) { (killed << args) && kill_tree.call(*args) }) { noting { runs.stop(wait: 0.3) } }
-    end
+    stub(Duel::ProcessSample, :kill_tree, ->(*args) { (killed << args) && kill_tree.call(*args) }) { noting { runs.stop(wait: 0.3) } }
 
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.3, "given the while"
     assert_equal [[pid]], killed
-    assert_equal [0.01], slept.uniq, "looking every POLL meanwhile"
-    assert_equal [pid], @waited.last, "and waited for"
+    refute alive?(pid), "and waited for"
     assert_equal [true, true], %i[@requests @replies].map { |pipe| runs.instance_variable_get(pipe).closed? }
-    assert_equal [10, 0.01], [Duel::ProcessSample::STOP_WAIT, Duel::ProcessSample::POLL]
+    assert_equal 10, Duel::ProcessSample::STOP_WAIT
   ensure
     held&.close
+  end
+
+  # Where Process.spawn redirects nothing (JRuby on Windows: see
+  # Duel::Spawn), its Ruby process is started through Open3, and runs,
+  # stops, and is killed all the same.
+  def test_its_ruby_process_through_open3
+    runs = sampler(redirects: false)
+    ran = runs.run(ruby("x = 0; 1_000_000.times { |i| x ^= i }; puts :logged"))
+
+    assert_operator ran.fetch("timed").fetch("cpu"), :>, 0
+    assert_equal "logged\n", logged
+    error = assert_raises(Duel::Failed) { runs.run(ruby("puts :said; exit 3")) }
+
+    assert_equal "head-1: #{ruby("puts :said; exit 3").join(" ")} exited with 3\nsaid\n", error.message
+    pid = runs.instance_variable_get(:@pid)
+    runs.stop
+
+    refute alive?(pid), "ended, and waited for"
+    assert_equal [true, true], %i[@requests @replies].map { |pipe| runs.instance_variable_get(pipe).closed? }
+    runs.instance_variable_set(:@timeout, 0.5)
+    piped = Duel::Spawn.method(:piped)
+    started = []
+    error = stub(Duel::Spawn, :piped, ->(*args, **options) { piped.call(*args, **options).tap { |(id)| started << [id, options] } }) do
+      assert_raises(Duel::Failed) { runs.run(ruby("sleep")) }
+    end
+
+    assert_match(/didn't end within 0.5s \(killed\)\z/, error.message)
+    pid, options = started.fetch(0)
+
+    refute alive?(pid), "killed, and waited for"
+    refute options.fetch(:redirects), "through Open3"
+  end
+
+  # A run through Open3: its output in its log, in its environment alone,
+  # where it's told, how it ended, and what it took (its CPU time, as
+  # Process.times has it, once it's waited for).
+  def test_once_through_open3
+    ENV["DUEL_TEST_OTHER"] = "not given"
+    before = Duel::ProcessSample.cpu
+    code = "$stdout.sync = true; x = 0; 1_000_000.times { |i| x ^= i }; puts ENV.values_at('X', 'DUEL_TEST_OTHER').inspect, File.basename(Dir.pwd); " \
+           "warn :err; exit 3"
+    # (On Windows, by a handle on its pid, as Open3 has it: see
+    # test_once_on_windows.)
+    ran = Duel::ProcessSample.once(ruby(code), {"PATH" => ENV.fetch("PATH"), "X" => "x"}, tmpdir, @log, windows: windows?, redirects: false)
+
+    assert_equal "exited with 3", ran.fetch("failed")
+    assert_operator ran.fetch("cpu"), :>, 0
+    if windows?
+      assert_operator ran.fetch("peak"), :>, 1_000_000
+    else
+      assert_nil ran.fetch("peak")
+      assert_operator ran.fetch("cpu"), :<=, Duel::ProcessSample.cpu - before
+    end
+
+    assert_equal [%(["x", nil]), File.basename(tmpdir), "err"], File.readlines(@log, chomp: true).last(3)
+    unless windows?
+      killed = Duel::ProcessSample.once(ruby("Process.kill('KILL', $$)"), {}, tmpdir, @log, windows: false, redirects: false)
+
+      assert_equal "was killed by SIGKILL", killed.fetch("failed")
+    end
+
+    missing = Duel::ProcessSample.once(["duel-no-such-program"], {}, tmpdir, @log, windows: false, redirects: false)
+    if jruby_shell? # (see test_a_process_that_cant_start)
+      assert_equal "exited with 127", missing.fetch("failed")
+    else
+      assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - duel-no-such-program"}, missing)
+    end
+  end
+
+  # Stopping gives its Ruby process STOP_WAIT seconds, by default.
+  def test_stop_waits_ten_seconds_by_default
+    runs = sampler
+    noting { runs.run(["true"]) }
+    waiter = runs.instance_variable_get(:@waiter)
+    joined = []
+    stub(waiter, :join, ->(*args) { (joined << args) && waiter.value && waiter }) { runs.stop }
+
+    assert_equal [[10]], joined
   end
 
   # The fastest of a version's runs: their least CPU time, and least peak
@@ -330,7 +478,7 @@ class ProcessSampleTest < DuelTest
       requests.puts JSON.generate(command)
 
       assert replies.wait_readable(30), "reported at once"
-      [JSON.parse(replies.gets), File.read(@log)]
+      [JSON.parse(replies.gets), logged]
     end
     requests.close
     thread.join
@@ -347,7 +495,7 @@ class ProcessSampleTest < DuelTest
 
     assert_nil replies.gets, "nothing else"
     assert_equal commands.size, @spawned.size
-    assert_equal 3, Process.wait2(other).last.exitstatus, "only its own waited for"
+    assert_still_to_wait_for(other, "only its own waited for")
   ensure
     [input, requests, replies, output].compact.each(&:close)
   end
@@ -378,9 +526,16 @@ class ProcessSampleTest < DuelTest
     assert_equal [%(["x", nil]), %("in"), %(""), "err"], File.readlines(@log, chomp: true).last(4)
     _, args, options = @spawned.first
 
-    assert_equal env, args.first
-    assert_equal [File.join(tmpdir, "in"), File::NULL, true, true], options.values_at(:chdir, :in, :unsetenv_others, :close_others)
-    assert_equal [[@log, "w"], %i[child out]], options.values_at(:out, :err)
+    # (By any case: on JRuby on Windows, ENV's own, Path.)
+    assert_equal env, args.first.transform_keys { |var| env.each_key.find { |given| given.casecmp?(var) } || var }.slice(*env.keys)
+    assert_equal [File.join(tmpdir, "in"), true, true], options.values_at(:chdir, :unsetenv_others, :close_others)
+    # (Spawned: through Open3, see test_once_through_open3.)
+    if Duel::Spawn::REDIRECTS
+      out, err = options.values_at(:out, :err)
+
+      assert_equal [@log, true, File::NULL], [out.path, out.closed?, options[:in]], "its log, opened here, and closed"
+      assert_same out, err
+    end
   ensure
     ENV.delete("DUEL_TEST_OTHER")
   end
@@ -402,9 +557,12 @@ class ProcessSampleTest < DuelTest
     assert_equal({"cpu" => 1_500_000, "peak" => 4096, "failed" => "exited with 3"}, ran)
     assert spawned.closed
     spawned.closed = false
+    # (Waited for by Native::Child, or through Open3, by its thread.)
     stub(Duel::Native::Child, :wait, ->(_) { raise Interrupt }) do
-      stub(Duel::Native::Windows::Spawned, :open, ->(_) { spawned }) do
-        assert_raises(Interrupt) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log, windows: true) } }
+      stub(Duel::Native::Child, :ended, ->(_) { raise Interrupt }) do
+        stub(Duel::Native::Windows::Spawned, :open, ->(_) { spawned }) do
+          assert_raises(Interrupt) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log, windows: true) } }
+        end
       end
     end
 
@@ -464,13 +622,13 @@ class ProcessSampleTest < DuelTest
     writer.puts spec
     writer.puts JSON.generate(["true"])
     writer.close
-    stdin = $stdin.dup
-    $stdin.reopen(reader)
+    stdin = $stdin
+    $stdin = reader
     out, = capture_io { noting { Duel::ProcessSample.main } }
 
     assert_equal [nil], out.lines.map { |line| JSON.parse(line).fetch("failed") }
   ensure
-    $stdin.reopen(stdin) if stdin
+    $stdin = stdin if stdin
   end
 
   # In nanoseconds: what children waited for took, user and system.
@@ -490,8 +648,9 @@ class ProcessSampleTest < DuelTest
   def test_killing_its_tree
     killed = []
     ran = []
+    status = Struct.new(:success?).new(:tree)
     trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
-      stub(Duel::ProcessSample, :system, ->(*args, **options) { (ran << [args, options]) && :tree }) do
+      stub(Open3, :capture2e, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
         [false, true].map { |windows| Duel::ProcessSample.kill_tree(42, windows: windows) } +
           [with_constants(Duel::Native, WINDOWS: true) { Duel::ProcessSample.kill_tree(42) }]
       end
@@ -499,11 +658,21 @@ class ProcessSampleTest < DuelTest
 
     assert_equal %i[group tree tree], trees
     assert_equal [["KILL", -42]], killed
-    assert_equal [[%w[taskkill /T /F /PID 42], {out: File::NULL, err: File::NULL}]] * 2, ran
+    assert_equal [[%w[taskkill /T /F /PID 42], {}]] * 2, ran, "its output read, not shown"
+    killed.clear
+    gone = stub(Process, :kill, ->(*args) { (killed << args) && 1 }) do
+      stub(Open3, :capture2e, ->(*) { raise Errno::ENOENT, "taskkill" }) { Duel::ProcessSample.kill_tree(42, windows: true) }
+    end
+
+    assert_equal [1, [["KILL", 42]]], [gone, killed], "without taskkill, the process alone"
   end
 
+  # How it ended: a signal by its name, where Ruby knows one, or else by
+  # its number (JRuby on Windows names few, and raises for the rest).
   def test_why
     assert_equal "exited with 4", Duel::ProcessSample.why(4, nil)
-    assert_equal "was killed by SIGKILL", Duel::ProcessSample.why(nil, 9)
+    assert_equal "was killed by SIGKILL", stub(Signal, :signame, ->(signal) { (signal == 9) ? "KILL" : flunk }) { Duel::ProcessSample.why(nil, 9) }
+    assert_equal "was killed by signal 99", stub(Signal, :signame, ->(_) {}) { Duel::ProcessSample.why(nil, 99) }
+    assert_equal "was killed by signal 9", stub(Signal, :signame, ->(_) { raise ArgumentError }) { Duel::ProcessSample.why(nil, 9) }
   end
 end

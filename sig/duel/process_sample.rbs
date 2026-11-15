@@ -20,8 +20,10 @@ module Duel
     @pid: Integer?
     @requests: IO
     @replies: IO
+    @waiter: Thread?
+    @redirects: bool
 
-    def initialize: (String label, env: Hash[String, String?], chdir: String, log: String, timeout: Float) -> void
+    def initialize: (String label, env: Hash[String, String?], chdir: String, log: String, timeout: Float, ?redirects: bool) -> void
 
     # The fastest of +samples+: the least CPU time and peak memory.
     def self.fastest: (Array[sampled] samples) -> sampled
@@ -37,7 +39,7 @@ module Duel
     def self.main: (?input: IO, ?output: IO) -> void
 
     # Runs +command+ once, and returns what it took.
-    def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log, ?windows: bool) -> ended
+    def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log, ?windows: bool, ?redirects: bool) -> ended
 
     # The CPU time of the children waited for so far, in nanoseconds.
     def self.cpu: () -> Integer
@@ -46,7 +48,6 @@ module Duel
     def self.why: (Integer? code, Integer? signal) -> String
 
     STOP_WAIT: Integer
-    POLL: Float
 
     # The Ruby process of its own's group: a process group of its own, or
     # on Windows, a console's.

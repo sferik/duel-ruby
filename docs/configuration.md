@@ -226,7 +226,8 @@ command that sets its whole environment should include `w.env`.
 When a worker is done, Duel runs the blocks that its prepare blocks
 gave `w.at_stop`, last first. Then Duel stops what they spawned, first
 with `TERM` (or the `stop_signal:` that the process was spawned with),
-and then with `KILL`.
+and then with `KILL`. On Windows, which can send a process no other
+signal, Duel kills each one, with what it started.
 
 Some things take long to make, and are the same for every worker, such
 as a database's initial files. `w.cached` makes them once. The first

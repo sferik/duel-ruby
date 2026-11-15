@@ -112,3 +112,17 @@ module Marshal
   def self.load: (IO source) -> untyped
                | ...
 end
+
+module Open3
+  # Open3.popen2e, which RBS's Open3 lacks, and popen2 given an
+  # environment first and any of spawn's options (Spawn's, as it passes on
+  # Process.spawn's).
+  def self.popen2e: (Hash[String, String?] env, *String command, **untyped options) -> [IO, IO, Process::Waiter]
+  def self.popen2: (Hash[String, String?] env, *String command, **untyped options) -> [IO, IO, Process::Waiter]
+                 | ...
+  # And capture2 and capture3 given an environment first (Rubies's).
+  def self.capture2: (Hash[String, String?] env, *String command) -> [String, Process::Status]
+                   | ...
+  def self.capture3: (Hash[String, String?] env, *String command) -> [String, String, Process::Status]
+                   | ...
+end

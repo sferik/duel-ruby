@@ -2,6 +2,7 @@
 
 require "date"
 require "open3"
+require "rbconfig"
 require "rubygems/package"
 require "tmpdir"
 
@@ -133,7 +134,10 @@ module Release
   # the other gems at requirements +version+ satisfies.
   def check_build(root, component, components, version, dir)
     path = File.join(dir, "#{component.name}.gem")
-    output, status = Open3.capture2e("gem", "build", File.basename(component.gemspec), "--output", path, chdir: File.join(root, component.dir))
+    # (gem through this Ruby: on Windows, it's a .bat, which JRuby's Open3
+    # can't run by name.)
+    output, status = Open3.capture2e(RbConfig.ruby, "-S", "gem", "build", File.basename(component.gemspec), "--output", path,
+      chdir: File.join(root, component.dir))
     return ["#{component.name} doesn't build: #{output.lines.last(3).join.strip}"] unless status.success?
 
     spec = Gem::Package.new(path).spec

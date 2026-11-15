@@ -5,6 +5,7 @@ require "net/http"
 require "open3"
 require "optparse"
 require "uri"
+require_relative "spawn"
 
 module Duel
   # `duel comment`: what the Perf comment workflow runs, once the Perf
@@ -242,7 +243,7 @@ module Duel
     # What gh api prints, given +args+, or nil where it fails (or isn't
     # there), which it says why.
     def gh(*args)
-      out, err, status = Open3.capture3("gh", "api", *args)
+      out, err, status = Spawn.open3(:capture3, "gh", "api", *args)
       return out if status.success?
 
       @err.puts "duel comment: gh api #{args.first}: #{err.strip}"

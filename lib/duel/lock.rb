@@ -20,6 +20,10 @@ module Duel
     # An exclusive lock, or none if another holds it.
     EXCLUSIVE = File::LOCK_EX | File::LOCK_NB
 
+    # What else says another process holds a lock: JRuby on Windows's
+    # NullPointerException.
+    HELD = %w[Java::JavaLang::NullPointerException].freeze
+
     # Runs the block holding +dir+'s lock. Fails, naming the run that
     # holds it, if another does.
     def self.hold(dir, windows: Native::WINDOWS)
@@ -48,7 +52,7 @@ module Duel
       loop do
         # (Read from the start, and written at the end: there's no more.)
         file = File.new(path, "a+")
-        unless file.flock(EXCLUSIVE)
+        unless lock(file)
           # (Empty for a moment, while its run writes its pid.)
           pid = whose(file)
           file.close
@@ -60,11 +64,24 @@ module Duel
       end
     end
 
+    # Locks +file+ (flock's 0), or false if another process holds it, as
+    # JRuby on Windows says by raising a Java NullPointerException (an
+    # error of no errno's).
+    def self.lock(file)
+      file.flock(EXCLUSIVE)
+    # (By its name: the class is JRuby's alone.)
+    rescue => e
+      raise unless HELD.include?(e.class.name)
+
+      false
+    end
+
     # The pid another run wrote in its lock, +file+, or "": none yet, or
-    # on Windows, which keeps a locked file from being read.
+    # on Windows, which keeps a locked file from being read (EACCES, or
+    # on JRuby, a SystemCallError of no errno).
     def self.whose(file)
       file.read
-    rescue Errno::EACCES
+    rescue SystemCallError
       ""
     end
 

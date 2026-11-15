@@ -8,10 +8,7 @@ require "timeout"
 class ResourceTest < DuelTest
   cover "Duel::Resource*"
 
-  # Mutant kills a test that runs past its timeout (20s), teardown and
-  # all: one that hangs (a mutation of a wait that never ends, say)
-  # fails first.
-  HANG = 5
+  hangs_after 5
 
   # Each process a test starts leads a process group of its own, which
   # ends with the test, with anything it started, whatever the resource
@@ -24,6 +21,7 @@ class ResourceTest < DuelTest
   # (chdir:).
   def setup
     super
+    @made = []
     @dir = Dir.pwd
     Dir.chdir(FileUtils.mkdir_p(File.join(tmpdir, "cwd")).fetch(0))
     groups = @groups = []
@@ -31,19 +29,15 @@ class ResourceTest < DuelTest
     Process.define_singleton_method(:spawn) do |*command, **options|
       spawn.call(*command, **options, **Duel::ProcessSample.group).tap { |pid| groups << pid }
     end
-    return unless defined?(Mutant)
-
-    test = Thread.current
-    @watch = Thread.new do
-      sleep HANG
-      test.raise(Timeout::Error, "still running after #{HANG}s")
-    end
   end
 
   def teardown
-    @watch&.kill
+    @hang_watch&.kill
     Process.define_singleton_method(:spawn, @spawn)
     @groups.each { |pid| end_group(pid) }
+    # (Through Open3, on JRuby on Windows, none leads a group of the test's:
+    # each resource's processes, killed with what they started.)
+    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::ProcessSample.kill_tree(pid) } if Duel::Spawn::JAVA
     Dir.chdir(@dir)
     super
   end
@@ -51,17 +45,22 @@ class ResourceTest < DuelTest
   # (Long enough for a JVM to start on a busy machine.)
   def resource(timeout: 30.0)
     Duel::Resource.new(File.join(short_tmpdir, "head-1-1"), "head-1", "/candidate", timeout: timeout,
-      cache: File.join(tmpdir, "cache"))
+      cache: File.join(tmpdir, "cache")).tap { |r| @made << r }
   end
 
-  def ruby(*code) = [RbConfig.ruby, "-e", *code]
+  # (On JRuby on Windows, its JVM's command: see Duel::Rubies.launch.)
+  def ruby(*code) = [*RUBY_COMMAND, "-e", *code]
 
-  # What a Ruby process's log is named for ("ruby", or "jruby", say).
-  RUBY = File.basename(RbConfig.ruby)
+  # A log, with LF line endings (JRuby reads CRLF as it is, on Windows).
+  def logged(path) = File.read(path).gsub("\r\n", "\n")
+
+  # What a Ruby process's log is named for ("ruby", or "jruby", say, or on
+  # JRuby on Windows, its JVM's "java.exe").
+  RUBY = File.basename(RUBY_COMMAND.first)
 
   def alive?(pid)
     Process.kill(0, pid) && true
-  rescue Errno::ESRCH
+  rescue Errno::ESRCH, Errno::EPERM # (JRuby's EPERM, on Windows, for one that ended)
     false
   end
 
@@ -90,24 +89,35 @@ class ResourceTest < DuelTest
     r.spawn({"DUEL_TEST_B" => "spawned"}, *echo, log: "spawned")
     r.wait_until { File.size?(r.path("spawned.log")) }
 
-    assert_equal ["version version\n", "version its own\n", "version spawned\n"], %w[plain own spawned].map { |log| File.read(r.path("#{log}.log")) }
+    assert_equal ["version version\n", "version its own\n", "version spawned\n"], %w[plain own spawned].map { |log| logged(r.path("#{log}.log")) }
   end
 
   def test_spawns_a_process_logging_to_its_directory_and_stops_it
     r = resource
     pid = r.spawn(*ruby("puts :once; $stdout.flush; warn :twice; sleep"))
-    r.wait_until { File.read(r.path("#{RUBY}.log")).include?("twice") }
+    r.wait_until { logged(r.path("#{RUBY}.log")).include?("twice") }
 
-    assert_equal "once\ntwice\n", File.read(r.path("#{RUBY}.log")), "out and err, added to its program's log"
-    if RUBY_ENGINE == "ruby" # (JRuby's ObjectSpace sees only classes)
-      assert_empty ObjectSpace.each_object(File).select { |f| !f.closed? && f.path == r.path("#{RUBY}.log") }, "the runner's copy closed"
-    end
+    assert_equal "once\ntwice\n", logged(r.path("#{RUBY}.log")), "out and err, added to its program's log"
+    # (Through Open3, it's open while its output is copied to it.)
+    assert_empty open_logs(r), "the runner's copy closed" if redirects?
 
     assert alive?(pid)
     r.stop
 
     refute alive?(pid), "ended, and waited for"
+    assert_empty open_logs(r), "the runner's copy closed, once it's done"
   end
+
+  # The runner's Files open on the log, where ObjectSpace can tell
+  # (JRuby's sees only classes).
+  def open_logs(resource)
+    return [] unless RUBY_ENGINE == "ruby"
+
+    ObjectSpace.each_object(File).select { |f| !f.closed? && f.path == resource.path("#{RUBY}.log") }
+  end
+
+  # Whether Process.spawn redirects its output.
+  def redirects? = true
 
   def test_a_spawned_process_gets_no_other_file_descriptors
     skip "JRuby's spawn ignores close_others" if RUBY_ENGINE == "jruby"
@@ -128,9 +138,9 @@ class ResourceTest < DuelTest
     r = resource
     elsewhere = File.realpath(tmpdir)
     r.spawn({"GREETING" => "hi"}, "echo $GREETING from $0 in $(pwd -P)", chdir: elsewhere)
-    r.wait_until { File.read(r.path("echo.log")).include?("hi") }
+    r.wait_until { logged(r.path("echo.log")).include?("hi") }
 
-    assert_equal "hi from sh in #{elsewhere}\n", File.read(r.path("echo.log")), "named for the program, run as told"
+    assert_equal "hi from sh in #{elsewhere}\n", logged(r.path("echo.log")), "named for the program, run as told"
   end
 
   # Its input is nothing, not the runner's.
@@ -144,7 +154,7 @@ class ResourceTest < DuelTest
     r.spawn(*ruby("p $stdin.read"))
     r.wait_until { File.size?(r.path("#{RUBY}.log")) }
 
-    assert_equal %(""\n), File.read(r.path("#{RUBY}.log"))
+    assert_equal %(""\n), logged(r.path("#{RUBY}.log"))
   ensure
     $stdin.reopen(stdin) if stdin
   end
@@ -265,19 +275,33 @@ class ResourceTest < DuelTest
   # Windows can send another process no signal but KILL: what it spawned
   # is killed.
   def test_stopped_on_windows
-    assert_equal %w[INT KILL], [false, true].map { |windows| Duel::Resource.stop_signal("INT", windows: windows) }
     r = resource
     ready = r.path("ready")
     r.spawn(*ruby("File.write(ARGV[0], ''); sleep", ready))
     r.wait_until { File.exist?(ready) }
-    signals = []
+    pid = r.instance_variable_get(:@processes).keys.fetch(0)
+    killed = []
     kill = Process.method(:kill)
     with_constants(Duel::Native, WINDOWS: true) do
-      assert_equal "KILL", Duel::Resource.stop_signal("TERM"), "by default, on Windows"
-      stub(Process, :kill, ->(signal, pid) { (signals << signal) && kill.call(signal, pid) }) { r.stop }
+      # (Its tree, with taskkill, here as this system kills one.)
+      stub(Duel::ProcessSample, :kill_tree, ->(id) { (killed << id) && kill.call("KILL", id) }) do
+        stub(Process, :kill, ->(*args) { flunk "sent #{args.inspect}, not its tree killed" }) { r.stop }
+      end
     end
 
-    assert_equal ["KILL"], signals
+    assert_equal [pid], killed, "with what it started (JRuby's JVM, say)"
+  end
+
+  # One that's gone already, as JRuby on Windows says of a process that
+  # ended (EPERM), or as elsewhere (ESRCH), is let be.
+  def test_stopping_one_said_to_be_gone
+    [Errno::EPERM, Errno::ESRCH].each do |error|
+      r = resource
+      r.spawn(*ruby("sleep"))
+      pid = r.instance_variable_get(:@processes).keys.fetch(0)
+      stub(r, :send_signal, ->(*) { raise error }) { r.stop }
+      Process.kill("KILL", pid)
+    end
   end
 
   # A log of its own name, and a signal of its own to stop it (some
@@ -293,7 +317,7 @@ class ResourceTest < DuelTest
     r.wait_until { File.exist?(ready) }
     r.stop
 
-    assert_equal "up\n", File.read(r.path("server.log"))
+    assert_equal "up\n", logged(r.path("server.log"))
     assert_path_exists ended, "asked with INT"
   end
 
@@ -305,8 +329,8 @@ class ResourceTest < DuelTest
     elsewhere = File.realpath(tmpdir)
     r.run(*ruby("puts Dir.pwd"), log: "where", chdir: elsewhere)
 
-    assert_equal "made\n", File.read(r.path("setup.log"))
-    assert_equal "#{elsewhere}\n", File.read(r.path("where.log")), "run as told"
+    assert_equal "made\n", logged(r.path("setup.log"))
+    assert_equal "#{elsewhere}\n", logged(r.path("where.log")), "run as told"
     error = assert_raises(Duel::Failed) { r.run(*ruby("puts 'no space'; exit 4")) }
 
     assert_equal "head-1's resource: #{RUBY} exited with 4\nno space\n", error.message
@@ -320,10 +344,10 @@ class ResourceTest < DuelTest
     program = fake_command(File.join(tmpdir, "Program Files", "bin", "tool"), %(echo "$1"))
     r.run(program, "an argument")
 
-    assert_equal "an argument\n", File.read(r.path("#{File.basename(program)}.log"))
+    assert_equal "an argument\n", logged(r.path("#{File.basename(program)}.log"))
     r.run("echo a line")
 
-    assert_equal "a line\n", File.read(r.path("echo.log")), "a command line: its first word"
+    assert_equal "a line\n", logged(r.path("echo.log")), "a command line: its first word"
   end
 
   # One a signal killed says which.
@@ -429,6 +453,15 @@ class ResourceTest < DuelTest
     assert_equal "head-1: two prepare blocks set B (2, 3)", error.message
   end
 
+  # A log of a Windows program's lines, ending with CRLF: shown with LF.
+  def test_failing_with_a_log_of_crlf_lines
+    r = resource
+    File.binwrite(r.path("x.log"), "a\r\nb\r\n")
+    error = assert_raises(Duel::Failed) { r.failed("broke", log: r.path("x.log")) }
+
+    assert_equal "head-1's resource: broke\na\nb\n", error.message
+  end
+
   def test_failing_with_a_reason
     r = resource
     error = assert_raises(Duel::Failed) { r.failed("no PostgreSQL") }
@@ -449,13 +482,46 @@ class ResourceTest < DuelTest
     with_constants(Duel::Resource, STOP_WAIT: 0.2) { r.stop }
 
     refute alive?(pid)
-    assert_equal 3, Process.wait2(other).last.exitstatus, "another child, still there to wait for"
+    assert_still_to_wait_for(other, "another child, still there to wait for")
   end
 
   def test_stopping_a_process_already_gone
     r = resource
     pid = r.spawn(*ruby("exit"))
-    Process.wait(pid)
+    sleep 0.01 while alive?(pid)
     r.stop
+  end
+end
+
+# The same, its processes started through Open3, as where Process.spawn
+# redirects nothing (JRuby on Windows: see Duel::Spawn). (Every one of
+# ResourceTest's tests again, as it's meant to.)
+class ResourceThroughOpen3Test < ResourceTest
+  def resource(timeout: 30.0)
+    Duel::Resource.new(File.join(short_tmpdir, "head-1-1"), "head-1", "/candidate", timeout: timeout,
+      cache: File.join(tmpdir, "cache"), redirects: false).tap { |r| @made << r }
+  end
+
+  def redirects? = false
+
+  # Its processes are waited for by the thread Spawn.logged gives, which
+  # ends once the output is in the log, not detached.
+  def test_waited_for_by_the_thread_it_was_given
+    r = resource
+    waiter = Thread.new { :ended }
+    stub(Duel::Spawn, :logged, ->(*, **) { [42, waiter] }) do
+      stub(Process, :detach, ->(*) { flunk "detached" }) { r.spawn(*ruby("1")) }
+    end
+
+    assert_same waiter, r.instance_variable_get(:@processes).fetch(42).last
+    r.instance_variable_get(:@processes).clear
+  end
+
+  def test_through_open3
+    popen2e = Open3.method(:popen2e)
+    called = []
+    stub(Open3, :popen2e, ->(*args, **options) { (called << args.drop(1)) && popen2e.call(*args, **options) }) { resource.run(*ruby("1")) }
+
+    assert_equal [ruby("1")], called
   end
 end

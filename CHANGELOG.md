@@ -38,11 +38,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process's working set, the memory available from
   `GlobalMemoryStatusEx`, a process benchmark's process that hangs is
   killed with what it started by `taskkill /T`, and a resource's
-  processes are killed as it stops, as Windows can send them no other
-  signal (an `at_stop` block can ask one to stop first). A run's lock
+  processes are killed as it stops, with what they started, as Windows
+  can send them no other signal (an `at_stop` block can ask one to stop
+  first). A run's lock
   works there too, though Windows can't read a held lock, so another
   run's isn't named. There are no instructions there. The tests run on
   macOS and Windows in CI too.
+- JRuby 10 on Windows. Its `jruby.exe` starts the JVM in a process of
+  its own, so Duel starts each worker's JVM, and a process benchmark's
+  of `ruby:` code, itself, with the command `jruby -Xcommand` prints:
+  what's measured, waited for and killed is the JVM, not the launcher.
+  A worker talks to the runner over a port of 127.0.0.1's where there
+  are no Unix sockets (JRuby has none there). Where Process.spawn
+  redirects nothing and doesn't wait (JRuby's there), workers, a
+  resource's processes, and a process benchmark's Ruby process and its
+  runs start through Open3, their output copied to their logs, and
+  every command Duel runs through Open3 gets ENV (JRuby's gives the
+  JVM's own environment, and ignores `unsetenv_others`), each variable by
+  ENV's name for it (JRuby's PATH given doesn't replace ENV's Path), its
+  program found by the PATH and PATHEXT (JRuby's runs only an .exe by
+  name, so `gem` and `bundle`, which are .bat files, didn't run), and
+  its arguments quoted as Windows takes them (Java took out the quotes
+  in one, so `ruby: %(require "x")` ran `require x`). CPU time there is the cycles Windows charged,
+  as on CRuby, not the JVM's CPU time, in Windows's ticks of 15.6 ms
+  (and allocated bytes are read inside it, as reading the cycles, through
+  Fiddle, allocates). A
+  run's lock held by another run is told from the Java exception JRuby
+  raises for one, and a process that's ended from its EPERM. The tests
+  run on JRuby 10.0 and 10.1 on Windows in CI.
 
 ### Changed
 
@@ -76,6 +99,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A process benchmark's process that doesn't end once its input is
   closed is killed ten seconds later, with what it started, rather
   than waited for without end.
+- A process benchmark's run that doesn't end within the timeout is
+  killed, where its reply could be waited for without end once the pipe
+  said it was ready (as JRuby's on Windows says before it is).
+- A memory sample's peak can't count memory outside an iteration: a
+  reading could land between a pause's changes, on JRuby, whose threads
+  run at once.
+- `duel init` writes LF line endings from templates checked out with
+  CRLF, and a failure shows a log's lines without a Windows program's CR.
+- On Windows, a resource's log is added to, as it is elsewhere: a
+  command's output overwrote the start of it, as a child given a file
+  opened to append writes from where the file's at.
 - A process benchmark's command that can't start (there's no such
   program, say) fails saying why ("couldn't start: No such file or
   directory - ..."), not "the process running ... exited", and the next

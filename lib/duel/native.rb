@@ -301,10 +301,7 @@ module Duel
       # where that can't be told (without Fiddle, or on Windows, which has
       # no wait4).
       def self.wait(pid, fiddle: FIDDLE, platform: OS, wait4: nil)
-        if !fiddle || platform.match?(WINDOWS_OS)
-          status = Process.wait2(pid).last
-          return [status.exitstatus, status.termsig, nil]
-        end
+        return ended(Process.wait2(pid).last) if !fiddle || platform.match?(WINDOWS_OS)
 
         wait4 ||= Native.function("wait4", %i[INT VOIDP INT VOIDP], :INT)
         status = "\0".b * 4
@@ -320,6 +317,10 @@ module Duel
         [(raw >> 8 if signal.zero?), (signal unless signal.zero?),
           rusage.unpack1("q", offset: MAXRSS) * (platform.include?("darwin") ? 1 : 1024)]
       end
+
+      # How a child that was waited for ended, as .wait says, from its
+      # +status+: its peak memory not told.
+      def self.ended(status) = [status.exitstatus, status.termsig, nil]
     end
 
     # This process's resident memory in bytes, or nil where it can't tell.

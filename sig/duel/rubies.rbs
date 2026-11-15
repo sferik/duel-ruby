@@ -33,6 +33,10 @@ module Duel
     # Whether +ruby+ is the runner's own.
     def self.runner?: (String ruby) -> bool
 
+    # The command that starts +ruby+ with +env+: +ruby+, or on JRuby on
+    # Windows, the JVM's own command.
+    def self.launch: (String ruby, String engine, Hash[String, String?] env, ?windows: bool) -> Array[String]
+
     # What a version's processes on +ruby+ get in their environment.
     def self.environment: (String ruby, ?path: String?) -> Hash[String, String?]
 

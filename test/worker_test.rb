@@ -34,7 +34,9 @@ class WorkerTest < DuelTest
     hello = Duel::Worker.new([Calls, Unavailable]).hello
 
     assert_equal [{"name" => "a", "only" => "count", "peak_memory" => false, "process" => nil}], hello.fetch("benchmarks")
-    names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + ALLOCATION_COUNTS + %w[cpu]
+    # (On JRuby on Windows, its bytes innermost: see Worker::BUILT_IN.)
+    innermost = (RUBY_ENGINE == "jruby" && Duel::Native::WINDOWS) ? %w[cpu] + ALLOCATION_COUNTS : ALLOCATION_COUNTS + %w[cpu]
+    names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + innermost
 
     assert_equal names, hello.fetch("metrics").map { |m| m.fetch("name") }, "plugins outermost, CPU innermost"
     assert_equal RUBY_DESCRIPTION, hello.fetch("ruby")
@@ -45,7 +47,7 @@ class WorkerTest < DuelTest
   def test_measures_changed_and_skipped
     specs = Duel::Worker.new([Calls], {"calls" => {tolerance: 3}, "cpu" => {limit: 1.05}}).hello.fetch("metrics")
 
-    assert_equal [3, 1.05], [specs.first.fetch("tolerance"), specs.last.fetch("limit")]
+    assert_equal [3, 1.05], [specs.first.fetch("tolerance"), specs.find { |spec| spec.fetch("name") == "cpu" }.fetch("limit")]
     made = 0
     counted = Class.new(Calls) do
       def self.metric_name = "calls"
@@ -111,6 +113,8 @@ class WorkerTest < DuelTest
   # load path they were found in, or by name), at their real paths: what
   # the runner checks each version's are its own by.
   def test_extensions
+    skip_links_on_jruby_on_windows
+
     dlext = RbConfig::CONFIG["DLEXT"]
     lib = FileUtils.mkdir_p(File.join(tmpdir, "real", "lib", "my_gem")).first.then { |dir| File.dirname(dir) }
     File.symlink(File.join(tmpdir, "real"), File.join(tmpdir, "linked"))
@@ -149,6 +153,8 @@ class WorkerTest < DuelTest
   # real paths, each once: what the runner tells an installed gem's
   # extension from a build by.
   def test_gem_dirs
+    skip_links_on_jruby_on_windows
+
     real = FileUtils.mkdir_p(File.join(tmpdir, "vendor", "bundle", "ruby", "4.0.0")).first
     File.symlink(File.join(tmpdir, "vendor"), File.join(tmpdir, "linked"))
     File.write(File.join(tmpdir, "file"), "")
@@ -240,8 +246,7 @@ class WorkerTest < DuelTest
     root = project(File.join(tmpdir, "version"))
     File.write(File.join(root, "duel", "duel_helper.rb"), "ConfigProbe.supported = true\n")
     File.write(File.join(root, "duel", "probe_duel.rb"), %(require_relative "duel_helper"\n))
-    control = File.join(short_tmpdir, "c.sock")
-    server = UNIXServer.new(control)
+    server, control = Duel::Control.listen(File.join(short_tmpdir, "c.sock"), unix: Duel::Control::UNIX)
     collections = []
     collect = GC.method(:start)
     worker = stub(GC, :start, ->(**options) { (collections << options) && collect.call(**options) }) do
@@ -279,8 +284,7 @@ class WorkerTest < DuelTest
     end
     early = [File.join(candidate, "lib", "twinned.rb"), File.join(candidate, "lib", "twinned.#{dlext}")]
     $LOADED_FEATURES.push(*early)
-    control = File.join(short_tmpdir, "c.sock")
-    server = UNIXServer.new(control)
+    server, control = Duel::Control.listen(File.join(short_tmpdir, "c.sock"), unix: Duel::Control::UNIX)
     worker = Thread.new { Duel::Worker.main(base, candidate, control) }
     socket = server.accept
     hello = Duel::Message.read(socket)
@@ -317,8 +321,7 @@ class WorkerTest < DuelTest
       end
     RUBY
     ConfigProbe.ended = []
-    control = File.join(short_tmpdir, "c.sock")
-    server = UNIXServer.new(control)
+    server, control = Duel::Control.listen(File.join(short_tmpdir, "c.sock"), unix: Duel::Control::UNIX)
     worker = Thread.new { Duel::Worker.main(root, root, control, File.join(root, ".duel.rb")) }
     socket = server.accept
 
@@ -433,7 +436,7 @@ class WorkerHooksTest < DuelTest
   # (a line each), and answers STATS, itself one, with how many so far.
   class Server
     def initialize
-      @client, server = UNIXSocket.pair
+      @client, server = DuelTest.socket_pair
       @thread = Thread.new do
         commands = 0
         while (line = server.gets)

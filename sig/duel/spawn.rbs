@@ -1,0 +1,43 @@
+module Duel
+  # Starts a process with its output in a log, or pipes for its input and
+  # output: with Process.spawn's redirects, or through Open3 where spawn
+  # ignores them (JRuby on Windows).
+  # @api private
+  module Spawn
+    JAVA: bool
+    REDIRECTS: bool
+    SHELL: Regexp
+    COPY_WAIT: Integer
+    CHUNK: Integer
+
+    # Starts +command+, its output this process's: its pid, and a thread
+    # whose value is how it ended.
+    def self.started: (Hash[String, String?] env, Array[String] command, ?redirects: bool, **untyped options) -> [Integer, Thread]
+
+    # Open3's +name+d method, on JRuby on Windows with ENV and the
+    # program found.
+    def self.open3: (Symbol name, *untyped args, ?java: bool, **untyped options) ?{ (*untyped) -> untyped } -> untyped
+
+    # +command+ as Windows runs it, its program found.
+    def self.program: (Array[String] command, ?path: String, ?exts: Array[String]) -> Array[String]
+
+    # +arg+ as a Windows program's command line has it.
+    def self.quote: (String arg) -> String
+
+    # Starts +command+, its output and errors in +log+: its pid, and a
+    # thread whose value is how it ended, where it was started through
+    # Open3.
+    def self.logged: (Hash[String, String?] env, Array[String] command, log: String, mode: String, ?redirects: bool,
+                      **untyped options) -> [Integer, Thread?]
+
+    # Starts +command+ with a pipe each way: its pid, its input, its
+    # output, and a thread whose value is how it ended.
+    def self.piped: (Hash[String, String?] env, Array[String] command, ?redirects: bool, **untyped options) -> [Integer, IO, IO, Thread]
+
+    # A thread copying +output+ to +out+, then closing both.
+    def self.copy: (IO output, IO out, ?close: bool) -> Thread
+
+    # A thread whose value is +waiter+'s, once +copy+ is done.
+    def self.ended: (Thread waiter, Thread copy, *IO outputs) -> Thread
+  end
+end

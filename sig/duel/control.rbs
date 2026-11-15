@@ -1,0 +1,20 @@
+module Duel
+  # The runner's connection to a worker: a Unix socket, or a port of
+  # 127.0.0.1's where there are none.
+  # @api private
+  module Control
+    HOST: String
+    UNIX: bool
+    TCP: Regexp
+
+    # A server for a worker to connect to, at +path+ (or a port, unless
+    # +unix+), and its address.
+    def self.listen: (String path, unix: bool) -> [UNIXServer | TCPServer, String]
+
+    # A connection to the server at +address+.
+    def self.connect: (String address) -> (UNIXSocket | TCPSocket)
+
+    # Removes a Unix socket's file.
+    def self.remove: (String address) -> void
+  end
+end

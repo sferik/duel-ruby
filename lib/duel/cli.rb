@@ -11,6 +11,7 @@ require_relative "summary"
 require_relative "json_report"
 require_relative "init"
 require_relative "comment"
+require_relative "spawn"
 
 module Duel
   # The `duel` command (and `duel init` and `duel comment`: see Init and
@@ -464,7 +465,7 @@ module Duel
 
     # Git's output, and its status, in +dir+.
     def git(dir, *args)
-      out, _, status = Open3.capture3("git", "-C", dir, *args)
+      out, _, status = Spawn.open3(:capture3, "git", "-C", dir, *args)
       [out, status]
     end
 

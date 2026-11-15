@@ -15,6 +15,7 @@ require "digest"
 require "fileutils"
 require "rbconfig"
 require "tmpdir"
+require "timeout"
 
 # Every directory a run of the tests makes (the workers they start too) is
 # under one root of its own, tmp/test/<pid>, reached by a path short enough
@@ -125,7 +126,24 @@ class DuelTest < Minitest::Test
   # root, say) lands there, not in Duel's tree.
   SANDBOXED = defined?(Mutant)
 
+  # A class whose tests start processes can say how long one may run
+  # under mutant (hangs_after 5): mutant kills a test that runs past its
+  # own timeout (20s), but one that hangs (a mutation of a wait that never
+  # ends, say) fails first, so a shard's many such mutations each cost
+  # that, not the timeout.
+  def self.hangs_after(seconds) = define_method(:hang_after) { seconds }
+
+  def hang_after = nil
+
   def setup
+    if SANDBOXED && hang_after
+      test = Thread.current
+      seconds = hang_after
+      @hang_watch = Thread.new do
+        sleep seconds
+        test.raise(Timeout::Error, "still running after #{seconds}s")
+      end
+    end
     if SANDBOXED
       @sandbox_left = Dir.pwd
       Dir.chdir(Dir.mktmpdir("sandbox"))
@@ -146,6 +164,7 @@ class DuelTest < Minitest::Test
   end
 
   def teardown
+    @hang_watch&.kill
     Dir.chdir(@sandbox_left) if SANDBOXED
     ENV["GIT_CEILING_DIRECTORIES"] = @saved_ceiling
     Thread.abort_on_exception = @saved_abort
@@ -168,6 +187,28 @@ class DuelTest < Minitest::Test
 
   # A directory with a short path (for Unix sockets), removed after the run.
   def short_tmpdir = Dir.mktmpdir("dw").tap { |dir| Minitest.after_run { FileUtils.rm_rf(dir) } }
+
+  # What starts this Ruby: on JRuby on Windows, its JVM (as Duel starts
+  # it: see Duel::Rubies.launch), whose process is what's measured and
+  # killed, not jruby.exe's.
+  RUBY_COMMAND = Duel::Rubies.launch(RbConfig.ruby, RUBY_ENGINE, ENV.to_h)
+
+  # A connected pair of sockets: Unix sockets, or where there are none
+  # (JRuby on Windows), TCP's, over 127.0.0.1 (as Duel::Control's are).
+  def self.socket_pair
+    return UNIXSocket.pair if Duel::Control::UNIX
+
+    server, address = Duel::Control.listen("", unix: false)
+    client = Duel::Control.connect(address)
+    [client, server.accept].tap { server.close }
+  end
+
+  def socket_pair = DuelTest.socket_pair
+
+  # (A test of a project reached through a link.)
+  def skip_links_on_jruby_on_windows
+    skip "JRuby's File.realpath on Windows doesn't resolve a link" if Duel::Spawn::JAVA
+  end
 
   # A directory for the test, removed after it.
   def tmpdir
@@ -206,7 +247,9 @@ class DuelTest < Minitest::Test
   # it's still there.
   def end_group(pid)
     Duel::ProcessSample.kill_tree(pid)
-    Process.wait(pid)
+    # (Not on JRuby on Windows, whose Process.wait waits for nothing, or
+    # fails, of no errno.)
+    Process.wait(pid) unless Duel::Spawn::JAVA
   rescue Errno::ESRCH, Errno::ECHILD, Errno::EPERM # gone, and waited for
     nil
   end
@@ -217,6 +260,15 @@ class DuelTest < Minitest::Test
   # A child of the test's that has ended (with 3), and not been waited
   # for: once ps says it's a zombie. Windows has no zombies (nor ps -o),
   # so there, once it says it's exiting, and a moment more.
+  # Asserts the child +other+ (an ended_child) is still there to wait for,
+  # as Duel waited for its own alone. (Not on JRuby on Windows, whose
+  # Process.wait waits for nothing.)
+  def assert_still_to_wait_for(other, message = nil)
+    return if Duel::Spawn::JAVA
+
+    assert_equal 3, Process.wait2(other).last.exitstatus, message
+  end
+
   def ended_child
     if TestDirs::WINDOWS
       exiting = File.join(tmpdir, "exiting-#{Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond)}")

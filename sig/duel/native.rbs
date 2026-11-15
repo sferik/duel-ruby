@@ -188,6 +188,9 @@ module Duel
       # Waits for the child +pid+: its exit status (or nil), the signal
       # that killed it (or nil), and its peak memory in bytes (or nil).
       def self.wait: (Integer pid, ?fiddle: bool, ?platform: String, ?wait4: _Function?) -> [Integer?, Integer?, Integer?]
+
+      # How a child that was waited for ended, from its +status+.
+      def self.ended: (Process::Status status) -> [Integer?, Integer?, nil]
     end
 
     # This process's resident memory in bytes, or nil where it can't tell.

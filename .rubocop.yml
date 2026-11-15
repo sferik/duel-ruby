@@ -32,3 +32,9 @@ Minitest/MultipleAssertions:
 Style/OneClassPerFile:
   Exclude:
     - "test/**/*"
+
+# ResourceThroughOpen3Test runs every one of ResourceTest's tests again,
+# through Open3, as it's meant to.
+Minitest/DuplicateTestRun:
+  Exclude:
+    - "test/resource_test.rb"

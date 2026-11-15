@@ -7,6 +7,7 @@ require_relative "test_helper"
 # over the control socket.
 class WorkerProcessTest < DuelTest
   cover "Duel::WorkerProcess*"
+  hangs_after 5
 
   HELLO = {"benchmarks" => [{"name" => "a", "n" => 1}, {"name" => "b", "n" => 2}], "metrics" => [{"name" => "cpu"}],
            "memory" => true, "profiler" => false, "yjit" => false, "ruby" => "ruby 9.9", "extensions" => {"x.so" => "/x.so"}, "twice" => {"y.so" => ["/a/y.so", "/b/y.so"]},
@@ -15,6 +16,7 @@ class WorkerProcessTest < DuelTest
   def setup
     super
     @pids = []
+    @waiters = []
     @threads = []
     @workers = []
     @dir = short_tmpdir
@@ -34,7 +36,7 @@ class WorkerProcessTest < DuelTest
     @pids.each do |pid|
       Process.kill("KILL", pid)
       Process.wait(pid)
-    rescue Errno::ECHILD, Errno::ESRCH
+    rescue Errno::ECHILD, Errno::ESRCH, Errno::EPERM
       nil
     end
     super
@@ -42,18 +44,20 @@ class WorkerProcessTest < DuelTest
 
   # A WorkerProcess whose spawn runs +command+ instead, answering what
   # the block answers each request with (nil: it closes the connection),
-  # after +hello+ (nil: nothing, ever).
+  # after +hello+ (nil: nothing, ever). Over a Unix socket, by default,
+  # where there are any, or as +unix+ says.
   def worker_process(command = %w[sleep 30], hello: HELLO, config_path: nil, timeout: 5.0, delay: 0, ruby: RbConfig.ruby, engine: "ruby",
-    &serve)
+    unix: nil, &serve)
     @spawned = []
-    real = Process.method(:spawn)
+    real = Duel::Spawn.method(:started)
     spawned = @spawned
     pids = @pids
+    waiters = @waiters
     threads = @threads
-    control = File.join(@dir, "head-1.sock")
     play = method(:play)
-    fake = lambda do |*args, **options|
-      spawned << [args, options]
+    fake = lambda do |env, args, **options|
+      spawned << [[env, *args], options]
+      control = args.fetch(args.index("/candidate") + 1)
       # (Its socket may be closed under it, when a test is done with it.)
       if hello
         threads << Thread.new do
@@ -61,16 +65,16 @@ class WorkerProcessTest < DuelTest
           sleep(delay) && play.call(control, hello, &serve)
         end
       end
-      real.call(*command, **options).tap { |pid| pids << pid }
+      real.call({}, command, **options).tap { |pid, waiter| (pids << pid) && (waiters << waiter) }
     end
-    stub(Process, :spawn, fake) do
+    stub(Duel::Spawn, :started, fake) do
       Duel::WorkerProcess.new("head-1", "/base", "/candidate", @dir, config_path: config_path, env: {"E" => "1"},
-        timeout: timeout, ruby: ruby, engine: engine)
+        timeout: timeout, ruby: ruby, engine: engine, **(unix.nil? ? {} : {unix: unix}))
     end.tap { |worker| @workers << worker }
   end
 
   def play(control, hello, &serve)
-    socket = UNIXSocket.new(control)
+    socket = Duel::Control.connect(control)
     Duel::Message.write(socket, hello)
     while (request = Duel::Message.read(socket))
       reply = serve.call(request)
@@ -81,11 +85,13 @@ class WorkerProcessTest < DuelTest
   end
 
   def test_starts_a_worker_and_learns_what_it_has
+    skip "no Unix sockets here: see test_over_tcp" unless Duel::Control::UNIX
+
     worker = worker_process
 
     assert_equal [[{"E" => "1"}, RbConfig.ruby, *Duel::WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r",
       "duel/worker", "-e", "Duel::Worker.main(*ARGV)", "/base", "/candidate", File.join(@dir, "head-1.sock")],
-      {in: File::NULL, close_others: true}], @spawned.first
+      {close_others: true}], @spawned.first
     assert_equal File.expand_path("../lib", __dir__), Duel::WorkerProcess::LIB
     assert_equal "head-1", worker.label
     assert_equal({"a" => {"name" => "a", "n" => 1}, "b" => {"name" => "b", "n" => 2}}, worker.benchmarks)
@@ -149,10 +155,44 @@ class WorkerProcessTest < DuelTest
     assert_equal [[["head-1"], options], %w[bin/rails runner 1], [ruby, "-I", "/base/lib", "-e", "require 'x'"], :stop], made
   end
 
+  # Where there are no Unix sockets (JRuby on Windows), over a port of
+  # 127.0.0.1's, which the worker is told.
+  def test_over_tcp
+    worker = worker_process(unix: false) { |request| {"got" => request.fetch("name")} }
+    control = @spawned.first.first.fetch(-1)
+
+    assert_match Duel::Control::TCP, control
+    assert_equal({"got" => "a"}, worker.request("setup", "a"))
+    assert_equal "ruby 9.9", worker.description
+    assert_empty Dir.children(@dir), "no socket file"
+  end
+
+  # Started with what starts its Ruby (see Rubies.launch: on JRuby on
+  # Windows, the JVM itself), given the worker's environment, and a
+  # process benchmark's runs with what starts it given the version's,
+  # asked once.
+  def test_what_starts_its_ruby
+    jruby = File.join(tmpdir, "jruby").tap { |path| File.write(path, "") }
+    asked = []
+    launch = ->(ruby, engine, env) { (asked << [ruby, engine, env]) && ["/jvm", "-Dworker=#{env.key?("JRUBY_OPTS")}"] }
+    worker = stub(Duel::Rubies, :launch, launch) { worker_process(%w[sleep 0.2], ruby: jruby, engine: "jruby") }
+
+    assert_equal [{"E" => "1"}.merge(Duel::Rubies.worker_environment({"E" => "1"}, "jruby")), "/jvm", "-Dworker=true", "-I"],
+      @spawned.first.first.first(4)
+    made = []
+    runs = Struct.new(:log) { def run(command) = (log << command) && {"timed" => {}} }.new(made)
+    stub(Duel::Rubies, :launch, launch) do
+      stub(Duel::ProcessSample, :new, ->(*, **) { runs }) { 2.times { worker.run({"command" => nil, "ruby" => "1"}) } }
+    end
+
+    assert_equal [["/jvm", "-Dworker=false", "-I", "/base/lib", "-e", "1"]] * 2, made
+    assert_equal [[jruby, "jruby", Duel::Rubies.worker_environment({"E" => "1"}, "jruby")], [jruby, "jruby", {"E" => "1"}]], asked
+  end
+
   def test_a_worker_that_takes_a_while_to_load
     servers = []
-    listen = UNIXServer.method(:new)
-    worker = stub(UNIXServer, :new, ->(path) { listen.call(path).tap { |server| servers << server } }) do
+    listen = Duel::Control.method(:listen)
+    worker = stub(Duel::Control, :listen, ->(path, **options) { listen.call(path, **options).tap { |server, _| servers << server } }) do
       worker_process(hello: HELLO.merge("memory" => false, "profiler" => true, "yjit" => true), delay: 0.1)
     end
 
@@ -194,7 +234,7 @@ class WorkerProcessTest < DuelTest
     error = assert_raises(Duel::Failed) { worker.request("setup", "x") }
 
     assert_equal "head-1 worker didn't answer within 0.2s (killed: a benchmark that hangs?)", error.message
-    assert_raises(Errno::ECHILD, "killed, and waited for") { Process.wait(@pids.first) }
+    refute_predicate @waiters.first, :alive?, "killed, and waited for"
   end
 
   def test_a_worker_that_exits_while_loading
@@ -210,29 +250,25 @@ class WorkerProcessTest < DuelTest
 
     assert_equal "head-1 worker didn't load within 0.2s (killed: a benchmark that hangs?)", error.message
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2
-    assert_raises(Errno::ECHILD) { Process.wait(@pids.first) }
+    refute_predicate @waiters.first, :alive?, "killed, and waited for"
     assert_empty Dir.children(@dir)
   end
 
-  # Stopping, with the sleeps between looks and any kill seen.
+  # Stopping, with any kill seen.
   def stop(worker, **options)
-    looks = []
     kills = []
-    worker.define_singleton_method(:sleep) { |seconds| (looks << seconds) && Kernel.sleep(seconds) }
     kill = Process.method(:kill)
     stub(Process, :kill, ->(*args) { (kills << args.first) && kill.call(*args) }) { worker.stop(**options) }
-    [looks, kills]
+    kills
   end
 
   def test_stop_waits_for_the_worker_to_end
     worker = worker_process(%w[sleep 0.2])
-    looks, kills = stop(worker)
+    kills = stop(worker)
 
     assert_predicate worker.instance_variable_get(:@socket), :closed?
-    assert_operator looks.size, :>, 2
-    assert_equal [0.01], looks.uniq
     assert_empty kills
-    assert_raises(Errno::ECHILD, "waited for") { Process.wait(@pids.first) }
+    refute_predicate @waiters.first, :alive?, "waited for"
   end
 
   def test_stop_kills_a_stuck_worker
@@ -240,15 +276,31 @@ class WorkerProcessTest < DuelTest
     @pids << Process.spawn("true") # (to be waited for after: not by stop)
     sleep 0.1
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    _, kills = stop(worker, wait: 0.1)
+    kills = stop(worker, wait: 0.1)
 
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2
     assert_equal ["KILL"], kills
-    assert_raises(Errno::ECHILD) { Process.wait(@pids.first) }
-    assert_nil worker.stop, "already gone"
+    refute_predicate @waiters.first, :alive?, "killed, and waited for"
+    assert_empty stop(worker), "already gone"
+  end
+
+  # One that's gone already, as JRuby on Windows says of a process that
+  # ended (EPERM), or as elsewhere (ESRCH), is let be.
+  def test_stop_a_worker_said_to_be_gone
+    [Errno::EPERM, Errno::ESRCH].each do |error|
+      worker = worker_process
+
+      stub(Process, :kill, ->(*) { raise error }) { assert_nil worker.stop(wait: 0.1) }
+    end
   end
 
   def test_waits_ten_seconds_by_default
     assert_equal 10, Duel::WorkerProcess::STOP_WAIT
+    worker = worker_process(%w[sleep 0.2])
+    waiter = worker.instance_variable_get(:@waiter)
+    joined = []
+    stub(waiter, :join, ->(*args) { (joined << args) && waiter.value && waiter }) { worker.stop }
+
+    assert_equal [[10]], joined
   end
 end

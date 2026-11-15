@@ -3,6 +3,8 @@
 require "open3"
 require "rbconfig"
 require_relative "../duel"
+require_relative "native"
+require_relative "spawn"
 
 module Duel
   # The Ruby each version runs on (Config#ruby): by default the runner's.
@@ -70,8 +72,9 @@ module Duel
       def engine(ruby)
         return RUBY_ENGINE if runner?(ruby)
 
-        out = IO.popen(environment(ruby).merge("RUBYOPT" => nil), [ruby, "--disable-gems", "-e", "print RUBY_ENGINE"], err: File::NULL, &:read)
-        status = $? #: Process::Status
+        # (Its errors read, not shown: JRuby's IO.popen on Windows ignores
+        # err:.)
+        out, _, status = Spawn.open3(:capture3, environment(ruby).merge("RUBYOPT" => nil), ruby, "--disable-gems", "-e", "print RUBY_ENGINE")
         status.success? ? out : "ruby"
       rescue SystemCallError
         "ruby"
@@ -91,6 +94,21 @@ module Duel
 
       # Whether +ruby+ is the runner's own.
       def runner?(ruby) = File.realpath(ruby) == File.realpath(RbConfig.ruby)
+
+      # The command that starts +ruby+ (whose engine is +engine+), with
+      # +env+: +ruby+ itself, but on JRuby on Windows, whose jruby.exe
+      # starts the JVM in a process of its own (javaw.exe), the JVM's
+      # command, as `jruby -Xcommand` says it is: so the process Duel
+      # measures, waits for, and kills is the one running Ruby.
+      def launch(ruby, engine, env, windows: Native::WINDOWS)
+        return [ruby] unless windows && engine == "jruby"
+
+        out, status = Spawn.open3(:capture2, env, ruby, "-Xcommand", "-e", "1")
+        args = out.lines(chomp: true)
+        (status.success? && args.last(2) == %w[-e 1]) ? args.first(args.size - 2) : [ruby]
+      rescue SystemCallError
+        [ruby]
+      end
 
       # What a version's processes on +ruby+ get in their environment:
       # nothing on the runner's Ruby. On another, its directory first on
@@ -154,7 +172,7 @@ module Duel
 
       # What a command prints, or nil if it fails (or isn't there).
       def command(*command)
-        out, _, status = Open3.capture3(*command)
+        out, _, status = Spawn.open3(:capture3, *command)
         out.strip if status.success?
       rescue SystemCallError
         nil

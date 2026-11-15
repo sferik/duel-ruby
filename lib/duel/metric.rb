@@ -467,26 +467,28 @@ module Duel
     end
   end
 
-  # simplecov:disable Windows's clock is CycleClock (Windows's test run
-  # covers this).
+  # simplecov:disable Windows's clock is CycleClock, JRuby's too (Windows's
+  # test run covers this): the JVM's CPU times there are Windows's own, in
+  # ticks of 15.6 ms.
   if Native::WINDOWS
     module Clock
       def self.thread = CycleClock.thread
 
       def self.process = CycleClock.process
     end
-  end
-  # simplecov:enable
-
-  # simplecov:disable JRuby has no thread CPU clock of Ruby's, but the JVM's (JRuby's
-  # test run covers these).
-  if RUBY_ENGINE == "jruby"
+  # (JRuby has no thread CPU clock of Ruby's elsewhere, but the JVM's:
+  # JRuby's test run covers these.)
+  elsif RUBY_ENGINE == "jruby"
     module Clock
       def self.thread = java.lang.management.ManagementFactory.getThreadMXBean.getCurrentThreadCpuTime
 
       def self.process = java.lang.management.ManagementFactory.getOperatingSystemMXBean.getProcessCpuTime
     end
+  end
+  # simplecov:enable
 
+  # simplecov:disable JRuby's (JRuby's test run covers it).
+  if RUBY_ENGINE == "jruby"
     # Bytes allocated (JRuby: the JVM's count, as it has none of objects):
     # by the benchmark thread, or by every thread.
     # @api private

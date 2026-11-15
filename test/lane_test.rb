@@ -1152,6 +1152,8 @@ class LaneVersionsTest < DuelTest
   # A baseline in the candidate's tree (one --base-dir names, say) has
   # builds of its own there. And a tree reached by a symlink is where it leads.
   def test_a_baseline_inside_the_candidate
+    skip_links_on_jruby_on_windows
+
     inside = File.join(config.root, "tmp", "duel", "base")
     FileUtils.mkdir_p(inside)
     File.symlink(config.root, File.join(tmpdir, "linked"))

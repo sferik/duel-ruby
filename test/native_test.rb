@@ -311,11 +311,13 @@ class NativeTest < DuelTest
   # Without Fiddle, Process.wait2's (for that child alone): no peak
   # memory.
   def test_waiting_without_fiddle
+    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Spawn::JAVA
+
     other = ended_child
     exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
 
     assert_equal [4, nil, nil], Duel::Native::Child.wait(exited, fiddle: false)
-    assert_equal 3, Process.wait2(other).last.exitstatus
+    assert_still_to_wait_for(other)
   end
 
   # And the signal that killed it.
@@ -563,6 +565,8 @@ class NativeTest < DuelTest
 
   # Windows has no wait4: Process.wait2's, without peak memory.
   def test_waiting_on_windows
+    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Spawn::JAVA
+
     exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
     wait4 = ->(*) { raise "no wait4 on Windows" }
 

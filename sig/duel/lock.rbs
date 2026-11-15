@@ -15,6 +15,10 @@ module Duel
     # The directories, +dir+ and those it's in, that aren't there yet,
     # deepest first.
     # The pid another run wrote in its lock, or "".
+    HELD: Array[String]
+
+    def self.lock: (File file) -> (Integer | false)
+
     def self.whose: (File file) -> String
 
     def self.missing: (String dir) -> Array[String]
