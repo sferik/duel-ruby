@@ -82,11 +82,12 @@ class CLITest < DuelTest
               --candidate-dir DIR          Candidate tree (default: this one)
               --filter REGEXP              Only benchmarks whose names match
               --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs, as many as fit in memory)
-              --processes N                Worker processes per version (default: #{Duel::PROCESSES}, as many as fit in memory)
-              --timeout SECONDS            Most a worker may take to load or answer (default: #{Duel::TIMEOUT.round})
-              --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)
-              --limit RATIO                Ratio above which a timing is slower (default: 1.02)
-              --warm SECONDS               Warm-up per benchmark, in seconds (default: until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)
+              --processes N                Worker processes per version (default: c.processes, or #{Duel::PROCESSES}, as many as fit in memory)
+              --timeout SECONDS            Most a worker may take to load or answer (default: c.timeout, or #{Duel::TIMEOUT.round})
+              --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: c.time_limit, or 7200)
+              --limit RATIO                Ratio above which a timing is slower (default: c.limit, or 1.02)
+              --confidence LEVEL           Confidence of every interval (default: c.confidence, or 0.99)
+              --warm SECONDS               Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)
               --ruby version-file|PATH     Each version's Ruby: the one its version file names (.ruby-version, say), or a
                                            path (default: c.ruby, or this one)
               --force                      Compare even if nothing watched changed
@@ -124,11 +125,23 @@ class CLITest < DuelTest
 
   def test_options
     s = cli("--base", "v1", "--candidate-dir", "c", "--filter", "push", "--jobs", "3", "--limit", "1.05",
-      "--warm", "2", "--force", "--config", "x.rb", "--processes", "4", "--timeout", "9", "--time-limit", "600").parse
+      "--warm", "2", "--force", "--config", "x.rb", "--processes", "4", "--timeout", "9", "--time-limit", "600", "--confidence", "0.95").parse
 
-    assert_equal ["v1", nil, "c", /push/, 3, 1.05, 2.0, true, File.expand_path("x.rb"), 4, 9.0, 600.0],
+    assert_equal ["v1", nil, "c", /push/, 3, 1.05, 2.0, true, File.expand_path("x.rb"), 4, 9.0, 600.0, 0.95, []],
       [s.base, s.base_dir, s.candidate_dir, s.filter, s.jobs, s.limit, s.warm, s.force, s.config_path, s.processes, s.timeout,
-        s.time_limit]
+        s.time_limit, s.confidence, s.fit]
+    assert_equal %i[jobs processes], cli.parse.fit, "as many as fit in memory, unless they're given"
+  end
+
+  # A run setting's option given what it doesn't take (as .duel.rb's
+  # wouldn't: see Config::RUN_SETTINGS) is a bad option.
+  def test_a_run_setting_out_of_range
+    # (Each as it's parsed: a Float, or an Integer.)
+    {%w[--confidence 1.5] => "1.5: give a level above 0 and below 1", %w[--limit 0.5] => "0.5: give a ratio of 1 or more",
+     %w[--processes 0] => "0: give a whole number, 1 or more", %w[--time-limit 0] => "0.0: give seconds, more than 0"}.each do |argv, said|
+      assert_equal 2, cli(*argv).run
+      assert_equal "duel: invalid argument: #{argv.first} #{said}\n", @err.string
+    end
   end
 
   # Each version's Ruby: its version file's, or a path.
@@ -262,6 +275,32 @@ class CLITest < DuelTest
     assert_equal base, root
     assert_equal({out: @out}, options)
     assert_equal 1, run_with(false, "--base", base, dir: candidate).first, "slower"
+  end
+
+  # .duel.rb's run settings (c.limit, c.timeout, c.time_limit, c.warm),
+  # but each one's option where it's given, and Duel's own defaults where
+  # neither is.
+  def test_run_settings_from_the_config_file
+    base = FileUtils.mkdir_p(File.join(tmpdir, "base")).first
+    candidate = FileUtils.mkdir_p(File.join(tmpdir, "candidate")).first
+    File.write(File.join(candidate, ".duel.rb"),
+      "Duel.configure { |c| c.limit = 1.05; c.confidence = 0.995; c.processes = 6; c.timeout = 90; c.time_limit = 600; c.warm = 4 }")
+    settings = run_with(true, "--base", base, dir: candidate)[2]
+
+    assert_equal [1.05, 0.995, 6, 90.0, 600.0, 4.0, [:jobs]],
+      [settings.limit, settings.confidence, settings.processes, settings.timeout, settings.time_limit, settings.warm, settings.fit],
+      "c.processes: that many, not as many as fit"
+    settings = run_with(true, "--base", base, "--limit", "1.1", "--confidence", "0.9", "--processes", "3", "--timeout", "5",
+      "--time-limit", "60", "--warm", "0", dir: candidate)[2]
+
+    assert_equal [1.1, 0.9, 3, 5.0, 60.0, 0.0],
+      [settings.limit, settings.confidence, settings.processes, settings.timeout, settings.time_limit, settings.warm], "the options' over .duel.rb's"
+    File.write(File.join(candidate, ".duel.rb"), "Duel.configure { |c| c.limit = 1.05 }")
+    settings = run_with(true, "--base", base, dir: candidate)[2]
+    defaults = Duel::Settings.defaults
+
+    assert_equal [1.05, defaults.confidence, defaults.timeout, defaults.time_limit, nil, %i[jobs processes]],
+      [settings.limit, settings.confidence, settings.timeout, settings.time_limit, settings.warm, settings.fit], "Duel's own, where neither says"
   end
 
   # A run with the baseline faked too: +ref+ (nil: no release yet) and

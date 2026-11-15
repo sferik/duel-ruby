@@ -131,6 +131,45 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::COMMENTS, :frozen?
   end
 
+  # A run's settings that .duel.rb can set too (as their options do):
+  # each nil unless set, a number set as a Float (but processes, a whole
+  # number), and nil again for Duel's own. One that isn't a number, or is
+  # out of range, fails.
+  def test_run_settings
+    config = Duel::Config.new
+    names = %i[limit confidence processes timeout time_limit warm]
+
+    assert_equal names, Duel::Config::RUN_SETTINGS.keys
+    assert_predicate Duel::Config::RUN_SETTINGS, :frozen?
+    assert_equal [nil] * 6 + [{}], [*names.map { |name| config.public_send(name) }, config.run_settings]
+    config.limit = 1
+    config.confidence = 0.995
+    config.processes = 6
+    config.timeout = 30
+    config.time_limit = 0.5
+    config.warm = 0
+
+    assert_equal({limit: 1.0, confidence: 0.995, processes: 6, timeout: 30.0, time_limit: 0.5, warm: 0.0}, config.run_settings)
+    assert_kind_of Float, config.timeout
+    assert_kind_of Integer, config.processes
+    config.warm = nil
+
+    assert_equal({limit: 1.0, confidence: 0.995, processes: 6, timeout: 30.0, time_limit: 0.5}, config.run_settings, "nil: Duel's own")
+    {limit: [[0.99], "a ratio of 1 or more"], confidence: [[0, 1, 1.5], "a level above 0 and below 1"],
+     processes: [[0, 2.5], "a whole number, 1 or more"], timeout: [[0], "seconds, more than 0"],
+     time_limit: [[-1], "seconds, more than 0"], warm: [[-0.5], "seconds, 0 or more"]}.each do |name, (bads, what)|
+      [*bads, "5"].each do |value|
+        error = assert_raises(Duel::Error) { config.public_send(:"#{name}=", value) }
+
+        assert_equal "c.#{name} = #{value.inspect}: give #{what}, or nil", error.message
+        assert_equal what, Duel::Config.problem(name, value)
+      end
+    end
+
+    assert_nil Duel::Config.problem(:confidence, 0.5)
+    assert_equal({limit: 1.0, confidence: 0.995, processes: 6, timeout: 30.0, time_limit: 0.5}, config.run_settings, "unchanged")
+  end
+
   # Which runs a regression fails: every run unless set, and only when
   # set to runs there are.
   def test_fail_on

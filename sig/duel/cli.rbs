@@ -56,6 +56,8 @@ module Duel
     @json: String?
     @settings: Settings?
     @config: Config?
+    # The Config::RUN_SETTINGS options given.
+    @given: Array[Symbol]
     @passed: bool?
     @note: String?
     @accepted: bool?
@@ -187,6 +189,12 @@ module Duel
 
     # The environment's variables that are set.
     def variables: () -> _Variables
+
+    # Sets a Config::RUN_SETTINGS setting to an option's +value+.
+    def given: (Settings settings, Symbol name, Float | Integer value) -> void
+
+    # Sets a setting, a number of processes not fitted to memory.
+    def set: (Settings settings, Symbol name, Float | Integer value) -> void
 
     def parser: (Settings settings) -> OptionParser
   end

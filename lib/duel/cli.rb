@@ -81,6 +81,8 @@ module Duel
 
       settings = @settings = catch(:version) { parse } or return 0
       config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
+      # (.duel.rb's, but where an option says: c.limit, unless --limit.)
+      config.run_settings.each { |name, value| set(settings, name, value) unless @given.include?(name) }
       Lock.hold(config.state) { compare(config, settings) }
     rescue Error => e
       @err.puts "duel: #{e}"
@@ -127,6 +129,7 @@ module Duel
 
     # The settings, from the environment and then the options.
     def parse
+      @given = [] # (the RUN_SETTINGS options given: see Config)
       settings = Settings.defaults
       settings.jobs = [Etc.nprocessors / CPUS_PER_LANE, 1].max
       settings.fit = %i[jobs processes]
@@ -491,6 +494,25 @@ module Duel
     # The environment's variables that are set (not empty).
     def variables = @env.reject { |_, value| value.empty? }
 
+    # Sets +settings+' +name+d setting (one of Config::RUN_SETTINGS) to
+    # +value+, an option's, over .duel.rb's: one it doesn't take is an
+    # invalid option.
+    def given(settings, name, value)
+      problem = Config.problem(name, value)
+      # (OptionParser says which option.)
+      raise OptionParser::InvalidArgument, "#{value}: give #{problem}" if problem
+
+      set(settings, name, value)
+      @given << name
+    end
+
+    # Sets +settings+' +name+d setting to +value+: a number of processes,
+    # that many, not as many as fit in memory.
+    def set(settings, name, value)
+      settings[name] = value
+      settings.fit -= [name]
+    end
+
     def parser(settings)
       OptionParser.new do |o|
         o.banner = USAGE
@@ -507,16 +529,20 @@ module Duel
           settings.jobs = v
           settings.fit -= [:jobs]
         end
-        o.on("--processes N", Integer, "Worker processes per version (default: #{PROCESSES}, as many as fit in memory)") do |v|
-          settings.processes = v
-          settings.fit -= [:processes]
+        o.on("--processes N", Integer, "Worker processes per version (default: c.processes, or #{PROCESSES}, as many as fit in memory)") do |v|
+          given(settings, :processes, v)
         end
-        o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: #{TIMEOUT.round})") { |v| settings.timeout = v }
-        o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: 7200)") do |v|
-          settings.time_limit = v
+        o.on("--timeout SECONDS", Float, "Most a worker may take to load or answer (default: c.timeout, or #{TIMEOUT.round})") do |v|
+          given(settings, :timeout, v)
         end
-        o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: 1.02)") { |v| settings.limit = v }
-        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)") { |v| settings.warm = v }
+        o.on("--time-limit SECONDS", Float, "Most a run measures for, then fails what's unmeasured or looks worse (default: c.time_limit, or 7200)") do |v|
+          given(settings, :time_limit, v)
+        end
+        o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: c.limit, or 1.02)") { |v| given(settings, :limit, v) }
+        o.on("--confidence LEVEL", Float, "Confidence of every interval (default: c.confidence, or 0.99)") { |v| given(settings, :confidence, v) }
+        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)") do |v|
+          given(settings, :warm, v)
+        end
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",
           "path (default: c.ruby, or this one)") { |v| settings.ruby = (v == "version-file") ? :version_file : v }
         o.on("--force", "Compare even if nothing watched changed") { settings.force = true }

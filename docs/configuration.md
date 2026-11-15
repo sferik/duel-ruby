@@ -20,6 +20,7 @@ Duel.configure do |c|
   c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
   c.push_base = :last_passed             # what CI compares a push with (default: :before)
   c.accept_label = "duel: accept"        # a pull request label that accepts a regression
+  c.limit = 1.05                         # a run's settings, as their options (see Set a run's settings)
   c.use :redis                           # a plugin (see Use plugins)
 
   # How a worker loads one version of your code, instead of the library.
@@ -178,6 +179,37 @@ With `:last_passed`, the slowdowns add up until they fail a push. After
 a regression, every push fails until one is no slower, or until you
 move the branch to accept the regression:
 `git push origin main:duel/passed/main`.
+
+## Set a run's settings
+
+The settings that `duel`'s options set can be set in `.duel.rb` too, so
+that a run in CI, where the workflow runs `duel` with no options, uses
+them. An option given still wins: `duel --limit 1.1` runs with 1.1,
+whatever `c.limit` says.
+
+```ruby
+Duel.configure do |c|
+  c.limit = 1.05         # --limit: the ratio above which a timing is slower (default: 1.02)
+  c.confidence = 0.995   # --confidence: of every interval (default: 0.99)
+  c.processes = 6        # --processes: workers of each version (default: 12, 8 on JRuby, as many as fit)
+  c.timeout = 120        # --timeout: seconds a worker may take to load or answer (default: 60, 300 on JRuby)
+  c.time_limit = 3600    # --time-limit: seconds a run measures for (default: 7200)
+  c.warm = 10            # --warm: seconds of warm-up for each benchmark (default: until steady)
+end
+```
+
+Each is `nil` by default, for Duel's own default, and one that isn't a
+number in its range fails the run, as its option does. A measure's own
+limit (`c.measure("cpu", limit: 1.1)`: see [Metric settings](#metric-settings))
+is that measure's, whatever `c.limit` says.
+
+A higher `c.confidence` fails less code that isn't slower, but takes
+more samples to fail code that is, and more workers to judge each
+benchmark over the workers: 5 of each version at 0.99, 6 at 0.995, and 7
+at 0.999. With fewer, Duel judges by pairs of samples instead. A number
+of processes set (`c.processes`, or `--processes`) is that many,
+however much memory the machine has, where Duel's own default is as
+many as fit.
 
 ## Prepare each worker
 

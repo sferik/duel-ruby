@@ -464,6 +464,21 @@ class TestingTest < DuelTest
   # A warm-up where a JIT needs one (see EndToEnd#settings).
   def warm = Duel::JIT_WARM.zero? ? 0.0 : 1.5
 
+  # .duel.rb's run settings (c.limit, say), but where compare is given
+  # one, and its processes: a test's are few.
+  def test_compare_takes_the_config_files_run_settings
+    candidate = FileUtils.mkdir_p(File.join(tmpdir, "candidate")).first
+    File.write(File.join(candidate, ".duel.rb"), "Duel.configure { |c| c.limit = 1.3; c.warm = 0.5; c.processes = 9 }")
+    given = []
+    runner = Struct.new(:run) { def passed?(_) = true }.new([])
+    stub(Duel::Runner, :new, ->(_, run, *, **) { (given << run.to_h.slice(:limit, :warm, :processes)) && runner }) do
+      Duel::Testing.compare(tmpdir, candidate)
+      Duel::Testing.compare(tmpdir, candidate, warm: 2.0)
+    end
+
+    assert_equal [{limit: 1.3, warm: 0.5, processes: 2}, {limit: 1.3, warm: 2.0, processes: 2}], given, "a test's few processes, not c.processes"
+  end
+
   # Whole comparisons, in worker processes (two of each version, unless
   # the settings given say): the candidate's .duel.rb, its workers
   # prepared, and the configuration as it was after.

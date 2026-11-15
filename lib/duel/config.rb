@@ -128,6 +128,113 @@ module Duel
       @fail_on = runs
     end
 
+    # The settings of a run that .duel.rb can set too, as the options of
+    # their names do (--limit, --confidence, --processes, --timeout,
+    # --time-limit, --warm): for a run not given that option, as in CI,
+    # where the workflow runs Duel with none. Each is nil, by default, for
+    # Duel's own default. For each, what it takes, and whether a value is
+    # that: a number, as a Float, but a number of processes, a whole one.
+    RUN_SETTINGS = {
+      limit: ["a ratio of 1 or more", ->(value) { value >= 1 }],
+      confidence: ["a level above 0 and below 1", ->(value) { value.positive? && value < 1 }],
+      processes: ["a whole number, 1 or more", ->(value) { value.is_a?(Integer) && value.positive? }],
+      timeout: ["seconds, more than 0", ->(value) { value.positive? }],
+      time_limit: ["seconds, more than 0", ->(value) { value.positive? }],
+      warm: ["seconds, 0 or more", ->(value) { value >= 0 }]
+    }.freeze #: Hash[Symbol, [String, ^(Numeric) -> bool]]
+
+    # The ratio above which a timing is slower (--limit), for every
+    # measure without a limit of its own (see #measure): 1.02 by default.
+    #
+    #   c.limit = 1.05
+    attr_reader :limit
+
+    def limit=(ratio)
+      @limit = Config.setting(:limit, ratio)
+    end
+
+    # The confidence of every interval Duel judges with (--confidence):
+    # 0.99 by default. A higher one fails less code that isn't slower, and
+    # takes more samples, and workers, to fail what is: judging by process
+    # (see Lane.by_process?) takes 5 workers of each version at 0.99, and
+    # 7 at 0.999.
+    #
+    #   c.confidence = 0.995
+    attr_reader :confidence
+
+    def confidence=(level)
+      @confidence = Config.setting(:confidence, level)
+    end
+
+    # The worker processes of each version (--processes): 12 by default (8
+    # on JRuby and TruffleRuby), as many as fit in memory. One set is that
+    # many, however much memory there is.
+    #
+    #   c.processes = 6
+    attr_reader :processes
+
+    def processes=(count)
+      @processes = Config.setting(:processes, count)
+    end
+
+    # The most seconds a worker may take to load, or to answer a request,
+    # before it's taken for hung (--timeout): 60 by default, 300 on JRuby
+    # and TruffleRuby.
+    #
+    #   c.timeout = 120
+    attr_reader :timeout
+
+    def timeout=(seconds)
+      @timeout = Config.setting(:timeout, seconds)
+    end
+
+    # The most seconds a run measures for, before it fails what it hasn't
+    # measured, or what looks worse (--time-limit): 7200 by default.
+    #
+    #   c.time_limit = 3600
+    attr_reader :time_limit
+
+    def time_limit=(seconds)
+      @time_limit = Config.setting(:time_limit, seconds)
+    end
+
+    # The seconds each benchmark warms up for, before it's measured
+    # (--warm), or nil (the default) for until it's steady, for up to a
+    # minute on JRuby and TruffleRuby, ten seconds with YJIT on, and none
+    # otherwise.
+    #
+    #   c.warm = 10
+    attr_reader :warm
+
+    def warm=(seconds)
+      @warm = Config.setting(:warm, seconds)
+    end
+
+    # +value+, set as the RUN_SETTINGS +name+d, as that takes it (a Float,
+    # or an Integer), or nil. One that's neither fails, saying what to
+    # give.
+    # @api private
+    def self.setting(name, value)
+      return if value.nil?
+
+      problem = problem(name, value)
+      raise Error, "c.#{name} = #{value.inspect}: give #{problem}, or nil" if problem
+
+      (name == :processes) ? value : Float(value)
+    end
+
+    # What to give instead of +value+ for the RUN_SETTINGS +name+d, or
+    # nil if it's one that takes.
+    # @api private
+    def self.problem(name, value)
+      what, valid = RUN_SETTINGS.fetch(name)
+      what unless value.is_a?(Numeric) && valid.call(value)
+    end
+
+    # The RUN_SETTINGS .duel.rb set, by name.
+    # @api private
+    def run_settings = RUN_SETTINGS.to_h { |name| [name, public_send(name)] }.compact
+
     # The name of a label that accepts a regression in a pull request
     # (or nil, the default, for none): on GitHub Actions, the workflow
     # that `duel init` writes passes Duel the pull request's labels

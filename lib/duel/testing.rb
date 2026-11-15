@@ -217,6 +217,9 @@ module Duel
         run = Settings.defaults
         run.config_path = config_path if File.exist?(config_path)
         run.processes = 2
+        # (.duel.rb's run settings, c.limit say, but where one's given, and
+        # its processes: a test's are few.)
+        config.run_settings.except(:processes).each { |name, value| run[name] = value }
         settings.each { |setting, value| run[setting] = value }
         out = StringIO.new
         runner = Runner.new(config, run, base, out: out)

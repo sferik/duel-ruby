@@ -44,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   works there too, though Windows can't read a held lock, so another
   run's isn't named. There are no instructions there. The tests run on
   macOS and Windows in CI too.
+- `.duel.rb` sets a run's settings too, as their options do, for a run
+  in CI, where the workflow runs `duel` with no options: `c.limit`,
+  `c.confidence`, `c.processes`, `c.timeout`, `c.time_limit` and
+  `c.warm`, each nil for Duel's own default, and an option given over
+  it. The confidence of every interval (0.99) has an option of its own,
+  `--confidence`. An option given a value out of its range (a
+  confidence of 1.5, or a limit below 1) fails as an invalid argument.
 - JRuby 10 on Windows. Its `jruby.exe` starts the JVM in a process of
   its own, so Duel starts each worker's JVM, and a process benchmark's
   of `ruby:` code, itself, with the command `jruby -Xcommand` prints:
