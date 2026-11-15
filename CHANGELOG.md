@@ -109,6 +109,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A process benchmark's run that doesn't end within the timeout is
   killed, where its reply could be waited for without end once the pipe
   said it was ready (as JRuby's on Windows says before it is).
+- A benchmark's counts are taken once it's timed, not right after its
+  warm-up: on JRuby, the bytes it allocates fall as the JIT compiles it,
+  at different times in different workers, so a short warm-up (`--warm`
+  or `c.warm`) could find one version's workers allocating a small
+  object or two more than the other's, and fail it
+  (https://github.com/sferik/duel-ruby/issues/6).
 - A memory sample's peak can't count memory outside an iteration: a
   reading could land between a pause's changes, on JRuby, whose threads
   run at once.

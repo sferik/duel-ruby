@@ -318,10 +318,12 @@ a few more. And an allocation the JIT does away with in every worker
 isn't counted at all, as it isn't made. Turning escape analysis off
 would count every allocation, but makes CPU time some three times
 noisier, so Duel leaves it on. The count falls as the JIT compiles the
-code, so it's taken after the warm-up. With fewer than five workers of
-each version, it's each version's fewest in 10 samples, as a sample now
-and then is some 31 bytes an iteration more than the rest. TruffleRuby
-has no allocation count. Neither has an instruction count or profiles.
+code, at different times in different workers, so it's taken after the
+warm-up and the timing both, when the JIT has had longest. With fewer
+than five workers of each version, it's each version's fewest in 10
+samples, as a sample now and then is some 31 bytes an iteration more
+than the rest. TruffleRuby has no allocation count. Neither has an
+instruction count or profiles.
 TruffleRuby has peak memory only on Linux. JRuby measures peak memory in
 the JVM's heap in use, on any operating system, because the JVM takes
 memory for its heap ahead of time, so resident memory barely moves as

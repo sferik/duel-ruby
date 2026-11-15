@@ -534,9 +534,13 @@ module Duel
         floors = Array.new(WARMUP) { |i| pair(name, n, i) }
       end
       result.n = n
-      count(name, n, result) unless timings_only
       peak_memory(name, n, result) if benchmark.fetch("peak_memory")
       judge(name, n, floors, result)
+      # (Counted once it's timed: on JRuby, the bytes a benchmark allocates
+      # can fall as its JIT compiles it, so a count right after a short
+      # warm-up could find one version's workers further along than the
+      # other's.)
+      count(name, n, result) unless timings_only
     end
 
     # A process benchmark's samples (see DSL#duel_process): each the
@@ -897,7 +901,9 @@ module Duel
           base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?, runs: 1, count: true)
           fewest!(fewest, "baseline", i, base)
           fewest!(fewest, "candidate", j, candidate)
-          result.note(base, candidate)
+          # (What metrics said of its counts alone: a timing's is the timed
+          # pairs'.)
+          base.fetch("counted").each_key { |metric| result.note(base, candidate, metric) }
         end
       end
       metrics.each do |spec|

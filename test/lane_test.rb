@@ -496,6 +496,42 @@ class LaneTest < DuelTest
     end
   end
 
+  # A benchmark is counted once it's timed, over pairs or by process: on
+  # JRuby, the bytes it allocates fall as its JIT compiles it, so counts
+  # right after a short warm-up could catch one version's workers further
+  # along than the other's.
+  def test_counted_once_timed
+    [2, 5].each do |processes|
+      with_fake_workers do |workers|
+        workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS]
+        workers.benchmark("b") { |_, n, _| {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => 2}, "heap" => 0} }
+        result, = compare(workers, processes: processes)
+        counting = samples(workers).map(&:last)
+
+        assert_equal 2, result.counted.fetch("allocations").fetch("baseline")
+        assert_equal [true], counting.drop_while { |count| !count }.uniq, "#{processes} processes: no timed sample after the counts"
+        assert_includes counting, false
+      end
+    end
+  end
+
+  # Judged by process, a count's samples say what they say of its counts
+  # alone: a timing's details are the timed pairs', which come first.
+  def test_a_counts_samples_keep_a_timings_details
+    with_fake_workers do |workers|
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS]
+      workers.benchmark("b") do |_, n, label|
+        {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => 2}, "heap" => 0,
+         "details" => {"cpu" => "said by #{label}", "allocations" => "counted by #{label}"}}
+      end
+      result, = compare(workers, processes: 5)
+
+      assert_equal({"baseline" => "said by base-5", "candidate" => "said by head-3"}, result.details.fetch("cpu"), "the last timed pair's")
+      assert_equal({"baseline" => "counted by base-5", "candidate" => "counted by head-2"}, result.details.fetch("allocations"),
+        "the last count's")
+    end
+  end
+
   # What metrics said of the samples (Metric#details), timed and counted.
   def test_details_noted
     with_fake_workers do |workers|

@@ -105,7 +105,10 @@ class EndToEndComparingTest < DuelTest
     RUBY
     base = project(File.join(tmpdir, "base"))
     candidate = project(File.join(tmpdir, "candidate"), benchmarks: benchmarks)
-    results, = compare(base, candidate, warm: 0.2)
+    # (Briefly on CRuby, to warm up at all, but a JIT's usual time on JRuby:
+    # its bytes allocated fall as its JIT compiles, at different times in
+    # different workers, which a fifth of a second can catch.)
+    results, = compare(base, candidate, warm: Duel::JIT_WARM.zero? ? 0.2 : 1.5)
     counts = results.find { |r| r.name == "counts" }
 
     process = results.find { |r| r.name == "process" }
