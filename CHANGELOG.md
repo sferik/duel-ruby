@@ -80,6 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Duel.unix_sockets?`, for a plugin's default: whether its server can
   listen on a Unix socket that a worker can reach (not on Windows, nor
   where Ruby has none), or should listen on that port.
+- `Duel.windows?`, for a plugin that does something differently on
+  Windows. The PostgreSQL plugin uses it for its `pg_ctl:` default.
 
 ### Changed
 

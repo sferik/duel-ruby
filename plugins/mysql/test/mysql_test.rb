@@ -612,7 +612,7 @@ class MySQLTest < PluginTest
 
   # Unix's alone: a Unix socket's (Windows's MySQL has none), and the
   # tests' links and shell scripts.
-  def unix! = (skip "Unix's alone: see the tcp tests" if Duel::Platform::WINDOWS)
+  def unix! = (skip "Unix's alone: see the tcp tests" if Duel.windows?)
 
   # With +tcp+ (Windows's, by default): on a port of its own, of
   # 127.0.0.1's alone, its URL host and port, with no socket, which the
@@ -638,15 +638,13 @@ class MySQLTest < PluginTest
 
   # On Windows, by default.
   def test_on_a_port_on_windows
-    windows = Duel::Platform::WINDOWS
-    Duel::Platform.send(:remove_const, :WINDOWS)
-    Duel::Platform.const_set(:WINDOWS, true)
+    windows = Duel.method(:windows?)
+    Duel.define_singleton_method(:windows?) { true }
     url = prepare(config) { |env| env.fetch("DUEL_MYSQL_URL") }
 
     assert_match %r{\Amysql2://root@127\.0\.0\.1:\d+/duel\z}, url
   ensure
-    Duel::Platform.send(:remove_const, :WINDOWS)
-    Duel::Platform.const_set(:WINDOWS, windows)
+    Duel.define_singleton_method(:windows?, windows)
   end
 
   # A statement that fails raises its error (its code too), and the

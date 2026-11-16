@@ -207,6 +207,10 @@ module Duel
   # Resource#port).
   def self.unix_sockets?: (?windows: bool, ?unix: bool) -> bool
 
+  # Whether Duel runs on Windows: for a plugin to do what it does
+  # differently there.
+  def self.windows?: () -> bool
+
   self.@defining_file: String?
 
   # The file of benchmarks that called the DSL method running, if one is.

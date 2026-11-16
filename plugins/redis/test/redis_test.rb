@@ -36,7 +36,7 @@ class RedisTest < PluginTest
 
   # Unix sockets: there's no Redis for Windows whose Windows's Ruby can
   # reach (see test_a_server_on_a_port).
-  def unix_sockets! = (skip "Windows's Redis has Unix sockets of its own, not Windows's" if Duel::Platform::WINDOWS)
+  def unix_sockets! = (skip "Windows's Redis has Unix sockets of its own, not Windows's" if Duel.windows?)
 
   def test_a_server_of_the_workers_own
     unix_sockets!
@@ -89,15 +89,13 @@ class RedisTest < PluginTest
 
   # On Windows, by default.
   def test_on_a_port_on_windows
-    windows = Duel::Platform::WINDOWS
-    Duel::Platform.send(:remove_const, :WINDOWS)
-    Duel::Platform.const_set(:WINDOWS, true)
+    windows = Duel.method(:windows?)
+    Duel.define_singleton_method(:windows?) { true }
     url = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_REDIS_URL") }
 
     assert_match %r{\Aredis://}, url
   ensure
-    Duel::Platform.send(:remove_const, :WINDOWS)
-    Duel::Platform.const_set(:WINDOWS, windows)
+    Duel.define_singleton_method(:windows?, windows)
   end
 
   def test_its_options

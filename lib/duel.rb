@@ -228,6 +228,13 @@ module Duel
     # @api private
     def plugins = @plugins ||= {} #: Hash[Symbol, Module & _Plugin]
 
+    # Whether Duel runs on Windows: for a plugin to do what it does
+    # differently there (start its server another way, say). For a
+    # plugin's default:
+    #
+    #   def self.configure(config, pg_ctl: Duel.windows?)
+    def windows? = Platform::WINDOWS
+
     # Whether a server that a plugin starts for a worker can listen on a
     # Unix socket (in the worker's directory) that a worker can reach:
     # not on Windows (+windows+), whose builds of servers (Cygwin's,
@@ -237,7 +244,7 @@ module Duel
     # plugin's default:
     #
     #   def self.configure(config, tcp: !Duel.unix_sockets?)
-    def unix_sockets?(windows: Platform::WINDOWS, unix: Control::UNIX) = !windows && unix
+    def unix_sockets?(windows: windows?, unix: Control::UNIX) = !windows && unix
 
     # The file of benchmarks that called the DSL method running (see
     # DSL.add), if one is: the file that what it defines is filed

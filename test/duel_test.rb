@@ -8,6 +8,7 @@ class DuelModuleTest < DuelTest
   cover "Duel.load_config"
   cover "Duel.benchmarks"
   cover "Duel.unix_sockets?"
+  cover "Duel.windows?"
 
   def test_version
     assert_match(/\A\d+\.\d+\.\d+\z/, Duel::VERSION)
@@ -54,6 +55,14 @@ class DuelModuleTest < DuelTest
     refute Duel.unix_sockets?(windows: true, unix: true)
     refute Duel.unix_sockets?(windows: false, unix: false)
     refute with_constants(Duel::Platform, WINDOWS: true) { Duel.unix_sockets?(unix: true) }, "by default, on Windows"
+    refute stub(Duel, :windows?, -> { true }) { Duel.unix_sockets?(unix: true) }, "by default, where Duel.windows? says it's Windows"
+  end
+
+  # Whether it's Windows, for a plugin.
+  def test_windows
+    assert_equal Duel::Platform::WINDOWS, Duel.windows?
+    assert with_constants(Duel::Platform, WINDOWS: true) { Duel.windows? }
+    refute with_constants(Duel::Platform, WINDOWS: false) { Duel.windows? }
   end
 end
 

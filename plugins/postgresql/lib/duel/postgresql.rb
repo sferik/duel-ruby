@@ -80,7 +80,7 @@ module Duel
     # Returns the plugin's own connection to it, a worker's (see
     # Config#in_worker, and in tests, Duel::Testing.in_worker).
     def self.configure(config, bin: ENV.fetch("DUEL_POSTGRESQL_BIN", nil), settings: {}, setup: nil, env: %w[DATABASE_URL],
-      pg_ctl: Platform::WINDOWS)
+      pg_ctl: Duel.windows?)
       config.prepare(:worker) do |w|
         require_pg
         programs = File.expand_path(bin || Cluster.find_bin ||
@@ -447,7 +447,7 @@ module Duel
       # runners) is the Administrators group's, which pg_ctl starts
       # postgres without (it drops an administrator's rights), so postgres
       # couldn't open its own files. (initdb's are the user's already.)
-      def self.grant(resource, data, windows: Platform::WINDOWS)
+      def self.grant(resource, data, windows: Duel.windows?)
         resource.run("icacls", data, "/grant", "#{ENV.fetch("USERNAME")}:(OI)(CI)F", "/T", "/Q") if windows
       end
 

@@ -91,6 +91,12 @@ When you write a plugin, follow these guidelines:
   Windows, where a server's own build often has Unix sockets that Ruby
   can't reach, and where Ruby has no Unix sockets at all (JRuby on
   Windows).
+- If the plugin does something differently on Windows, ask
+  `Duel.windows?`, for example
+  `def self.configure(config, pg_ctl: Duel.windows?)`, not
+  `Duel::Platform` or `RbConfig` yourself: Duel's internals can change
+  in any release, and `Duel.windows?` won't. A version of Duel before
+  0.2.0 doesn't have it.
 
 > [!IMPORTANT]
 > A helper that's meant for setup, such as one that runs a query, must
