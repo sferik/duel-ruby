@@ -449,10 +449,12 @@ module Duel
     def ruby_version = (RUBY_VERSION[/\A\d+\.\d+/] unless version_file)
 
     # The root of the project's git repository: the project's own
-    # directory, outside one.
+    # directory, outside one. (Asked once: the templates ask often.)
     def repository
-      top, _, status = Spawn.open3(:capture3, "git", "-C", @root, "rev-parse", "--show-toplevel")
-      status.success? ? top.chomp : @root
+      @repository ||= begin
+        top, _, status = Spawn.open3(:capture3, "git", "-C", @root, "rev-parse", "--show-toplevel")
+        status.success? ? top.chomp : @root
+      end
     end
 
     # The project's directory, from its repository's root ("gems/parser"),
@@ -462,10 +464,13 @@ module Duel
       path unless path == "."
     end
 
-    # perf.yml, or for a project in a subdirectory of its repository,
-    # perf-<its path>.yml (perf-gems-parser.yml), so that each of a
-    # monorepo's projects can have its own.
-    def workflow_name = working_directory&.then { |dir| "perf-#{dir.tr("/", "-")}.yml" } || "perf.yml"
+    # +name+, or for a project in a subdirectory of its repository,
+    # +name+-<its path> (perf-gems-parser), so that each of a monorepo's
+    # projects has its own.
+    def suffixed(name) = [name, working_directory&.tr("/", "-")].compact.join("-")
+
+    # perf.yml, or for a project in a subdirectory, perf-<its path>.yml.
+    def workflow_name = "#{suffixed("perf")}.yml"
 
     # What marks the workflow's comment on a pull request.
     def marker = ["duel", working_directory].compact.join(" ")
@@ -473,7 +478,7 @@ module Duel
     # Where the GitLab CI jobs are, from the repository's root:
     # .gitlab/duel.gitlab-ci.yml, or for a project in a subdirectory,
     # .gitlab/duel-<its path>.gitlab-ci.yml.
-    def gitlab_file = File.join(".gitlab", "#{["duel", working_directory&.tr("/", "-")].compact.join("-")}.gitlab-ci.yml")
+    def gitlab_file = File.join(".gitlab", "#{suffixed("duel")}.gitlab-ci.yml")
 
     # The GitLab CI job's name: duel, or for a project in a subdirectory,
     # duel:<its path>, so each of a monorepo's projects has its own.
@@ -489,11 +494,11 @@ module Duel
 
     # What names the branches that mark the last commit Duel passed in a
     # push, before the branch pushed's name (see Baseline#passed_branch).
-    def passed_branch = ["duel/passed", working_directory&.tr("/", "-")].compact.join("-")
+    def passed_branch = suffixed("duel/passed")
 
     # The branch that holds the workflow's badge: duel/badge, or for a
     # project in a subdirectory, duel/badge-<its path>.
-    def badge_branch = ["duel/badge", working_directory&.tr("/", "-")].compact.join("-")
+    def badge_branch = suffixed("duel/badge")
 
     # Duel's reusable workflows, which the workflows `duel init --reusable`
     # writes call: .github/workflows/duel.yml (the Perf workflow's jobs)

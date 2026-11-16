@@ -29,6 +29,7 @@ module Duel
     end
 
     @argv: Array[String]
+    @repository: String?
     @out: _Output
     @err: _Output
     @input: _Input
@@ -176,6 +177,9 @@ module Duel
 
     # The project's directory, from its repository's root, or nil.
     def working_directory: () -> String?
+
+    # +name+, or for a project in a subdirectory, +name+-<its path>.
+    def suffixed: (String name) -> String
 
     def workflow_name: () -> String
 
