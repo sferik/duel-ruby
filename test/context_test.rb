@@ -56,8 +56,6 @@ class ContextTest < DuelTest
     assert_equal %w[cpu], s.timed.keys
     assert_operator s.timed.fetch("cpu"), :>, 0
     assert_equal((RUBY_ENGINE == "ruby") ? %w[allocations] : [], s.counted.keys)
-    assert s.started
-    assert s.stopped
   end
 
   def test_a_sample_tells_about_how_much_it_allocated
@@ -139,7 +137,6 @@ class ContextTest < DuelTest
     harness.run(5, s)
 
     assert_equal({"ticks" => 6}, s.counted, "1 before, 5 after: not the 100 between")
-    assert s.stopped
   end
 
   # Measuring: inside a sample, but not its untimed blocks, its once,
@@ -202,7 +199,6 @@ class ContextTest < DuelTest
     harness = Duel::Harness.new(definition { @untimed = untimed { :ran } })
     harness.run(2, trial)
 
-    assert_equal [true, true], [trial.started, trial.stopped]
     assert_equal :ran, harness.context.instance_variable_get(:@untimed)
   end
 
@@ -227,7 +223,6 @@ class ContextTest < DuelTest
     s = sample(harness)
 
     assert_raises(RuntimeError) { harness.run(1, s) }
-    assert s.stopped
     refute GC.disable.tap { GC.enable }, "the GC is back on"
   end
 
@@ -543,8 +538,6 @@ class ContextTest < DuelTest
     sample = Duel::MemorySample.new
     harness.run(1, sample)
 
-    assert sample.started
-    assert sample.stopped
     sample.peak
   ensure
     held&.each(&:free)
@@ -560,8 +553,6 @@ class ContextTest < DuelTest
     sample = Duel::ProfileSample.new
     harness.run(1, sample)
 
-    assert sample.started
-    assert sample.stopped
     # (JRuby's collector can't be held off.)
     assert_equal [RUBY_ENGINE == "ruby", :untimed], held
     refute GC.disable, "and let go"

@@ -189,20 +189,12 @@ module Duel
     @timed: Hash[String, Metric::value]
     @counted: Hash[String, Metric::value]
     @details: Hash[String, String]
-    @started: true?
-    @stopped: true?
     @heap: Integer
 
     # What a metric learns of the sample: its benchmark and its iterations.
     attr_reader benchmark: Definition
 
     attr_reader n: Integer
-
-    # @api private
-    attr_reader started: true?
-
-    # @api private
-    attr_reader stopped: true?
 
     # Each timed measure's total, by name.
     # @api private
@@ -284,16 +276,9 @@ module Duel
   # A run of a benchmark that measures nothing: to see that it runs.
   # @api private
   class Trial
-    @started: true?
-    @stopped: true?
+    def start: () -> void
 
-    attr_reader started: true?
-
-    attr_reader stopped: true?
-
-    def start: () -> true
-
-    def stop: () -> true
+    def stop: () -> void
 
     def pause: [T] () { () -> T } -> T
 
@@ -305,8 +290,6 @@ module Duel
   # A stretch of a benchmark run for its peak memory.
   # @api private
   class MemorySample
-    @started: true?
-    @stopped: true?
     # Resident memory where it started, plus what paused blocks left.
     @base: Integer
     # The most above it the watcher saw, outside paused blocks.
@@ -316,10 +299,6 @@ module Duel
     @unwatched: Integer
     @watcher: Thread
     @lock: Thread::Mutex
-
-    attr_reader started: true?
-
-    attr_reader stopped: true?
 
     # Bytes (once it's stopped).
     attr_reader peak: Integer

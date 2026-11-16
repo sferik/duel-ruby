@@ -217,8 +217,6 @@ module Duel
       @options: Hash[Symbol, untyped]
       @value: untyped
 
-      attr_reader options: Hash[Symbol, untyped]
-
       attr_accessor value: untyped
 
       def initialize: (Hash[Symbol, untyped] options) -> void

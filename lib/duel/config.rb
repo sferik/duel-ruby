@@ -420,8 +420,6 @@ module Duel
     # A plugin as #use configured it: with +options+, returning +value+.
     # @api private
     class Used
-      attr_reader :options
-
       attr_accessor :value
 
       def initialize(options)

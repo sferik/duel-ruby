@@ -339,7 +339,7 @@ module Duel
     attr_reader :benchmark, :n
 
     # @api private
-    attr_reader :started, :stopped, :timed, :counted, :heap, :details
+    attr_reader :timed, :counted, :heap, :details
 
     # +metrics+: the worker's metric instances, outermost first (CPU, the
     # innermost, last). +counting+: whether counted measures are taken
@@ -365,7 +365,6 @@ module Duel
 
     # @api private
     def start
-      @started = true
       QUIET_GC.call
       @heap = -HEAP.call
       @metrics.each { |m| m.start_sample(self) }
@@ -377,7 +376,6 @@ module Duel
       @heap += HEAP.call
       GC.enable
       @metrics.each { |m| explain(m) }
-      @stopped = true
     end
 
     # Runs the block with the metrics paused (what they measured so far
@@ -484,11 +482,11 @@ module Duel
   # A run of a benchmark that measures nothing: to see that it runs.
   # @api private
   class Trial
-    attr_reader :started, :stopped
+    def start
+    end
 
-    def start = @started = true
-
-    def stop = @stopped = true
+    def stop
+    end
 
     def pause = yield
 
@@ -504,10 +502,9 @@ module Duel
   # millisecond.
   # @api private
   class MemorySample
-    attr_reader :started, :stopped, :peak
+    attr_reader :peak
 
     def start
-      @started = true
       # (Held as the watcher reads, and as it's paused and resumed: on
       # JRuby, whose threads run at once, a reading could land between
       # the two otherwise.)
@@ -527,7 +524,6 @@ module Duel
       @watcher.kill
       @watcher.join
       watch
-      @stopped = true
     end
 
     # Runs the block (an untimed one, or a benchmark's once: see
