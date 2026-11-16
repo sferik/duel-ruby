@@ -31,10 +31,6 @@ module Duel
     # @api private
     STOP_WAIT = 5
 
-    # The lines of its log a failure shows.
-    # @api private
-    LOG_LINES = 10
-
     # What a cache key may be.
     # @api private
     KEY = /\A[\w.-]+\z/
@@ -73,6 +69,11 @@ module Duel
       nil
     end
 
+    # A process #spawn started: its program (what its log is named for),
+    # its log, the signal that stops it, and its Spawn::Child.
+    # @api private
+    Spawned = Data.define(:program, :log, :stop_signal, :child)
+
     # The worker it's for ("base-1", say), or the version ("base",
     # for Config#prepare(:version)), the directory it has of its own, the
     # tree of the version that worker runs, and the Ruby it runs on (see
@@ -107,7 +108,7 @@ module Duel
       @timeout = timeout
       @cache = cache
       @starter = starter
-      @processes = {}
+      @processes = []
       @stops = []
       FileUtils.mkdir_p(dir)
     end
@@ -160,7 +161,7 @@ module Duel
     def spawn(*command, log: nil, stop_signal: "TERM", **options)
       log = log_path(command, log)
       child = start(command, log, options)
-      @processes[child.pid] = [File.basename(log, ".log"), log, stop_signal, child]
+      @processes << Spawned.new(program: File.basename(log, ".log"), log:, stop_signal:, child:)
       child.pid
     end
 
@@ -169,12 +170,10 @@ module Duel
     # succeeds.
     def run(*command, log: nil, **options)
       log = log_path(command, log)
-      status = start(command, log, options).waiter.value #: Process::Status
-      return if status.success?
+      code, signal = start(command, log, options).wait
+      return if code == 0
 
-      code = status.exitstatus
-      signal = status.termsig #: Integer
-      failed("#{File.basename(log, ".log")} #{code ? "exited with #{code}" : "was killed by SIG#{Signal.signame(signal)}"}", log: log)
+      failed("#{File.basename(log, ".log")} #{Spawn.why(code, signal)}", log: log)
     end
 
     # Waits until the block is true: fails if a process spawned dies
@@ -182,15 +181,14 @@ module Duel
     def wait_until
       deadline = monotonic + @timeout
       until yield
-        ended = @processes.find { |_, process| !process.last.alive? }
+        ended = @processes.find { |process| !process.child.alive? }
         if ended
           # (It may have got ready, and ended, since the last look.)
           break if yield
 
-          program, log = ended.last
-          failed("#{program} exited before it was ready", log: log)
+          failed("#{ended.program} exited before it was ready", log: ended.log)
         end
-        failed("not ready within #{@timeout}s", log: @processes.values.last&.fetch(1)) if monotonic > deadline
+        failed("not ready within #{@timeout}s", log: @processes.last&.log) if monotonic > deadline
         sleep POLL
       end
     end
@@ -201,8 +199,7 @@ module Duel
     # Fails, saying it's this resource that did, with the end of +log+ (a
     # path) to say why.
     def failed(message, log: nil)
-      # (Its lines without CRLF's CR, a Windows program's.)
-      tail = log ? File.readlines(log, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join : ""
+      tail = log ? Spawn.tail(log) : ""
       raise Failed, "#{@name}'s resource: #{message}#{"\n#{tail}" unless tail.empty?}"
     end
 
@@ -210,9 +207,9 @@ module Duel
     # @api private
     def stop
       @stops.reverse_each(&:call)
-      @processes.each_value do |_, _, signal, child|
-        child.signal(signal)
-        child.stop(STOP_WAIT)
+      @processes.each do |process|
+        process.child.signal(process.stop_signal)
+        process.child.stop(STOP_WAIT)
       end
     end
 

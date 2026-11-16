@@ -18,8 +18,6 @@ module Duel
   # memory where it can tell, and how it ended.
   # @api private
   class ProcessSample
-    # The lines of its output a failure shows.
-    LOG_LINES = 10
     # Seconds the Ruby process of its own may take to end once its input
     # is closed, before it's killed, with what it started (see #stop).
     STOP_WAIT = 10
@@ -74,8 +72,7 @@ module Duel
       ended = JSON.parse(reply)
       failed = ended.fetch("failed")
       if failed
-        # (Its lines without CRLF's CR, a Windows program's.)
-        tail = File.readlines(@log, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join
+        tail = Spawn.tail(@log)
         raise Failed, "#{@label}: #{command.join(" ")} #{failed}#{"\n#{tail}" unless tail.empty?}"
       end
       {"timed" => {"cpu" => ended.fetch("cpu")}, "counted" => {}, "heap" => 0, "peak" => ended.fetch("peak")}
@@ -132,7 +129,7 @@ module Duel
         else
           taken = cpu - before
         end
-        {"cpu" => taken, "peak" => peak, "failed" => (why(code, signal) unless code == 0)} #: ended
+        {"cpu" => taken, "peak" => peak, "failed" => (Spawn.why(code, signal) unless code == 0)} #: ended
       ensure
         spawned&.close
       end
@@ -142,22 +139,6 @@ module Duel
     def self.cpu
       times = Process.times
       ((times.cutime + times.cstime) * 1_000_000_000).round
-    end
-
-    # How a process that failed ended: its exit status +code+, or the
-    # +signal+ that killed it.
-    def self.why(code, signal)
-      return "exited with #{code}" if code
-
-      killed = signal #: Integer
-      name = begin
-        Signal.signame(killed)
-      # (JRuby's, for a number it has no name for, where CRuby's is nil,
-      # and on Windows for KILL's: https://github.com/jruby/jruby/issues/10080.)
-      rescue ArgumentError
-        nil
-      end
-      name ? "was killed by SIG#{name}" : "was killed by signal #{killed}"
     end
 
     private

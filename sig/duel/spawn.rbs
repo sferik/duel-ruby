@@ -13,6 +13,7 @@ module Duel
     SHELL: Regexp
     COPY_WAIT: Integer
     CHUNK: Integer
+    LOG_LINES: Integer
     STARTER: starter
 
     # A process started, to wait for and stop.
@@ -72,6 +73,13 @@ module Duel
 
       def self.started: (Hash[String, String?] env, Array[String] command, **untyped options) -> Child
     end
+
+    # How a process that failed ended: its exit status, or the signal that
+    # killed it.
+    def self.why: (Integer? code, Integer? signal) -> String
+
+    # The end of the log at +path+, for a failure to show.
+    def self.tail: (String path) -> String
 
     # The log at +path+, opened for a process's output.
     def self.log: (String path, String mode) -> File

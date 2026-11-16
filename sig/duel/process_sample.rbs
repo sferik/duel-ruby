@@ -9,8 +9,6 @@ module Duel
     # What the process of its own reports of a run.
     type ended = { "cpu" => Integer, "peak" => Integer?, "failed" => String? }
 
-    # The lines of its output a failure shows.
-    LOG_LINES: Integer
 
     @label: String
     @env: Hash[String, String?]
@@ -42,9 +40,6 @@ module Duel
 
     # The CPU time of the children waited for so far, in nanoseconds.
     def self.cpu: () -> Integer
-
-    # How a process that failed ended.
-    def self.why: (Integer? code, Integer? signal) -> String
 
     STOP_WAIT: Integer
 

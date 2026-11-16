@@ -636,13 +636,4 @@ class ProcessSampleTest < DuelTest
 
     assert_equal 1_750_000_000, stub(Process, :times, -> { times }) { Duel::ProcessSample.cpu }
   end
-
-  # How it ended: a signal by its name, where Ruby knows one, or else by
-  # its number (JRuby on Windows names few, and raises for the rest).
-  def test_why
-    assert_equal "exited with 4", Duel::ProcessSample.why(4, nil)
-    assert_equal "was killed by SIGKILL", stub(Signal, :signame, ->(signal) { (signal == 9) ? "KILL" : flunk }) { Duel::ProcessSample.why(nil, 9) }
-    assert_equal "was killed by signal 99", stub(Signal, :signame, ->(_) {}) { Duel::ProcessSample.why(nil, 99) }
-    assert_equal "was killed by signal 9", stub(Signal, :signame, ->(_) { raise ArgumentError }) { Duel::ProcessSample.why(nil, 9) }
-  end
 end

@@ -522,6 +522,28 @@ class SpawnTest < DuelTest
     assert_equal [1, [["KILL", 42]]], [gone, killed], "without taskkill, the process alone"
   end
 
+  # How a process that failed ended: a signal by its name, where Ruby
+  # knows one, or else by its number (CRuby's has none for one it doesn't
+  # know, and JRuby's raises, as it does on Windows for KILL).
+  def test_why
+    assert_equal "exited with 4", Duel::Spawn.why(4, nil)
+    assert_equal "was killed by SIGKILL", stub(Signal, :signame, ->(signal) { (signal == 9) ? "KILL" : flunk }) { Duel::Spawn.why(nil, 9) }
+    assert_equal "was killed by signal 99", stub(Signal, :signame, ->(_) {}) { Duel::Spawn.why(nil, 99) }
+    assert_equal "was killed by signal 9", stub(Signal, :signame, ->(_) { raise ArgumentError }) { Duel::Spawn.why(nil, 9) }
+  end
+
+  # The end of a log, for a failure to show: its last LOG_LINES lines,
+  # each with LF alone (a Windows program's CRLF's CR taken out).
+  def test_tail
+    File.binwrite(@log, (1..12).map { |i| "line #{i}\r\n" }.join)
+
+    assert_equal 10, Duel::Spawn::LOG_LINES
+    assert_equal (3..12).map { |i| "line #{i}\n" }.join, Duel::Spawn.tail(@log)
+    File.write(@log, "")
+
+    assert_equal "", Duel::Spawn.tail(@log)
+  end
+
   # A Child's thread is the one it was given, or Process.detach's, made
   # once, as it's asked for, or detached (so that until then, it's waited
   # for as any child: see test_a_child_waited_for).

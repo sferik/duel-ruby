@@ -102,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queries are) is what decides whether reading it is calibrated. It was
   what the metric declared, so what reading it cost was taken away
   still.
+- A command a prepare block runs (`w.run`) that a signal Ruby has no
+  name for killed fails saying the signal's number, as a process
+  benchmark's does. It said "SIG" with nothing after it, and on JRuby,
+  raised an ArgumentError instead.
 - A resource's program given its arguments, in a path with a space in
   it (`C:/Program Files/PostgreSQL/17/bin/initdb`, say), has its log
   named for the program (`initdb.log`), not the path's first word

@@ -12,9 +12,17 @@ module Duel
     # @api private
     STOP_WAIT: Integer
 
-    # The lines of its log a failure shows.
+    # A process #spawn started: its program, its log, the signal that
+    # stops it, and its Spawn::Child.
     # @api private
-    LOG_LINES: Integer
+    class Spawned < Data
+      attr_reader program: String
+      attr_reader log: String
+      attr_reader stop_signal: String
+      attr_reader child: Spawn::Child
+
+      def self.new: (program: String, log: String, stop_signal: String, child: Spawn::Child) -> instance
+    end
 
     # What a cache key may be.
     # @api private
@@ -31,8 +39,8 @@ module Duel
     @env: Hash[String, String?]
     @timeout: Float
     @cache: String
-    # Each process's program, log and stop signal, by pid.
-    @processes: Hash[Integer, [String, String, String, Spawn::Child]]
+    # The processes #spawn started.
+    @processes: Array[Spawned]
     @starter: Spawn::starter
     @stops: Array[^() -> void]
 

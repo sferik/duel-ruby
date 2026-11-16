@@ -37,7 +37,7 @@ class ResourceTest < DuelTest
     @groups.each { |pid| end_group(pid) }
     # (Through Open3, on JRuby on Windows, none leads a group of the test's:
     # each resource's processes, killed with what they started.)
-    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::Spawn.kill_tree(pid) } if Duel::Platform::JRUBY_ON_WINDOWS
+    @made.flat_map { |r| r.instance_variable_get(:@processes) }.each { |process| Duel::Spawn.kill_tree(process.child.pid) } if Duel::Platform::JRUBY_ON_WINDOWS
     Dir.chdir(@dir)
     super
   end
@@ -365,6 +365,12 @@ class ResourceTest < DuelTest
     error = assert_raises(Duel::Failed) { resource.run("sh", "-c", "kill -TERM $$", log: "killed") }
 
     assert_equal "head-1's resource: killed was killed by SIGTERM", error.message
+    # (As JRuby's Signal.signame does for one it has no name for.)
+    unnamed = assert_raises(Duel::Failed) do
+      stub(Signal, :signame, ->(_) { raise ArgumentError }) { resource.run("sh", "-c", "kill -TERM $$", log: "killed") }
+    end
+
+    assert_equal "head-1's resource: killed was killed by signal 15", unnamed.message
   end
 
   # Built once, for every worker (and later runs): the first to ask
@@ -522,7 +528,7 @@ class ResourceThroughOpen3Test < ResourceTest
       stub(Process, :detach, ->(*) { flunk "detached" }) { assert_equal 42, r.spawn(*ruby("1")) }
     end
 
-    assert_same child, r.instance_variable_get(:@processes).fetch(42).last
+    assert_same child, r.instance_variable_get(:@processes).fetch(0).child
     assert_equal :ended, child.waiter.value
     r.instance_variable_get(:@processes).clear
   end

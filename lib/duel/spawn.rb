@@ -36,6 +36,9 @@ module Duel
     # The most of a process's output copied to its log at a time.
     CHUNK = 65_536
 
+    # The lines of a process's log a failure shows (see .tail).
+    LOG_LINES = 10
+
     # A process started, to wait for and stop.
     class Child
       # What Process.kill raises for a process that's gone: ESRCH, or on
@@ -186,6 +189,26 @@ module Duel
     # covers it).
     STARTER = (REDIRECTS && WAITS) ? Directly : ThroughOpen3
     # simplecov:enable
+
+    # How a process that failed ended: its exit status +code+, or the
+    # +signal+ that killed it (as Child#wait says).
+    def self.why(code, signal)
+      return "exited with #{code}" if code
+
+      killed = signal #: Integer
+      name = begin
+        Signal.signame(killed)
+      # (JRuby's, for a number it has no name for, where CRuby's is nil,
+      # and on Windows for KILL's: https://github.com/jruby/jruby/issues/10080.)
+      rescue ArgumentError
+        nil
+      end
+      name ? "was killed by SIG#{name}" : "was killed by signal #{killed}"
+    end
+
+    # The end of the log at +path+, for a failure to show: its last
+    # LOG_LINES lines, without CRLF's CR (a Windows program's).
+    def self.tail(path) = File.readlines(path, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join
 
     # The log at +path+, opened with +mode+, for a process's output: here,
     # so it's there for a failure to show, and binary, so what's copied to
