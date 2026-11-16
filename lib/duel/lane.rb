@@ -180,7 +180,28 @@ module Duel
       worker = WorkerProcess.new(label, version.root, @sides.fetch("candidate").root, @dir,
         config_path: @settings.config_path, env: env, timeout: @settings.timeout, ruby: version.ruby, engine: version.engine)
       keep(@workers, worker)
+      check_jit(side, worker, env, version.engine)
       worker
+    end
+
+    # Fails where +env+, +worker+'s (over the runner's own), turns one of
+    # CRuby's JITs on (see JIT_VARIABLES) and +worker+ doesn't run it: its
+    # benchmarks would be measured without it, and nothing would say so.
+    # A CRuby without the JIT ignores its variable, as one before 4.0, or
+    # built without ZJIT, does RUBY_ZJIT_ENABLE, and so do JRuby and
+    # TruffleRuby, whose JIT is their own.
+    def check_jit(side, worker, env, engine)
+      jit, variable = JIT_VARIABLES.find { |_, name| JIT_ON.include?(env.fetch(name) { ENV[name] }) }
+      return if jit.nil? || worker.jit == jit
+
+      asked = jit.upcase
+      why = if engine == "ruby"
+        (jit == "zjit") ? "a Ruby before 4.0, or one built without ZJIT, ignores RUBY_ZJIT_ENABLE" : "a Ruby built without YJIT ignores RUBY_YJIT_ENABLE"
+      else
+        "#{asked} is CRuby's, and #{engine} has a JIT of its own: unset #{variable} for it"
+      end
+      raise Failed, "the #{side}'s workers run #{worker.jit&.upcase || "no JIT"}, not #{asked} as #{variable} asks, on " \
+        "#{worker.description}: #{why}"
     end
 
     # Fails if a version's workers loaded a native extension that isn't a

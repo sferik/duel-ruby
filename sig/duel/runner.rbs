@@ -16,6 +16,14 @@ module Duel
   # @api private
   CRUBY_JIT_WARM: Float
 
+  # CRuby's JITs, by the variable that turns each on in a worker.
+  # @api private
+  JIT_VARIABLES: Hash[String, String]
+
+  # The values of a JIT's variable that turn it on.
+  # @api private
+  JIT_ON: Array[String]
+
   # The seconds a run measures for, at most, by default.
   # @api private
   TIME_LIMIT: Float

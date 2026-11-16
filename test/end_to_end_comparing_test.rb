@@ -32,6 +32,34 @@ class EndToEndComparingTest < DuelTest
     assert_includes out, "REGRESSION work"
   end
 
+  # RUBY_ZJIT_ENABLE=1, the runner's, turns ZJIT on in every worker,
+  # where this Ruby has it. Where it doesn't, the run fails, saying so,
+  # rather than measure without it.
+  def test_zjit_turned_on
+    skip "CRuby's JIT" unless RUBY_ENGINE == "ruby"
+
+    base = project(File.join(tmpdir, "base"))
+    candidate = project(File.join(tmpdir, "candidate"))
+    out = StringIO.new
+    err = StringIO.new
+    begin
+      ENV["RUBY_ZJIT_ENABLE"] = "1"
+      status = Dir.chdir(candidate) do
+        Duel::CLI.new(["--base", base, "--jobs", "1", "--processes", "3"], env: {}, out: out, err: err).run
+      end
+    ensure
+      ENV.delete("RUBY_ZJIT_ENABLE")
+    end
+    if defined?(RubyVM::ZJIT)
+      assert_equal 0, status, out.string + err.string
+      assert_includes out.string, "1 benchmark in"
+    else
+      assert_equal 2, status
+      assert_includes err.string, "duel: the baseline's workers run no JIT, not ZJIT as RUBY_ZJIT_ENABLE asks, on #{RUBY_DESCRIPTION}: " \
+        "a Ruby before 4.0, or one built without ZJIT, ignores RUBY_ZJIT_ENABLE"
+    end
+  end
+
   def test_the_same_code_passes
     base = project(File.join(tmpdir, "base"))
     candidate = project(File.join(tmpdir, "candidate"))

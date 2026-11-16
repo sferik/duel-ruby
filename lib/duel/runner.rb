@@ -22,12 +22,23 @@ module Duel
 
   # The most seconds each benchmark runs before it's measured where a
   # worker has one of CRuby's JITs on, YJIT or ZJIT (an app may turn one
-  # on as it boots, as Rails does YJIT), unless --warm says. A small
+  # on as it boots, as Rails does YJIT), unless --warm says. Each compiles
+  # a method after 30 calls (YJIT, in a big app, after 120), so a small
   # library's methods are compiled within the warm-up samples, but a big
-  # app's only after YJIT's 120 calls each, more than a slow benchmark's
-  # warm-up samples make.
+  # app's take more calls than a slow benchmark's warm-up samples make.
   # @api private
   CRUBY_JIT_WARM = 10.0
+
+  # CRuby's JITs, by the variable that turns each on in a worker, which
+  # Ruby takes as on where it's one of JIT_ON. A worker whose environment
+  # turns one on must run it (see Lane#check_jit).
+  # @api private
+  JIT_VARIABLES = {"yjit" => "RUBY_YJIT_ENABLE", "zjit" => "RUBY_ZJIT_ENABLE"}.freeze
+
+  # The values of a JIT's variable that turn it on, as Ruby reads them
+  # (exactly: TRUE or on doesn't).
+  # @api private
+  JIT_ON = %w[1 true yes].freeze
 
   # Worker processes of each version, by default: enough for an interval
   # over processes (see Lane#judge_processes), which takes 5 at 99%, and

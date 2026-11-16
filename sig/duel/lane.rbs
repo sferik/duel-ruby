@@ -84,6 +84,10 @@ module Duel
 
     def spawn: (String side, Integer index) -> WorkerProcess
 
+    # Fails where a worker's environment turns on one of CRuby's JITs that
+    # it doesn't run.
+    def check_jit: (String side, WorkerProcess worker, Hash[String, String?] env, String engine) -> void
+
     # Fails if a version's workers loaded a native extension that isn't a
     # build of its own.
     def check_builds: () -> void

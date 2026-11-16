@@ -703,6 +703,51 @@ class LaneTest < DuelTest
     end
   end
 
+  # A lane of one worker of each version, each with +env+, on +engine+.
+  def lane_with(workers, env, engine: "ruby")
+    run = settings
+    Duel::Lane.new(config, run, sides(run).each_value { |side| side.env, side.engine = env, engine }, processes: 1)
+  end
+
+  # A worker whose environment turns on one of CRuby's JITs (as Ruby
+  # reads its variable: 1, true or yes) must run it, or the lane fails,
+  # saying whose, which and why: a Ruby without it ignores the variable,
+  # and so do JRuby and TruffleRuby. The variable may be the runner's
+  # own, unless the version's environment unsets it.
+  def test_a_jit_turned_on_must_run
+    with_fake_workers do |workers|
+      workers.benchmark("b")
+      workers.jit = "zjit"
+      lane_with(workers, {"RUBY_ZJIT_ENABLE" => "1"}).stop
+      workers.jit = nil
+      lane_with(workers, {"RUBY_ZJIT_ENABLE" => "0", "RUBY_YJIT_ENABLE" => "TRUE"}).stop
+      {[{"RUBY_ZJIT_ENABLE" => "yes"}, nil, "ruby"] =>
+         "the baseline's workers run no JIT, not ZJIT as RUBY_ZJIT_ENABLE asks, on #{RUBY_DESCRIPTION}: a Ruby before 4.0, " \
+         "or one built without ZJIT, ignores RUBY_ZJIT_ENABLE",
+       [{"RUBY_YJIT_ENABLE" => "true"}, "zjit", "ruby"] =>
+         "the baseline's workers run ZJIT, not YJIT as RUBY_YJIT_ENABLE asks, on #{RUBY_DESCRIPTION}: a Ruby built without " \
+         "YJIT ignores RUBY_YJIT_ENABLE",
+       [{"RUBY_YJIT_ENABLE" => "1"}, nil, "jruby"] =>
+         "the baseline's workers run no JIT, not YJIT as RUBY_YJIT_ENABLE asks, on #{RUBY_DESCRIPTION}: YJIT is CRuby's, " \
+         "and jruby has a JIT of its own: unset RUBY_YJIT_ENABLE for it"}.each do |(env, jit, engine), said|
+        workers.jit = jit
+        error = assert_raises(Duel::Failed) { lane_with(workers, env, engine: engine) }
+
+        assert_equal said, error.message
+      end
+      workers.jit = nil
+      begin
+        ENV["RUBY_ZJIT_ENABLE"] = "1"
+        error = assert_raises(Duel::Failed) { lane_with(workers, {}) }
+
+        assert_includes error.message, "not ZJIT as RUBY_ZJIT_ENABLE asks", "the runner's"
+        lane_with(workers, {"RUBY_ZJIT_ENABLE" => nil}).stop
+      ensure
+        ENV.delete("RUBY_ZJIT_ENABLE")
+      end
+    end
+  end
+
   # Without --warm, a lane where a worker has YJIT or ZJIT on (an app
   # turned it on, say, or only the candidate did, upgraded) warms up for
   # as long as CRUBY_JIT_WARM says at most, and else as JIT_WARM does

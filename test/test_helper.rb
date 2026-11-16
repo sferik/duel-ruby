@@ -71,6 +71,11 @@ module TestDirs
     # where a mutation of the code leaves it without a repository of its
     # own, so it can't add a worktree, or a branch, to Duel's.)
     ENV["GIT_CEILING_DIRECTORIES"] = File.realpath(ROOTS)
+    # (A JIT turned on for every Ruby, by a variable a developer keeps
+    # set, is no test's: a fake worker runs none, and Duel fails a worker
+    # whose environment turns on a JIT it doesn't run.)
+    ENV.delete("RUBY_YJIT_ENABLE")
+    ENV.delete("RUBY_ZJIT_ENABLE")
     run = Process.pid
     at_exit do
       next unless Process.pid == run # (not in a process forked from it)

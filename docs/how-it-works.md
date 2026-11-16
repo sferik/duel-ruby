@@ -267,12 +267,22 @@ when the gems are installed in the project's directory, as
 
 If one of CRuby's JIT compilers is on in a worker, YJIT or ZJIT (Ruby
 4.0's newer one, experimental there), Duel runs each benchmark until
-it's steady before it measures it, for up to ten seconds. A small
-library's methods are compiled within Duel's first samples, but in a
-big app, YJIT compiles a method only after 120 calls. A JIT can be on
-because you turned it on (`RUBY_YJIT_ENABLE=1` or `RUBY_ZJIT_ENABLE=1`,
-for example), or because your code did as it loaded, as Rails 7.2 and
-later do YJIT. Ruby runs one JIT at most.
+it's steady before it measures it, for up to ten seconds. Each JIT
+compiles a method after 30 calls (YJIT, in a big app, after 120), so a
+small library's methods are compiled within Duel's first samples, but a
+big app's take longer. A JIT can be on because you turned it on
+(`RUBY_YJIT_ENABLE=1` or `RUBY_ZJIT_ENABLE=1`, for example), or because
+your code did as it loaded, as Rails 7.2 and later do YJIT. Ruby runs
+one JIT at most. Under ZJIT, a Rails app still boots: its call to turn
+YJIT on warns that only one JIT can be on, and ZJIT stays on.
+
+A Ruby without the JIT a variable turns on ignores it: one before 4.0,
+or one built without ZJIT, ignores `RUBY_ZJIT_ENABLE`, and JRuby and
+TruffleRuby, whose JIT is their own, ignore both. So where a worker's
+environment turns a JIT on (as Ruby reads the variable: `1`, `true` or
+`yes`) and the worker doesn't run it, Duel fails the run, saying which
+version's workers, which JIT, and on what Ruby, rather than measure
+without it.
 
 A worker is steady once the median of its samples over each of three
 half seconds in a row is no more than 1% faster than over the last half

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Duel fails a run where a worker's environment turns on one of CRuby's
+  JITs (`RUBY_YJIT_ENABLE` or `RUBY_ZJIT_ENABLE`, as `1`, `true` or
+  `yes`) that the worker doesn't run, saying which version's workers,
+  which JIT, and on what Ruby. A Ruby without the JIT ignores its
+  variable, so `zjit: true` on Ruby 3.4, or `yjit: true` on JRuby,
+  measured without it, and nothing said so.
 - ZJIT, the JIT compiler that's experimental in Ruby 4.0 and is due to
   ship in Ruby 4.1, is taken for a JIT as YJIT is: where a worker has
   it on (`RUBY_ZJIT_ENABLE=1`, or turned on as the app loads), Duel
