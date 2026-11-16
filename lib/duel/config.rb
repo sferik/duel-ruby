@@ -134,6 +134,7 @@ module Duel
     # where the workflow runs Duel with none. Each is nil, by default, for
     # Duel's own default. For each, what it takes, and whether a value is
     # that: a number, as a Float, but a number of processes, a whole one.
+    # @api private
     RUN_SETTINGS = {
       limit: ["a ratio of 1 or more", ->(value) { value >= 1 }],
       confidence: ["a level above 0 and below 1", ->(value) { value.positive? && value < 1 }],

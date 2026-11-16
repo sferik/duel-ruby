@@ -58,6 +58,7 @@ module Duel
   # The seconds a run measures for, at most, by default (see
   # Settings#time_limit and Runner#out_of_time?): two hours, as on JRuby,
   # a benchmark can take half a minute to warm up.
+  # @api private
   TIME_LIMIT = 7200.0
 
   # How a run is set up (see Duel::CLI for where each comes from).

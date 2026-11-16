@@ -96,10 +96,9 @@ module Duel
     # Sets #fail_on, or fails for a value it doesn't take.
     def fail_on=: (untyped runs) -> untyped
 
-    # The name of a label that accepts a regression in a pull request, or
-    # nil (the default) for none.
     # The settings of a run that .duel.rb can set too: for each, what it
     # takes, and whether a value is that.
+    # @api private
     RUN_SETTINGS: Hash[Symbol, [String, ^(Numeric) -> bool]]
 
     # The ratio above which a timing is slower (--limit), or nil.
@@ -128,14 +127,19 @@ module Duel
 
     # +value+ for the RUN_SETTINGS +name+d, as that takes it, or nil, or
     # fails saying what to give.
+    # @api private
     def self.setting: (Symbol name, Numeric? value) -> untyped
 
     # What to give instead of +value+, or nil if it's one that takes.
+    # @api private
     def self.problem: (Symbol name, Numeric value) -> String?
 
     # The RUN_SETTINGS .duel.rb set, by name.
+    # @api private
     def run_settings: () -> Hash[Symbol, Float | Integer]
 
+    # The name of a label that accepts a regression in a pull request, or
+    # nil (the default) for none.
     attr_reader accept_label: String?
 
     # Sets #accept_label, or fails for what isn't a name or nil.
