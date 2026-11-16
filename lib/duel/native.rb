@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "rbconfig"
+require_relative "platform"
 
 module Duel
   # What the operating system can tell about this process, through Fiddle:
@@ -9,13 +9,7 @@ module Duel
   # bring the JVM down.
   # @api private
   module Native
-    FIDDLE = RUBY_ENGINE == "ruby"
-    OS = RbConfig::CONFIG["host_os"]
-    CPU = RbConfig::CONFIG["host_cpu"]
-    # What host_os is on Windows: mingw's ("mingw32", "mingw-ucrt") or
-    # mswin's ("mswin64_140").
-    WINDOWS_OS = /mingw|mswin/
-    WINDOWS = OS.match?(WINDOWS_OS)
+    FIDDLE = Platform::CRUBY
     UINT64 = 8 # bytes, the size of every count read
 
     # Loads Fiddle, as the first C function is made (see .function): not
@@ -64,7 +58,7 @@ module Duel
       PERF_FLAG_FD_CLOEXEC = 8
       ATTR_SIZE = 64 # PERF_ATTR_SIZE_VER0
 
-      def self.open(platform: OS, cpu: CPU, syscall: nil)
+      def self.open(platform: Platform::OS, cpu: Platform::CPU, syscall: nil)
         number = SYSCALL[cpu]
         return unless platform.include?("linux") && number
 
@@ -92,14 +86,14 @@ module Duel
       RESIDENT = 64 # offsetof(ri_resident_size)
       INSTRUCTIONS = 248 # offsetof(ri_instructions)
 
-      def self.open(platform: OS, rusage: nil)
+      def self.open(platform: Platform::OS, rusage: nil)
         counter = memory(platform: platform, rusage: rusage)
         counter if counter&.read&.positive?
       end
 
       # The same call, for resident memory alone: where the instructions
       # aren't counted (a virtual machine's, say), the memory is.
-      def self.memory(platform: OS, rusage: nil)
+      def self.memory(platform: Platform::OS, rusage: nil)
         return unless platform.include?("darwin")
 
         rusage ||= Native.function("proc_pid_rusage", %i[INT INT VOIDP], :INT)
@@ -139,7 +133,7 @@ module Duel
       THSC_CPI = 1
       SIZE = 16 # sizeof(struct thsc_cpi)
 
-      def self.open(platform: OS, selfcounts: nil)
+      def self.open(platform: Platform::OS, selfcounts: nil)
         return unless platform.include?("darwin")
 
         selfcounts ||= Native.function("thread_selfcounts", %i[INT VOIDP SIZE_T], :INT)
@@ -173,8 +167,8 @@ module Duel
       STATUS = 64 # sizeof(MEMORYSTATUSEX)
       AVAILABLE = 16 # offsetof(ullAvailPhys)
 
-      def self.open(platform: OS, memory_info: nil)
-        return unless platform.match?(WINDOWS_OS)
+      def self.open(platform: Platform::OS, memory_info: nil)
+        return unless platform.match?(Platform::WINDOWS_OS)
 
         memory_info ||= Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32)
         windows = new(memory_info)
@@ -185,8 +179,8 @@ module Duel
 
       # The bytes of physical memory available, or nil where it can't
       # tell.
-      def self.available(platform: OS, status: nil)
-        return unless platform.match?(WINDOWS_OS)
+      def self.available(platform: Platform::OS, status: nil)
+        return unless platform.match?(Platform::WINDOWS_OS)
 
         status ||= Native.function("GlobalMemoryStatusEx", %i[VOIDP], :INT, library: KERNEL32)
         # (Each struct says its size first, as the call checks.)
@@ -300,8 +294,8 @@ module Duel
       # resident memory it reached (its children's too), in bytes, or nil
       # where that can't be told (without Fiddle, or on Windows, which has
       # no wait4).
-      def self.wait(pid, fiddle: FIDDLE, platform: OS, wait4: nil)
-        return ended(Process.wait2(pid).last) if !fiddle || platform.match?(WINDOWS_OS)
+      def self.wait(pid, fiddle: FIDDLE, platform: Platform::OS, wait4: nil)
+        return ended(Process.wait2(pid).last) if !fiddle || platform.match?(Platform::WINDOWS_OS)
 
         wait4 ||= Native.function("wait4", %i[INT VOIDP INT VOIDP], :INT)
         status = "\0".b * 4
@@ -361,7 +355,7 @@ module Duel
 
     # simplecov:disable JRuby's heap is the JVM's (JRuby's test run covers
     # this).
-    if RUBY_ENGINE == "jruby"
+    if Platform::JRUBY
       module Memory
         # The JVM takes memory for its heap ahead of time, and keeps what it
         # used while it started, so resident memory barely moves as a

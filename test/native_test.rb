@@ -17,7 +17,7 @@ class NativeTest < DuelTest
     [syscall, calls]
   end
 
-  def linux(&) = with_constants(Duel::Native, OS: "x86_64-linux-gnu", CPU: "x86_64", &)
+  def linux(&) = with_constants(Duel::Platform, OS: "x86_64-linux-gnu", CPU: "x86_64", &)
 
   def test_linux_counts_this_threads_user_space_instructions
     syscall, calls = fake_syscall(12_345)
@@ -77,7 +77,7 @@ class NativeTest < DuelTest
     end
   end
 
-  def macos(&) = with_constants(Duel::Native, OS: "arm64-apple-darwin24", &)
+  def macos(&) = with_constants(Duel::Platform, OS: "arm64-apple-darwin24", &)
 
   def test_macos_counts_the_processes_instructions_and_memory
     counter = macos { Duel::Native::MacOS.open(rusage: fake_rusage(99, 8192)) }
@@ -287,7 +287,7 @@ class NativeTest < DuelTest
     found = []
     calls.clear
     ended = stub(Duel::Native, :function, ->(*args) { (found << args) && wait4 }) do
-      with_constants(Duel::Native, FIDDLE: true, OS: "arm64-darwin24") { Duel::Native::Child.wait(42) }
+      with_constants(Duel::Platform, OS: "arm64-darwin24") { with_constants(Duel::Native, FIDDLE: true) { Duel::Native::Child.wait(42) } }
     end
 
     assert_equal [[3, nil, 3000], [["wait4", %i[INT VOIDP INT VOIDP], :INT]]], [ended, found], "wait4(2), found, by default"
@@ -311,7 +311,7 @@ class NativeTest < DuelTest
   # Without Fiddle, Process.wait2's (for that child alone): no peak
   # memory.
   def test_waiting_without_fiddle
-    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Spawn::JAVA
+    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Platform::JRUBY_ON_WINDOWS
 
     other = ended_child
     exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
@@ -368,7 +368,7 @@ class NativeTest < DuelTest
     found = []
     memory_info = fake_memory_info(5)
     windows = stub(Duel::Native, :function, ->(*args, **options) { (found << [args, options]) && memory_info }) do
-      with_constants(Duel::Native, OS: "mswin64_140") { Duel::Native::Windows.open }
+      with_constants(Duel::Platform, OS: "mswin64_140") { Duel::Native::Windows.open }
     end
 
     assert_equal [[["K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT], {library: "kernel32"}]], found
@@ -400,7 +400,7 @@ class NativeTest < DuelTest
     assert_equal [[64, 60, Encoding::BINARY]], calls, "a struct's worth of zeros, saying its size"
     found = []
     available = stub(Duel::Native, :function, ->(*args, **options) { (found << [args, options]) && status }) do
-      with_constants(Duel::Native, OS: "mswin64_140") { Duel::Native::Windows.available }
+      with_constants(Duel::Platform, OS: "mswin64_140") { Duel::Native::Windows.available }
     end
 
     assert_equal [4 << 30, [[["GlobalMemoryStatusEx", %i[VOIDP], :INT], {library: "kernel32"}]]], [available, found]
@@ -539,17 +539,10 @@ class NativeTest < DuelTest
       ["CloseHandle", [%i[INTPTR_T], :INT], {library: "kernel32"}]], found
   end
 
-  def test_windows_platforms
-    assert_match Duel::Native::WINDOWS_OS, "mingw32"
-    assert_match Duel::Native::WINDOWS_OS, "mswin64_140"
-    refute_match Duel::Native::WINDOWS_OS, "darwin24"
-    assert_equal windows?, Duel::Native::WINDOWS, "by the host's system (JRuby's RUBY_PLATFORM is \"java\")"
-  end
-
   # A function of a library of its own (a DLL, on Windows).
   def test_a_libraries_function
-    library = if Duel::Native::WINDOWS then "msvcrt"
-    elsif Duel::Native::OS.include?("darwin") then "/usr/lib/libSystem.B.dylib"
+    library = if Duel::Platform::WINDOWS then "msvcrt"
+    elsif Duel::Platform::OS.include?("darwin") then "/usr/lib/libSystem.B.dylib"
     else "libc.so.6"
     end
     opened = []
@@ -565,7 +558,7 @@ class NativeTest < DuelTest
 
   # Windows has no wait4: Process.wait2's, without peak memory.
   def test_waiting_on_windows
-    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Spawn::JAVA
+    skip "JRuby's Process.wait on Windows waits for nothing: Duel waits by Open3's thread there" if Duel::Platform::JRUBY_ON_WINDOWS
 
     exited = Process.spawn(RbConfig.ruby, "-e", "exit 4")
     wait4 = ->(*) { raise "no wait4 on Windows" }

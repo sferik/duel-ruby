@@ -2,7 +2,7 @@
 
 require "fileutils"
 require "rbconfig"
-require_relative "native"
+require_relative "platform"
 require_relative "control"
 require_relative "spawn"
 require_relative "process_sample"
@@ -270,7 +270,7 @@ module Duel
     # no signal but KILL, kills it, with what it started (taskkill /T): a
     # process it started would go on otherwise (JRuby's JVM, started by
     # its jruby.exe, say).
-    def send_signal(pid, signal, windows: Native::WINDOWS)
+    def send_signal(pid, signal, windows: Platform::WINDOWS)
       windows ? ProcessSample.kill_tree(pid) : Process.kill(signal, pid)
     end
 

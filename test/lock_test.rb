@@ -106,7 +106,7 @@ class LockTest < DuelTest
     assert_equal [[false, path], [true, path], [true, path]], removed.select { |_, target| target == path }, "while held, and on Windows, once closed"
     removed.clear
     stub(FileUtils, :rm_f, ->(target) { (removed << target) && rm_f.call(target) }) do
-      with_constants(Duel::Native, WINDOWS: true) { Duel::Lock.hold(@dir) { nil } }
+      with_constants(Duel::Platform, WINDOWS: true) { Duel::Lock.hold(@dir) { nil } }
     end
 
     assert_equal [path, path], removed.select { |target| target == path }, "on Windows, by default"

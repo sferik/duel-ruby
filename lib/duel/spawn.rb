@@ -1,24 +1,21 @@
 # frozen_string_literal: true
 
 require "open3"
-require_relative "native"
+require_relative "platform"
 
 module Duel
   # Starts a process whose output goes to a log, or whose input and
   # output are pipes: with Process.spawn's redirects, or where spawn
   # ignores them (JRuby on Windows, whose spawn writes to neither a file
   # nor a pipe it's given), through Open3, the output copied to the log
-  # on a thread of its own.
+  # on a thread of its own. (JRuby's Open3 there does what it's asked,
+  # but with the JVM's own environment, not ENV, and only a program
+  # that's an .exe found by name: see .open3.)
   # @api private
   module Spawn
-    # JRuby on Windows, whose spawn and Open3 start a process through
-    # Java's: spawn redirects nothing, and Process.wait doesn't wait. Its
-    # Open3 does what it's asked, but with the JVM's own environment (not
-    # ENV), and only a program that's an .exe found by name (see .open3).
-    JAVA = RUBY_ENGINE == "jruby" && Native::WINDOWS
-
-    # Whether Process.spawn redirects a process's input and output.
-    REDIRECTS = !JAVA
+    # Whether Process.spawn redirects a process's input and output (and
+    # Process.wait waits for it): not on JRuby on Windows.
+    REDIRECTS = !Platform::JRUBY_ON_WINDOWS
 
     # A lone String, as Process.spawn takes one, that a shell runs.
     SHELL = /[\s"'*?<>|&;$`()]/
@@ -107,7 +104,7 @@ module Duel
     # with unsetenv_others, every one of ENV's variables unset but those
     # given), each by ENV's name for it, and the program found, and its
     # arguments quoted, as Windows takes them (see .program).
-    def self.open3(name, *args, java: JAVA, **options, &)
+    def self.open3(name, *args, java: Platform::JRUBY_ON_WINDOWS, **options, &)
       return Open3.public_send(name, *args, **options, &) unless java
 
       none = {} #: Hash[String, String?]

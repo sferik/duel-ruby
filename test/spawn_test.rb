@@ -54,12 +54,12 @@ class SpawnTest < DuelTest
   # (A JRuby child on Windows copies a process it spawned's output itself,
   # which stops as it ends.)
   def skip_a_jruby_childs_children
-    skip "a JRuby child's own children's output, on Windows, is the child's to copy" if Duel::Spawn::JAVA
+    skip "a JRuby child's own children's output, on Windows, is the child's to copy" if Duel::Platform::JRUBY_ON_WINDOWS
   end
 
   # Process.spawn redirects, but on JRuby on Windows.
   def test_redirects
-    assert_equal !(RUBY_ENGINE == "jruby" && Duel::Native::WINDOWS), Duel::Spawn::REDIRECTS
+    assert_equal !Duel::Platform::JRUBY_ON_WINDOWS, Duel::Spawn::REDIRECTS
     assert_equal [5, 65_536], [Duel::Spawn::COPY_WAIT, Duel::Spawn::CHUNK]
   end
 
@@ -118,7 +118,7 @@ class SpawnTest < DuelTest
     assert_predicate waiter.value, :success?
     assert_equal "again\n", File.read(@log), "in its place"
     # (JRuby's Process.wait on Windows waits for nothing.)
-    assert_raises(Errno::ECHILD, "waited for") { Process.wait(pid) } unless Duel::Spawn::JAVA
+    assert_raises(Errno::ECHILD, "waited for") { Process.wait(pid) } unless Duel::Platform::JRUBY_ON_WINDOWS
   end
 
   # What it says is in the log as it runs, for what waits on it to see.
@@ -353,13 +353,13 @@ class SpawnTest < DuelTest
           Duel::Spawn.open3(:capture2, "prog", java: true)
         end
       end
-      Duel::Spawn.open3(:capture2, "prog") unless Duel::Spawn::JAVA
+      Duel::Spawn.open3(:capture2, "prog") unless Duel::Platform::JRUBY_ON_WINDOWS
     end
 
     stub(Open3, :capture2, ->(*args, **options) { (called << [args, options]) && ["out", :status] }) do
       stub(Duel::Spawn, :program, ->(command) { command }) do
         stub(ENV, :to_h, -> { {"B" => "2"} }) do
-          with_constants(Duel::Spawn, JAVA: true) { Duel::Spawn.open3(:capture2, Class.new(Hash)["A", "1"], "prog") }
+          with_constants(Duel::Platform, JRUBY_ON_WINDOWS: true) { Duel::Spawn.open3(:capture2, Class.new(Hash)["A", "1"], "prog") }
         end
       end
     end
@@ -387,7 +387,7 @@ class SpawnTest < DuelTest
 
     assert_equal [[{"Path" => "C:/mine", "B" => "2"}, "prog"], {}], called.pop, "a PATH given, by ENV's name for it, Path: Windows's are one"
     assert_equal [[[{"A" => "1"}, "prog", "x"], {chdir: "/d"}], [[{"A" => "1", "B" => "2"}, "/bin/prog.cmd", "x"], {chdir: "/d"}],
-      [[{"A" => "0", "B" => "2"}, "/bin/prog.cmd"], {}], *([[["prog"], {}]] unless Duel::Spawn::JAVA)], called, "by default, as it is (here)"
+      [[{"A" => "0", "B" => "2"}, "/bin/prog.cmd"], {}], *([[["prog"], {}]] unless Duel::Platform::JRUBY_ON_WINDOWS)], called, "by default, as it is (here)"
     yielded = Duel::Spawn.open3(:popen2e, *ruby("print :hi"), java: false) { |input, output, _| input.close || output.read }
 
     assert_equal "hi", yielded, "with a block"

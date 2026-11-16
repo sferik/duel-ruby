@@ -4,7 +4,6 @@ module Duel
   # ignores them (JRuby on Windows).
   # @api private
   module Spawn
-    JAVA: bool
     REDIRECTS: bool
     SHELL: Regexp
     COPY_WAIT: Integer

@@ -3,7 +3,7 @@
 require "open3"
 require "rbconfig"
 require_relative "../duel"
-require_relative "native"
+require_relative "platform"
 require_relative "spawn"
 
 module Duel
@@ -100,7 +100,7 @@ module Duel
       # starts the JVM in a process of its own (javaw.exe), the JVM's
       # command, as `jruby -Xcommand` says it is: so the process Duel
       # measures, waits for, and kills is the one running Ruby.
-      def launch(ruby, engine, env, windows: Native::WINDOWS)
+      def launch(ruby, engine, env, windows: Platform::WINDOWS)
         return [ruby] unless windows && engine == "jruby"
 
         out, status = Spawn.open3(:capture2, env, ruby, "-Xcommand", "-e", "1")

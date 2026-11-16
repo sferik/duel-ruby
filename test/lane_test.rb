@@ -218,7 +218,7 @@ class LaneTest < DuelTest
     long = "C:/Users/#{"x" * 40}/AppData/Local/Temp"
 
     assert_equal [long, "/tmp"], [true, false].map { |windows| Duel::Lane.short_tmp(long, windows: windows) }, "Windows has no /tmp"
-    assert_equal long, with_constants(Duel::Native, WINDOWS: true) { Duel::Lane.short_tmp(long) }, "by default, on Windows"
+    assert_equal long, with_constants(Duel::Platform, WINDOWS: true) { Duel::Lane.short_tmp(long) }, "by default, on Windows"
   ensure
     FileUtils.rm_rf(dir)
   end

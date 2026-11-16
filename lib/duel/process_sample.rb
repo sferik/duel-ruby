@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "native"
+require_relative "platform"
 require_relative "metric"
 require_relative "spawn"
 
@@ -118,7 +119,7 @@ module Duel
     # CycleClock). A command that can't start (there's no such program,
     # say, or on Windows, a shell command with no COMSPEC in +env+ to
     # find cmd.exe by) failed, and took nothing.
-    def self.once(command, env, chdir, log, windows: Native::WINDOWS, redirects: Spawn::REDIRECTS)
+    def self.once(command, env, chdir, log, windows: Platform::WINDOWS, redirects: Spawn::REDIRECTS)
       before = cpu
       begin
         pid, waiter = Spawn.logged(env, command, log: log, mode: "w", redirects: redirects, chdir: chdir, unsetenv_others: true,
@@ -165,11 +166,11 @@ module Duel
     # what it started: a process group of its own, or on Windows, which
     # has none, a console's (and Ctrl-C at the runner's doesn't reach it,
     # as a process group's doesn't).
-    def self.group(windows: Native::WINDOWS) = windows ? {new_pgroup: true} : {pgroup: true}
+    def self.group(windows: Platform::WINDOWS) = windows ? {new_pgroup: true} : {pgroup: true}
 
     # Kills +pid+ and what it started: its process group, or on Windows,
     # where no group can be killed, its tree of children (taskkill /T).
-    def self.kill_tree(pid, windows: Native::WINDOWS)
+    def self.kill_tree(pid, windows: Platform::WINDOWS)
       return Process.kill("KILL", -pid) unless windows
 
       # (Through Open3: JRuby's system on Windows ignores out: and err:.

@@ -207,7 +207,7 @@ class DuelTest < Minitest::Test
 
   # (A test of a project reached through a link.)
   def skip_links_on_jruby_on_windows
-    skip "JRuby's File.realpath on Windows doesn't resolve a link" if Duel::Spawn::JAVA
+    skip "JRuby's File.realpath on Windows doesn't resolve a link" if Duel::Platform::JRUBY_ON_WINDOWS
   end
 
   # A directory for the test, removed after it.
@@ -249,7 +249,7 @@ class DuelTest < Minitest::Test
     Duel::ProcessSample.kill_tree(pid)
     # (Not on JRuby on Windows, whose Process.wait waits for nothing, or
     # fails, of no errno.)
-    Process.wait(pid) unless Duel::Spawn::JAVA
+    Process.wait(pid) unless Duel::Platform::JRUBY_ON_WINDOWS
   rescue Errno::ESRCH, Errno::ECHILD, Errno::EPERM # gone, and waited for
     nil
   end
@@ -264,7 +264,7 @@ class DuelTest < Minitest::Test
   # as Duel waited for its own alone. (Not on JRuby on Windows, whose
   # Process.wait waits for nothing.)
   def assert_still_to_wait_for(other, message = nil)
-    return if Duel::Spawn::JAVA
+    return if Duel::Platform::JRUBY_ON_WINDOWS
 
     assert_equal 3, Process.wait2(other).last.exitstatus, message
   end

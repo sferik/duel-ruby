@@ -2,7 +2,7 @@
 
 require "fileutils"
 require_relative "../duel"
-require_relative "native"
+require_relative "platform"
 
 module Duel
   # One run at a time in a project: two would share its tmp/duel and its
@@ -26,7 +26,7 @@ module Duel
 
     # Runs the block holding +dir+'s lock. Fails, naming the run that
     # holds it, if another does.
-    def self.hold(dir, windows: Native::WINDOWS)
+    def self.hold(dir, windows: Platform::WINDOWS)
       made = missing(dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, "lock")

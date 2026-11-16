@@ -1,0 +1,13 @@
+module Duel
+  # What this process runs on, for what differs by it.
+  # @api private
+  module Platform
+    OS: String
+    CPU: String
+    WINDOWS_OS: Regexp
+    WINDOWS: bool
+    CRUBY: bool
+    JRUBY: bool
+    JRUBY_ON_WINDOWS: bool
+  end
+end

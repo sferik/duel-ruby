@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "duel/version"
+require_relative "duel/platform"
 require_relative "duel/config"
 require_relative "duel/metric"
 require_relative "duel/control"
@@ -236,7 +237,7 @@ module Duel
     # plugin's default:
     #
     #   def self.configure(config, tcp: !Duel.unix_sockets?)
-    def unix_sockets?(windows: Native::WINDOWS, unix: Control::UNIX) = !windows && unix
+    def unix_sockets?(windows: Platform::WINDOWS, unix: Control::UNIX) = !windows && unix
 
     # The file of benchmarks that called the DSL method running (see
     # DSL.add), if one is: the file that what it defines is filed

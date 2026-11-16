@@ -40,7 +40,7 @@ class ProcessSampleTest < DuelTest
     open3 = lambda do |name|
       lambda do |*args, **options, &block|
         opened.fetch(name).call(*args, **options, &block).tap do |*, waiter|
-          spawned << [waiter.pid, args, options] if Duel::Spawn::JAVA && args.first != "taskkill"
+          spawned << [waiter.pid, args, options] if Duel::Platform::JRUBY_ON_WINDOWS && args.first != "taskkill"
         end
       end
     end
@@ -55,7 +55,7 @@ class ProcessSampleTest < DuelTest
 
   # Whether JRuby runs a program it can't find through the shell: but on
   # Windows, where Duel finds it first.
-  def jruby_shell? = RUBY_ENGINE == "jruby" && !Duel::Spawn::JAVA
+  def jruby_shell? = RUBY_ENGINE == "jruby" && !Duel::Platform::JRUBY_ON_WINDOWS
 
   # Its log, with LF line endings (JRuby reads CRLF as it is, on Windows).
   def logged = File.read(@log).gsub("\r\n", "\n")
@@ -227,7 +227,7 @@ class ProcessSampleTest < DuelTest
 
     ran = noting { Duel::ProcessSample.once(["exit 3"], {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) }
     # (Duel runs one by cmd.exe itself, on JRuby: see Duel::Spawn.program.)
-    if Duel::Spawn::JAVA
+    if Duel::Platform::JRUBY_ON_WINDOWS
       assert_equal "exited with 3", ran.fetch("failed")
     else
       assert_equal({"cpu" => 0, "peak" => nil, "failed" => "couldn't start: No such file or directory - exit 3"}, ran)
@@ -331,7 +331,7 @@ class ProcessSampleTest < DuelTest
   # A Ruby process of its own that ends (killed, say, here by what it
   # runs) fails the run, and is waited for: the next run starts another.
   def test_its_ruby_process_ends
-    skip "JRuby's Process.ppid on Windows isn't its parent's" if Duel::Spawn::JAVA
+    skip "JRuby's Process.ppid on Windows isn't its parent's" if Duel::Platform::JRUBY_ON_WINDOWS
 
     runs = sampler
     command = ruby("Process.kill('KILL', Process.ppid); sleep")
@@ -568,7 +568,7 @@ class ProcessSampleTest < DuelTest
 
     assert spawned.closed, "however it ends"
     by_default = stub(Duel::Native::Windows::Spawned, :open, ->(_) { spawned }) do
-      with_constants(Duel::Native, WINDOWS: true) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) } }
+      with_constants(Duel::Platform, WINDOWS: true) { noting { Duel::ProcessSample.once(ruby("1"), {"PATH" => ENV.fetch("PATH")}, tmpdir, @log) } }
     end
 
     assert_equal [1_500_000, 4096], by_default.values_at("cpu", "peak"), "on Windows, by default"
@@ -641,7 +641,7 @@ class ProcessSampleTest < DuelTest
   # A process group of its own, or on Windows, a console's.
   def test_its_group
     assert_equal [{pgroup: true}, {new_pgroup: true}], [false, true].map { |windows| Duel::ProcessSample.group(windows: windows) }
-    assert_equal({new_pgroup: true}, with_constants(Duel::Native, WINDOWS: true) { Duel::ProcessSample.group }, "by default, on Windows")
+    assert_equal({new_pgroup: true}, with_constants(Duel::Platform, WINDOWS: true) { Duel::ProcessSample.group }, "by default, on Windows")
   end
 
   # Its group killed, or on Windows, its tree, with taskkill.
@@ -652,7 +652,7 @@ class ProcessSampleTest < DuelTest
     trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
       stub(Open3, :capture2e, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
         [false, true].map { |windows| Duel::ProcessSample.kill_tree(42, windows: windows) } +
-          [with_constants(Duel::Native, WINDOWS: true) { Duel::ProcessSample.kill_tree(42) }]
+          [with_constants(Duel::Platform, WINDOWS: true) { Duel::ProcessSample.kill_tree(42) }]
       end
     end
 

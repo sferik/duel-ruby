@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "native"
+require_relative "platform"
 
 module Duel
   # Something measured around every sample of every benchmark. A subclass
@@ -451,7 +452,7 @@ module Duel
 
     # Measures the rate on Windows, once, before a run starts its
     # workers, which inherit it.
-    def self.prepare(windows: Native::WINDOWS) = (rate if windows)
+    def self.prepare(windows: Platform::WINDOWS) = (rate if windows)
 
     # The most cycles +cycles+ (a counter: see Native::Windows::Cycles)
     # counted in a nanosecond of +clock+'s (monotonic, in nanoseconds),
@@ -470,7 +471,7 @@ module Duel
   # simplecov:disable Windows's clock is CycleClock, JRuby's too (Windows's
   # test run covers this): the JVM's CPU times there are Windows's own, in
   # ticks of 15.6 ms.
-  if Native::WINDOWS
+  if Platform::WINDOWS
     module Clock
       def self.thread = CycleClock.thread
 
@@ -478,7 +479,7 @@ module Duel
     end
   # (JRuby has no thread CPU clock of Ruby's elsewhere, but the JVM's:
   # JRuby's test run covers these.)
-  elsif RUBY_ENGINE == "jruby"
+  elsif Platform::JRUBY
     module Clock
       def self.thread = java.lang.management.ManagementFactory.getThreadMXBean.getCurrentThreadCpuTime
 
@@ -488,7 +489,7 @@ module Duel
   # simplecov:enable
 
   # simplecov:disable JRuby's (JRuby's test run covers it).
-  if RUBY_ENGINE == "jruby"
+  if Platform::JRUBY
     # Bytes allocated (JRuby: the JVM's count, as it has none of objects):
     # by the benchmark thread, or by every thread.
     # @api private
@@ -565,7 +566,7 @@ module Duel
       def self.measures = {"allocated_bytes" => {tolerance: 32, unit: %w[byte bytes]}}
 
       # mutant:disable -- mutant runs on CRuby, where this is always false
-      def self.available? = RUBY_ENGINE == "jruby"
+      def self.available? = Platform::JRUBY
 
       def start_sample(sample)
         @scope = sample.benchmark.cpu
@@ -582,7 +583,7 @@ module Duel
       def self.measures = {"allocations" => {tolerance: 0.5}}
 
       # mutant:disable -- mutant runs on CRuby, where this is always true
-      def self.available? = RUBY_ENGINE == "ruby"
+      def self.available? = Platform::CRUBY
 
       def start_sample(_sample)
         @started = GC.stat(:total_allocated_objects)

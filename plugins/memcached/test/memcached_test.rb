@@ -40,7 +40,7 @@ class MemcachedTest < PluginTest
 
   # Unix sockets: Windows's builds of memcached have none (see
   # test_a_server_on_a_port).
-  def unix_sockets! = (skip "Windows's memcached has no Unix socket" if Duel::Native::WINDOWS)
+  def unix_sockets! = (skip "Windows's memcached has no Unix socket" if Duel::Platform::WINDOWS)
 
   def test_a_server_of_the_workers_own
     unix_sockets!
@@ -92,15 +92,15 @@ class MemcachedTest < PluginTest
 
   # On Windows, by default.
   def test_on_a_port_on_windows
-    windows = Duel::Native::WINDOWS
-    Duel::Native.send(:remove_const, :WINDOWS)
-    Duel::Native.const_set(:WINDOWS, true)
+    windows = Duel::Platform::WINDOWS
+    Duel::Platform.send(:remove_const, :WINDOWS)
+    Duel::Platform.const_set(:WINDOWS, true)
     server = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_MEMCACHED_SERVERS") }
 
     assert_match(/\A127\.0\.0\.1:\d+\z/, server)
   ensure
-    Duel::Native.send(:remove_const, :WINDOWS)
-    Duel::Native.const_set(:WINDOWS, windows)
+    Duel::Platform.send(:remove_const, :WINDOWS)
+    Duel::Platform.const_set(:WINDOWS, windows)
   end
 
   # A socket by server: a Unix socket's path, or HOST:PORT (a TCP one's,

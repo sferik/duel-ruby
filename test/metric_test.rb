@@ -474,7 +474,7 @@ class MetricTest < DuelTest
     assert_equal RUBY_ENGINE == "jruby", Duel::Metrics::AllocatedBytes.available?
     # (On JRuby on Windows, JRuby's bytes innermost: reading Windows's
     # cycles allocates there.)
-    innermost = (RUBY_ENGINE == "jruby" && Duel::Native::WINDOWS) ? [Duel::Metrics::CPU, Duel::Metrics::AllocatedBytes] : [Duel::Metrics::AllocatedBytes, Duel::Metrics::CPU]
+    innermost = Duel::Platform::JRUBY_ON_WINDOWS ? [Duel::Metrics::CPU, Duel::Metrics::AllocatedBytes] : [Duel::Metrics::AllocatedBytes, Duel::Metrics::CPU]
 
     assert_equal [Duel::Metrics::Instructions, Duel::Metrics::Allocations, *innermost],
       Duel::Worker::BUILT_IN, "allocations (either) inside instructions, CPU time innermost"
@@ -627,7 +627,7 @@ class CycleClockTest < DuelTest
     measured = stub(Duel::CycleClock, :rate, -> { 2.0 }) { [true, false].map { |windows| Duel::CycleClock.prepare(windows: windows) } }
 
     assert_equal [2.0, nil], measured
-    assert_in_delta 2.0, with_constants(Duel::Native, WINDOWS: true) { stub(Duel::CycleClock, :rate, -> { 2.0 }) { Duel::CycleClock.prepare } }
+    assert_in_delta 2.0, with_constants(Duel::Platform, WINDOWS: true) { stub(Duel::CycleClock, :rate, -> { 2.0 }) { Duel::CycleClock.prepare } }
   end
 end
 

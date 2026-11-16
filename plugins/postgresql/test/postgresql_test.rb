@@ -58,7 +58,7 @@ class PostgreSQLTest < PluginTest
   # Unix's alone: a Unix socket's, single-user mode's (which won't run
   # with an administrator's rights, as CI's Windows runners have), and
   # symbolic links and shell scripts of the tests'.
-  def unix! = (skip "Unix's alone: see the pg_ctl tests" if Duel::Native::WINDOWS)
+  def unix! = (skip "Unix's alone: see the pg_ctl tests" if Duel::Platform::WINDOWS)
 
   def test_a_server_of_the_workers_own
     unix!
@@ -83,7 +83,7 @@ class PostgreSQLTest < PluginTest
   # seconds later).
   def test_stopped_with_a_client_connected
     [false, true].each do |pg_ctl|
-      next if pg_ctl == false && Duel::Native::WINDOWS
+      next if pg_ctl == false && Duel::Platform::WINDOWS
 
       prepare(config(pg_ctl:)) do
         @pg = PG.connect
@@ -151,9 +151,9 @@ class PostgreSQLTest < PluginTest
   # On Windows, by default (its copy given to the user: icacls is a fake
   # one off Windows).
   def test_pg_ctl_on_windows
-    windows = Duel::Native::WINDOWS
-    Duel::Native.send(:remove_const, :WINDOWS)
-    Duel::Native.const_set(:WINDOWS, true)
+    windows = Duel::Platform::WINDOWS
+    Duel::Platform.send(:remove_const, :WINDOWS)
+    Duel::Platform.const_set(:WINDOWS, true)
     bin, = fake_icacls unless windows
     host = with_env(bin ? {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "USERNAME" => "someone"} : {}) do
       prepare(config) { |env| env.fetch("PGHOST") }
@@ -162,8 +162,8 @@ class PostgreSQLTest < PluginTest
     assert_equal "127.0.0.1", host
     assert_path_exists File.join(@dir, "icacls.args"), "its copy given to the user" unless windows
   ensure
-    Duel::Native.send(:remove_const, :WINDOWS)
-    Duel::Native.const_set(:WINDOWS, windows)
+    Duel::Platform.send(:remove_const, :WINDOWS)
+    Duel::Platform.const_set(:WINDOWS, windows)
   end
 
   def test_its_options

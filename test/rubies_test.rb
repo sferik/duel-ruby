@@ -66,7 +66,7 @@ class RubiesTest < DuelTest
     assert_equal ruby, Duel::Rubies.find(->(root) { (roots << root) && ruby }, "/version", "baseline")
     assert_equal ["/version"], roots, "given the version's tree"
     # (JRuby on Windows takes any file for executable.)
-    plain = File.join(tmpdir, "plain").tap { |path| File.write(path, "") } unless Duel::Spawn::JAVA
+    plain = File.join(tmpdir, "plain").tap { |path| File.write(path, "") } unless Duel::Platform::JRUBY_ON_WINDOWS
     [File.join(tmpdir, "nope"), File.join(tmpdir, "bin"), *plain].each do |nope|
       error = assert_raises(Duel::Error) { Duel::Rubies.find(nope, tmpdir, "candidate") }
 
@@ -211,7 +211,7 @@ class RubiesTest < DuelTest
     assert_equal %w[java.exe -Dopts=-J-Xbatch org/jruby/Main], Duel::Rubies.launch(jruby, "jruby", env, windows: true)
     assert_equal [jruby], Duel::Rubies.launch(jruby, "jruby", env, windows: false), "off Windows"
     assert_equal [jruby], Duel::Rubies.launch(jruby, "ruby", env, windows: true), "on CRuby"
-    assert_equal %w[java.exe -Dopts=-J-Xbatch org/jruby/Main], with_constants(Duel::Native, WINDOWS: true) { Duel::Rubies.launch(jruby, "jruby", env) },
+    assert_equal %w[java.exe -Dopts=-J-Xbatch org/jruby/Main], with_constants(Duel::Platform, WINDOWS: true) { Duel::Rubies.launch(jruby, "jruby", env) },
       "by default, on Windows"
     assert_equal [RbConfig.ruby], Duel::Rubies.launch(RbConfig.ruby, RUBY_ENGINE, env), "by default, here" unless windows? && RUBY_ENGINE == "jruby"
     failing = fake_command(File.join(tmpdir, "failing"), "#{jvm}\nexit 1")

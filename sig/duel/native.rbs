@@ -9,10 +9,6 @@ module Duel
     end
 
     FIDDLE: bool
-    OS: String
-    CPU: String
-    WINDOWS_OS: Regexp
-    WINDOWS: bool
     UINT64: Integer
 
     # Loads Fiddle, as the first C function is made.

@@ -26,7 +26,7 @@ module Duel
     # innermost, inside CPU time, whose readings of Windows's cycles
     # (through Fiddle: see CycleClock) allocate there.
     # simplecov:disable JRuby on Windows's (its test run covers it).
-    BUILT_IN = if RUBY_ENGINE == "jruby" && Native::WINDOWS
+    BUILT_IN = if Platform::JRUBY_ON_WINDOWS
       [Metrics::Instructions, Metrics::Allocations, Metrics::CPU, Metrics::AllocatedBytes].freeze
     else
       [Metrics::Instructions, Metrics::Allocations, Metrics::AllocatedBytes, Metrics::CPU].freeze

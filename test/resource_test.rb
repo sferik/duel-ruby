@@ -37,7 +37,7 @@ class ResourceTest < DuelTest
     @groups.each { |pid| end_group(pid) }
     # (Through Open3, on JRuby on Windows, none leads a group of the test's:
     # each resource's processes, killed with what they started.)
-    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::ProcessSample.kill_tree(pid) } if Duel::Spawn::JAVA
+    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::ProcessSample.kill_tree(pid) } if Duel::Platform::JRUBY_ON_WINDOWS
     Dir.chdir(@dir)
     super
   end
@@ -291,7 +291,7 @@ class ResourceTest < DuelTest
     pid = r.instance_variable_get(:@processes).keys.fetch(0)
     killed = []
     kill = Process.method(:kill)
-    with_constants(Duel::Native, WINDOWS: true) do
+    with_constants(Duel::Platform, WINDOWS: true) do
       # (Its tree, with taskkill, here as this system kills one.)
       stub(Duel::ProcessSample, :kill_tree, ->(id) { (killed << id) && kill.call("KILL", id) }) do
         stub(Process, :kill, ->(*args) { flunk "sent #{args.inspect}, not its tree killed" }) { r.stop }

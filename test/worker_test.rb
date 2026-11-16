@@ -35,7 +35,7 @@ class WorkerTest < DuelTest
 
     assert_equal [{"name" => "a", "only" => "count", "peak_memory" => false, "process" => nil}], hello.fetch("benchmarks")
     # (On JRuby on Windows, its bytes innermost: see Worker::BUILT_IN.)
-    innermost = (RUBY_ENGINE == "jruby" && Duel::Native::WINDOWS) ? %w[cpu] + ALLOCATION_COUNTS : ALLOCATION_COUNTS + %w[cpu]
+    innermost = Duel::Platform::JRUBY_ON_WINDOWS ? %w[cpu] + ALLOCATION_COUNTS : ALLOCATION_COUNTS + %w[cpu]
     names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + innermost
 
     assert_equal names, hello.fetch("metrics").map { |m| m.fetch("name") }, "plugins outermost, CPU innermost"
