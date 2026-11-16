@@ -152,20 +152,14 @@ module Duel
          tolerance: given.fetch(:tolerance, 0), allowance: given.fetch(:allowance, 0)}
       end
 
-      # Each measure's kind, :ratio or :counted, by name.
-      # @api private
-      def kinds = settings.transform_values { |settings| settings.fetch(:kind) }
-
       # Its measures as the runner learns them, with +overrides+ (see
       # Config#measure) by name.
       # @api private
       def specs(overrides = UNCHANGED)
         settings(overrides).map do |name, spec|
-          {"name" => name, "kind" => spec.fetch(:kind).to_s, "unit" => spec.fetch(:unit), "plural" => spec.fetch(:plural),
-           "floor" => spec.fetch(:floor),
-           "cpu_floor" => spec.fetch(:cpu_floor), "limit" => spec.fetch(:limit), "unit_ns" => spec.fetch(:unit_ns),
-           "sizes_samples" => spec.fetch(:sizes_samples), "across" => spec.fetch(:across), "tolerance" => spec.fetch(:tolerance),
-           "allowance" => spec.fetch(:allowance)}
+          # (Its settings by their names as Strings: but calibrate, which
+          # is the worker's alone.)
+          {"name" => name, **spec.except(:calibrate).transform_keys(&:to_s), "kind" => spec.fetch(:kind).to_s} #: spec
         end
       end
     end
@@ -291,6 +285,16 @@ module Duel
         snapshot.reading(measures, read)
       end
 
+      # A measure's settings, as Metric.resolve has them, and whether what
+      # reading it costs is learned and taken away (calibrate: see
+      # Snapshot): by default, it is.
+      # @api private
+      def resolve(given)
+        resolved = super
+        resolved[:calibrate] = given.fetch(:calibrate, true)
+        resolved
+      end
+
       # Sets what it measures and how it reads them, and returns it.
       # @api private
       def reading(measures, read)
@@ -362,12 +366,11 @@ module Duel
     end
 
     # Runs its .open block, if it has one, then learns what reading its
-    # counted totals costs.
+    # counted totals costs (as its settings have them, with
+    # Config#measure's changes).
     def open
       self.class.opener&.call
-      calibrated = self.class.measures.filter_map do |name, settings|
-        name if settings.fetch(:kind, :counted) == :counted && settings.fetch(:calibrate, true)
-      end
+      calibrated = settings.filter_map { |name, settings| name if settings.fetch(:kind) == :counted && settings.fetch(:calibrate) }
       @overhead = calibrated.to_h { |name| [name, Array.new(CALIBRATION) { grew(self.class.read.totals, name) }.min] }
     end
 

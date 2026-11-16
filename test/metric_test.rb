@@ -29,11 +29,6 @@ class MetricTest < DuelTest
     def self.measures = {"a" => {kind: :ratio, floor: 5}, "b" => {}}
   end
 
-  def test_kinds
-    assert_equal({"a" => :ratio, "b" => :counted}, Partial.kinds)
-    assert_equal({"wall" => :ratio}, Wall.kinds)
-  end
-
   def test_measures_leave_out_what_they_take_by_default
     assert_equal [{"name" => "a", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 5, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true},
       {"name" => "b", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}], Partial.specs
@@ -70,7 +65,7 @@ class MetricTest < DuelTest
     time = Duel::Snapshot.define({"time" => {kind: :ratio}}, -> { 2 })
 
     assert_equal [Duel::Snapshot, Duel::Snapshot], [rows.superclass, time.superclass]
-    assert_equal [{"rows" => :counted}, {"time" => :ratio}], [rows.kinds, time.kinds]
+    assert_equal [{"rows" => :counted}, {"time" => :ratio}], [rows.new.kinds, time.new.kinds]
     assert_equal [{"rows" => 1}, {"time" => 2}], [rows.read.totals, time.read.totals]
   end
 
@@ -88,6 +83,36 @@ class MetricTest < DuelTest
     totals = Class.new(Hash)[{"rows" => 4}]
 
     assert_same totals, Duel::Snapshot.define({"rows" => {}}, -> { totals }).read.totals
+  end
+
+  # Running totals' settings say whether each is calibrated: by default,
+  # it is. Their specs (what the runner learns) don't.
+  def test_a_snapshots_settings
+    snapshot = Duel::Snapshot.define({"rows" => {}, "pages" => {calibrate: false}}, -> { {"rows" => 1, "pages" => 2} })
+
+    assert_equal({"rows" => true, "pages" => false}, snapshot.settings.transform_values { |settings| settings.fetch(:calibrate) })
+    assert_equal({"rows" => false}, snapshot.settings({"rows" => {calibrate: false}}).slice("rows").transform_values { |s| s.fetch(:calibrate) })
+    refute snapshot.specs.any? { |spec| spec.key?("calibrate") }
+    assert_equal [{"name" => "rows", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "cpu_floor" => 0, "limit" => nil,
+                   "unit_ns" => 1, "sizes_samples" => true, "across" => true, "tolerance" => 0, "allowance" => 0}], snapshot.specs.first(1)
+  end
+
+  # What Config#measure changes (as a worker's settings have them) is
+  # what's calibrated: not one it says isn't, nor one it makes a ratio.
+  def test_a_snapshot_calibrated_as_its_settings_say
+    reads = 0
+    snapshot = Duel::Snapshot.define({"rows" => {}, "pages" => {}}, -> { (reads += 1) && {"rows" => reads, "pages" => reads} })
+    [{"rows" => {calibrate: false}}, {"rows" => {kind: :ratio}}].each do |changes|
+      reads = 0
+      metric = snapshot.new
+      metric.settings = snapshot.settings(changes)
+      metric.open
+
+      assert_equal 2 * Duel::Snapshot::CALIBRATION, reads, "pages' pairs alone: #{changes}"
+      metric.start_sample(nil)
+
+      assert_equal({"rows" => 1, "pages" => 0}, metric.stop_sample, "rows' reading's cost not taken away: #{changes}")
+    end
   end
 
   # A measure whose reading costs nothing (or a varying amount, taken

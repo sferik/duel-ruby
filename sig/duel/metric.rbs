@@ -30,7 +30,7 @@ module Duel
 
     # A measure's settings, every one, resolved (see Metric.resolve).
     type resolved = { kind: kind, unit: String?, plural: String?, floor: value, cpu_floor: value, limit: Float?, unit_ns: value,
-                      sizes_samples: bool, across: bool, tolerance: value, allowance: value }
+                      sizes_samples: bool, across: bool, tolerance: value, allowance: value, ?calibrate: bool }
 
     # No measure's settings changed.
     # @api private
@@ -75,10 +75,6 @@ module Duel
     # within +tolerance+ an iteration and +allowance+ a sample.
     def self.within?: (value more, Integer n, tolerance: value, allowance: value) -> bool
 
-    # Each measure's kind, by name.
-    # @api private
-    def self.kinds: () -> Hash[String, kind]
-
     # Fails unless +settings+ (a measure's) are settings there are, with a
     # kind there is.
     # @api private
@@ -90,7 +86,7 @@ module Duel
 
     # A measure's settings: those given, and the rest as by default.
     # @api private
-    def self.resolve: (Hash[Symbol, untyped] given) -> resolved
+    def self.resolve: (Hash[Symbol, untyped] given) -> Metric::resolved
 
     # Its measures as the runner learns them, with +overrides+ by name.
     # @api private
@@ -238,6 +234,11 @@ module Duel
     # @api private
     # (Its measures as Config#metric takes them: from keywords too.)
     def self.define: (Hash[untyped, untyped] measures, (^() -> read[Metric::value, untyped])? read) -> singleton(Snapshot)
+
+    # A measure's settings, resolved, and whether its reading's cost is
+    # learned and taken away (calibrate).
+    # @api private
+    def self.resolve: (Hash[Symbol, untyped] given) -> Metric::resolved
 
     # Sets what it measures and how it reads them, and returns it.
     # @api private

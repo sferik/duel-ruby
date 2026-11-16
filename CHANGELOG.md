@@ -97,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `c.measure`'s `calibrate: false`, or `kind: :ratio`, for a measure of
+  running totals (`config.metric`'s, as a plugin's Redis commands or
+  queries are) is what decides whether reading it is calibrated. It was
+  what the metric declared, so what reading it cost was taken away
+  still.
 - A resource's program given its arguments, in a path with a space in
   it (`C:/Program Files/PostgreSQL/17/bin/initdb`, say), has its log
   named for the program (`initdb.log`), not the path's first word
