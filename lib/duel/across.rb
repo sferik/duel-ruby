@@ -44,6 +44,8 @@ module Duel
     # version), for every ratio metric any benchmark was judged on.
     def verdicts
       medians = Hash.new { |h, k| h[k] = [] }
+      # @type var processes: Hash[String, Array[Result::processes]]
+      processes = Hash.new { |h, k| h[k] = [] }
       # @type var limits: Hash[String, Float]
       limits = {}
       @results.each do |result|
@@ -54,47 +56,22 @@ module Duel
 
           medians[metric] << timed.fetch("median")
           limits[metric] ||= Across.limit(timed.fetch("limit"))
+          # (Each benchmark's workers' medians, Result#processes, of those
+          # judged by process: looked for only where the run was.)
+          each = (result.processes[metric] if @by_process)
+          processes[metric] << each if each
         end
       end
-      return by_process_or_benchmark(medians, limits) if @by_process
-
+      # (Over the workers' scores, for a metric with MIN_BENCHMARKS judged
+      # by process at least, and else over the benchmarks.)
       medians.to_h do |metric, list|
         limit = limits.fetch(metric)
-        interval = Stats.median_interval(list, @confidence)
-        [metric, {"median" => Stats.median(list), "interval" => interval, "limit" => limit, "benchmarks" => list.size,
-                  "verdict" => Stats.decide(interval, limit).to_s}]
+        judged = processes.fetch(metric, [])
+        [metric, (judged.size >= MIN_BENCHMARKS) ? by_process(judged, limit) : by_benchmark(list, limit)]
       end
     end
 
     private
-
-    # The verdicts of a run that judged benchmarks over workers: over the
-    # workers' scores, for a metric with MIN_BENCHMARKS judged by process
-    # at least, and else over the benchmarks (+medians+, with +limits+).
-    def by_process_or_benchmark(medians, limits)
-      found = workers
-      medians.to_h do |metric, list|
-        limit = limits.fetch(metric)
-        processes = found.fetch(metric, [])
-        [metric, (processes.size >= MIN_BENCHMARKS) ? by_process(processes, limit) : by_benchmark(list, limit)]
-      end
-    end
-
-    # Each benchmark's workers' medians (Result#processes), of those
-    # judged by process, by metric.
-    def workers
-      # @type var found: Hash[String, Array[Result::processes]]
-      found = Hash.new { |h, k| h[k] = [] }
-      @results.each do |result|
-        next if result.error || result.skipped
-
-        result.timed.each do |metric, timed|
-          each = result.processes[metric]
-          found[metric] << each if each && timed.fetch("across")
-        end
-      end
-      found
-    end
 
     # The verdict over every benchmark's median ratio (+list+).
     def by_benchmark(list, limit)

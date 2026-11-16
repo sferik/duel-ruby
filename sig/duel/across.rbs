@@ -24,13 +24,6 @@ module Duel
 
     private
 
-    # The verdicts of a run that judged benchmarks over workers.
-    def by_process_or_benchmark: (Hash[String, Array[Float]] medians, Hash[String, Float] limits) -> Hash[String, verdict]
-
-    # Each benchmark's workers' medians, of those judged by process, by
-    # metric.
-    def workers: () -> Hash[String, Array[Result::processes]]
-
     # The verdict over every benchmark's median ratio.
     def by_benchmark: (Array[Float] list, Float limit) -> verdict
 
