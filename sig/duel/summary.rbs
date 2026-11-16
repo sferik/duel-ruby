@@ -92,6 +92,9 @@ module Duel
     # Every benchmark.
     def table: () -> String?
 
+    # A table of +rows+ under +header+, without an empty last column.
+    def grid: (Array[String] header, Array[Array[String]] rows) -> String
+
     # A table's row of +cells+.
     def row: (Array[String] cells) -> String
 

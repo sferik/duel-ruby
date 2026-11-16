@@ -157,10 +157,7 @@ module Duel
     def failures
       return if @failed.empty?
 
-      header = ["Benchmark", "Failure"]
-      header << "Most extra CPU in" unless @failed.all? { |r| top(r).empty? }
-      rows = @failed.map { |r| row([Summary.code(cell(r.name)), failure(r), top(r)].first(header.size)) }
-      ([row(header), "|#{"---|" * header.size}"] + rows).join("\n")
+      grid(["Benchmark", "Failure", "Most extra CPU in"], @failed.map { |r| [Summary.code(cell(r.name)), failure(r), top(r)] })
     end
 
     # What got worse, or the error's first line.
@@ -225,8 +222,13 @@ module Duel
         shown = Summary.verdict(r)
         [Summary.code(cell(r.name)), FAILED.include?(shown) ? "**#{shown}**" : shown, timings(r), counts(r)]
       end
-      header = ["Benchmark", "Verdict", "Timings (ratio [interval])", "Counts an iteration"]
-      columns = (rows.any? { |cells| !cells.last.empty? }) ? 4 : 3
+      grid(["Benchmark", "Verdict", "Timings (ratio [interval])", "Counts an iteration"], rows)
+    end
+
+    # A table of +rows+ under +header+: without its last column, where
+    # none of the rows has anything in it.
+    def grid(header, rows)
+      columns = (rows.any? { |cells| !cells.last.empty? }) ? header.size : header.size - 1
       ([row(header.first(columns)), "|#{"---|" * columns}"] + rows.map { |cells| row(cells.first(columns)) }).join("\n")
     end
 
