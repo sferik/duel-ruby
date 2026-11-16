@@ -171,9 +171,8 @@ module Duel
   # @api private
   def self.measured: [T] (bool measuring) { () -> T } -> T
 
-  # Loads a config file (.duel.rb): a fresh configuration, rooted where
-  # the file is.
-  # @api private
+  # Loads a config file (.duel.rb) and returns its configuration, which
+  # is Duel.config from then on.
   def self.load_config: (String path) -> Config
 
   # Where +method+ is defined ("file:line"), or whose it is.

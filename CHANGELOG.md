@@ -82,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where Ruby has none), or should listen on that port.
 - `Duel.windows?`, for a plugin that does something differently on
   Windows. The PostgreSQL plugin uses it for its `pg_ctl:` default.
+- `Duel.load_config` is public: it loads a `.duel.rb` and returns its
+  configuration, for a tool that reads a project's settings, as the
+  Rails plugin's `duel:install` generator does.
 
 ### Changed
 

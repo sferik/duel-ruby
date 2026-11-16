@@ -97,6 +97,9 @@ When you write a plugin, follow these guidelines:
   `Duel::Platform` or `RbConfig` yourself: Duel's internals can change
   in any release, and `Duel.windows?` won't. A version of Duel before
   0.2.0 doesn't have it.
+- To read a project's settings outside a run, as a generator that writes
+  its files might, load its `.duel.rb` with `Duel.load_config(path)`,
+  which returns its configuration. Before 0.2.0, it was private.
 
 > [!IMPORTANT]
 > A helper that's meant for setup, such as one that runs a query, must

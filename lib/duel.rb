@@ -144,9 +144,10 @@ module Duel
       end
     end
 
-    # Loads a config file (.duel.rb): a fresh configuration, rooted where
-    # the file is.
-    # @api private
+    # Loads a config file (.duel.rb) and returns its configuration: a
+    # fresh one, rooted where the file is, which is Duel.config from then
+    # on (what the file's Duel.configure sets up). For a tool that reads a
+    # project's settings, as a plugin's generator does (duel-rails's).
     def load_config(path)
       path = File.expand_path(path)
       self.config = Config.new(File.dirname(path))
