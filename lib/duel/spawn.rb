@@ -17,12 +17,12 @@ module Duel
   module Spawn
     # Whether Process.spawn redirects a process's input and output: not on
     # JRuby on Windows, whose spawn writes to neither a file nor a pipe
-    # it's given.
+    # it's given (https://github.com/jruby/jruby/issues/3116).
     REDIRECTS = !Platform::JRUBY_ON_WINDOWS
 
     # Whether Process.wait waits for a process spawned: not on JRuby on
     # Windows, where it returns at once, and so does Process.detach's
-    # thread.
+    # thread (https://github.com/jruby/jruby/issues/7515).
     WAITS = !Platform::JRUBY_ON_WINDOWS
 
     # A lone String, as Process.spawn takes one, that a shell runs.
@@ -207,8 +207,9 @@ module Duel
       return Process.kill("KILL", -pid) unless windows
 
       # (Its output read, not shown, through Open3: JRuby's system on
-      # Windows ignores out: and err:. Where there's no taskkill, the
-      # process alone is killed.)
+      # Windows ignores out: and err:,
+      # https://github.com/jruby/jruby/issues/10081. Where there's no
+      # taskkill, the process alone is killed.)
       begin
         open3(:capture2e, "taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
       rescue Errno::ENOENT
@@ -219,11 +220,11 @@ module Duel
     # Open3's +name+d method (capture3, popen2e...), given +args+ (an
     # environment first, or none) and +options+. On JRuby on Windows
     # (+jruby_on_windows+), whose Open3 gives a process the JVM's own
-    # environment and ignores unsetenv_others, with ENV under the
-    # environment given (or with unsetenv_others, every one of ENV's
-    # variables unset but those given), each by ENV's name for it, and the
-    # program found, and its arguments quoted, as Windows takes them (see
-    # .program).
+    # environment (https://github.com/jruby/jruby/issues/8680) and ignores
+    # unsetenv_others, with ENV under the environment given (or with
+    # unsetenv_others, every one of ENV's variables unset but those
+    # given), each by ENV's name for it, and the program found, and its
+    # arguments quoted, as Windows takes them (see .program).
     def self.open3(name, *args, jruby_on_windows: Platform::JRUBY_ON_WINDOWS, **options, &)
       return Open3.public_send(name, *args, **options, &) unless jruby_on_windows
 
@@ -232,7 +233,8 @@ module Duel
       current = ENV.to_h
       under = options[:unsetenv_others] ? current.keys.product([nil]).to_h : current #: Hash[String, String?]
       # (Each given by ENV's name for it, whatever its case: Windows's
-      # names are one, but JRuby's PATH given doesn't replace ENV's Path.)
+      # names are one, but JRuby's PATH given doesn't replace ENV's Path,
+      # https://github.com/jruby/jruby/issues/8951.)
       given = env.transform_keys { |var| current.each_key.find { |name| name.casecmp?(var) } || var }
       Open3.public_send(name, under.merge(given), *program(command), **options, &)
     end
@@ -259,7 +261,8 @@ module Duel
     # has a space or a quote in it: in quotes, a quote in it after a
     # backslash, and the backslashes before a quote, or before its end,
     # doubled. (Java quotes one with a space alone, and passes its quotes
-    # on as they are, which the program takes out.)
+    # on as they are, which the program takes out:
+    # https://github.com/jruby/jruby/issues/8945.)
     def self.quote(arg)
       return arg unless arg.empty? || arg.match?(/[\s"]/)
 

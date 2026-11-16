@@ -73,7 +73,7 @@ module Duel
         return RUBY_ENGINE if runner?(ruby)
 
         # (Its errors read, not shown: JRuby's IO.popen on Windows ignores
-        # err:.)
+        # err:, https://github.com/jruby/jruby/issues/10081.)
         out, _, status = Spawn.open3(:capture3, environment(ruby).merge("RUBYOPT" => nil), ruby, "--disable-gems", "-e", "print RUBY_ENGINE")
         status.success? ? out : "ruby"
       rescue SystemCallError

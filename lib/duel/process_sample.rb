@@ -56,7 +56,8 @@ module Duel
       @requests.puts JSON.generate(command)
       # (Read on a thread of its own, waited for until the timeout: on JRuby
       # on Windows, IO.select takes Open3's pipe for ready before it is,
-      # and wait_readable never does, on JRuby 10.0.)
+      # https://github.com/jruby/jruby/issues/5765, and wait_readable
+      # never does, on JRuby 10.0.)
       replies = @replies #: IO
       reading = Thread.new { replies.gets }
       reading.report_on_exception = false
@@ -151,7 +152,9 @@ module Duel
       killed = signal #: Integer
       name = begin
         Signal.signame(killed)
-      rescue ArgumentError # (JRuby's, on Windows, which names few signals)
+      # (JRuby's, for a number it has no name for, where CRuby's is nil,
+      # and on Windows for KILL's: https://github.com/jruby/jruby/issues/10080.)
+      rescue ArgumentError
         nil
       end
       name ? "was killed by SIG#{name}" : "was killed by signal #{killed}"

@@ -117,6 +117,89 @@ system's counters), and should keep it that way: it runs inside other
 projects' bundles. Anything more (StackProf, for profiles) is optional:
 Duel uses it when it's there.
 
+### JRuby on Windows
+
+JRuby on Windows starts processes through Java's process API rather
+than Windows's own, and it differs from every other Ruby and system in
+the ways below. `Duel::Platform::JRUBY_ON_WINDOWS` says when Duel runs
+there. The test jobs for JRuby 10.0 and 10.1 on Windows are the only
+ones that run this code, so what runs only there is left out of
+coverage (`# simplecov:disable`), and other tests give it the platform
+as an option (`starter: Duel::Spawn::ThroughOpen3`,
+`jruby_on_windows: true`, `windows: true`) so it runs everywhere else
+too. Where JRuby has an issue for one, it's linked here and in the code
+that works around it: once JRuby fixes one, a search for its link finds
+what can go.
+
+- **`Process.spawn` ignores redirects**
+  (https://github.com/jruby/jruby/issues/3116). A file or a pipe given
+  as `in:`, `out:` or `err:` gets nothing, so `Spawn::REDIRECTS` is
+  false. `Spawn::ThroughOpen3` starts each process through Open3
+  instead, and copies its output to its log on a thread of its own.
+- **`Process.wait` doesn't wait**
+  (https://github.com/jruby/jruby/issues/7515). It returns at once, or
+  fails with an error that has no errno, so `Process.detach` doesn't
+  wait either, and `Spawn::WAITS` is false. A `Spawn::Child` started
+  through Open3 is waited for on the thread that Open3 gives instead,
+  and the tests don't wait for a process there
+  (`assert_still_to_wait_for`). Where either of these is false,
+  `Spawn::STARTER` is `Spawn::ThroughOpen3`.
+- **Open3 uses the JVM's environment**
+  (https://github.com/jruby/jruby/issues/8680). A child gets the JVM's
+  own environment, not `ENV`, and `unsetenv_others` is ignored.
+  `Spawn.open3` passes `ENV` with the given variables over it, each
+  under `ENV`'s own spelling of its name (`Path`, not `PATH`, as
+  JRuby's `PATH` doesn't replace `Path`,
+  https://github.com/jruby/jruby/issues/8951), and unsets the rest
+  itself for `unsetenv_others`. Open3 also runs only an `.exe` found by
+  name, and Java takes the quotes out of an argument
+  (https://github.com/jruby/jruby/issues/8945), so `Spawn.program`
+  finds the program by `PATH` and `PATHEXT` (a `.bat` file, such as
+  `gem` or `bundle`), runs a shell string with `cmd.exe /c`, and quotes
+  each argument as Windows takes them (`Spawn.quote`).
+- **`system` ignores `out:` and `err:`, and `IO.popen` ignores
+  `err:`** (https://github.com/jruby/jruby/issues/10081). Duel runs
+  such commands through `Spawn.open3` and reads their output instead
+  (`Spawn.kill_tree`'s `taskkill`, `Rubies#engine`, `Memory.command`).
+- **`Process.spawn` splits an argument at its spaces.** A process
+  benchmark's Ruby process gets its environment, its directory and its
+  log on the first line of its input, not as an argument
+  (`ProcessSample#start`).
+- **There are no Unix sockets.** A worker connects to the runner on a
+  port of 127.0.0.1's (`Control`), and `Duel.unix_sockets?` is false,
+  so the plugins start their servers on ports (`w.port`).
+- **`IO.select` and `wait_readable` don't tell when a pipe is
+  ready.** `IO.select` takes Open3's pipe for readable before it is
+  (https://github.com/jruby/jruby/issues/5765), and on JRuby 10.0,
+  `wait_readable` never does. A process benchmark's replies are read
+  on a thread, which is waited for until the timeout
+  (`ProcessSample#run`).
+- **`flock` raises a `NullPointerException`.** Locking a file that
+  another process holds raises `Java::JavaLang::NullPointerException`,
+  not `false`, so `Lock.lock` takes it for a lock held (`Lock::HELD`).
+- **`KILL` has no name.** `Signal.signame(9)` raises, though
+  `Signal.list["KILL"]` is 9
+  (https://github.com/jruby/jruby/issues/10080). (On every system,
+  JRuby's `Signal.signame` raises for a number it has no name for,
+  where CRuby's returns `nil`.) `ProcessSample.why` names such a signal
+  by its number.
+- **A process that ended raises `EPERM`.** `Process.kill` raises
+  `Errno::EPERM` for it, not `Errno::ESRCH`, and `Spawn::Child` takes
+  both for a process that's gone (`Child::GONE`).
+- **`jruby.exe` starts the JVM as a separate process.** It starts
+  `javaw.exe` and waits for it, so what Duel spawned isn't what runs
+  Ruby. `Rubies#launch` asks `jruby -Xcommand` for the JVM's own
+  command, and Duel runs that, so the process it measures, waits for
+  and kills is the JVM. A process benchmark's own command that starts
+  JRuby is still measured as that command's process.
+- **The JVM's CPU time is Windows's, in ticks of 15.6 ms.** `Clock`
+  reads Windows's cycles there (`CycleClock`), as on CRuby. Reading
+  them through Fiddle allocates, so allocated bytes are read inside CPU
+  time rather than around it (`Worker::BUILT_IN`).
+- **`File.realpath` doesn't resolve a symbolic link.** The tests of a
+  project reached through a link skip there
+  (`skip_links_on_jruby_on_windows`).
+
 ## Plugins
 
 This repository holds Duel's plugins too, each in a directory of its

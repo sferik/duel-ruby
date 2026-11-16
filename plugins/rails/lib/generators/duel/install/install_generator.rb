@@ -104,6 +104,9 @@ module Duel
         end
 
         content = ERB.new(File.read(find_in_source_paths(source)), trim_mode: "-").result(template_binding)
+        # (Open3's own, not Duel's Spawn.open3, which is Duel's alone: on
+        # JRuby on Windows too, it runs diff.exe by name, given no
+        # environment of its own, as it should. So does #repository, git.)
         differences, = Open3.capture2("diff", "-u", "-L", shown, "-L", "#{shown} (duel:install)", path, "-", stdin_data: content)
         say_status(differences.empty? ? :identical : :differs, shown)
         say differences unless differences.empty?

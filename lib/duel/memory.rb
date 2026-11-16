@@ -51,7 +51,8 @@ module Duel
       def read(path) = (File.read(path) if File.file?(path))
 
       # What a command prints, or nil where there's no such command. (Its
-      # errors read, not shown: JRuby's IO.popen on Windows ignores err:.)
+      # errors read, not shown: JRuby's IO.popen on Windows ignores err:,
+      # https://github.com/jruby/jruby/issues/10081.)
       def command(*args)
         Spawn.open3(:capture3, *args).first
       rescue SystemCallError
