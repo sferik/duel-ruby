@@ -1139,6 +1139,9 @@ module Duel
     # The least count #number shows as a whole number.
     NUMBER = 9_999.5
 
+    # Bytes of memory, in megabytes to a tenth ("41.5MB").
+    def self.mb(bytes) = format("%.1fMB", bytes / 1_048_576.0)
+
     # Across the board (see Across): {metric => verdict}, "confirmed" in
     # those slower in a second measurement too. Set by #run.
     attr_reader :across
@@ -1497,12 +1500,10 @@ module Duel
         [format("%s %s%s", metric, Runner.number(base), ("→#{Runner.number(candidate)}" unless base == candidate)),
           (unit(candidate, c) unless named)].compact.join(" ")
       end
-      memory = result.memory&.then { |m| ["peak_memory #{mb(m.fetch("baseline"))}→#{mb(m.fetch("candidate"))}"] }
+      memory = result.memory&.then { |m| ["peak_memory #{Runner.mb(m.fetch("baseline"))}→#{Runner.mb(m.fetch("candidate"))}"] }
       format("%s %-48s %5.1fs n=%-6d %s", result.worse.empty? ? " " : "!", result.name, result.seconds, result.n,
         (timed + counted + memory.to_a).join("  "))
     end
-
-    def mb(bytes) = format("%.1fMB", bytes / 1_048_576.0)
 
     # The unit of +measured+ (a result's measure), for +number+ of it: the
     # singular for one, the plural for any other.

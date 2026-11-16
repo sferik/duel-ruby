@@ -104,8 +104,6 @@ module Duel
     # Each counted measure that changed, an iteration.
     def counts: (Result result) -> String
 
-    def mb: (Integer bytes) -> String
-
     # The first +explained+ regressions, explained.
     def regressions: (Integer explained) -> Array[String]
 

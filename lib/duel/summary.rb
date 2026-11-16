@@ -178,7 +178,7 @@ module Duel
         else
           # (Peak memory, which grew too much.)
           memory = result.memory #: Hash[String, Integer]
-          "#{metric} #{mb(memory.fetch("baseline"))} → #{mb(memory.fetch("candidate"))}"
+          "#{metric} #{Runner.mb(memory.fetch("baseline"))} → #{Runner.mb(memory.fetch("candidate"))}"
         end
       end
       worse.join(result.mixed? ? " or " : ", ")
@@ -257,12 +257,10 @@ module Duel
       end
       if result.more_memory?
         memory = result.memory #: Hash[String, Integer]
-        counted << "peak_memory #{mb(memory.fetch("baseline"))} → #{mb(memory.fetch("candidate"))}"
+        counted << "peak_memory #{Runner.mb(memory.fetch("baseline"))} → #{Runner.mb(memory.fetch("candidate"))}"
       end
       counted.join("<br>")
     end
-
-    def mb(bytes) = format("%.1fMB", bytes / 1_048_576.0)
 
     # The first +explained+ regressions, explained as the terminal report
     # explains them (and the rest named).

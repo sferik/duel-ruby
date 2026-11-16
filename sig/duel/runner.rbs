@@ -567,6 +567,9 @@ module Duel
     # A count to four figures, or a whole number from NUMBER.
     def self.number: (Metric::value value) -> String
 
+    # Bytes of memory, in megabytes to a tenth.
+    def self.mb: (Integer bytes) -> String
+
     # The least count #number shows as a whole number.
     NUMBER: Float
 
@@ -687,8 +690,6 @@ module Duel
     def report: (Array[Result] results, Float seconds) -> void
 
     def line: (Result result) -> String
-
-    def mb: (Integer bytes) -> String
 
     # The unit of +measured+, for +number+ of it: singular for one.
     def unit: (Metric::value number, Result::timed | Result::counted measured) -> String?

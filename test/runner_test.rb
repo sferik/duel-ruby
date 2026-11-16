@@ -28,6 +28,11 @@ class RunnerTest < DuelTest
       [0.5, 12, 999.5, 1000.4, 9999.4, 9999.5, 10_000.0, 25_735.6, -25_000.4].map { |v| Duel::Runner.number(v) }
   end
 
+  # Memory, in megabytes to a tenth.
+  def test_mb
+    assert_equal %w[41.5MB 0.0MB 1024.0MB], [43_515_904, 0, 1 << 30].map { |bytes| Duel::Runner.mb(bytes) }
+  end
+
   def test_a_run
     with_fake_workers do |workers|
       workers.benchmark("a")
