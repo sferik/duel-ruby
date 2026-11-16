@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `server:` path with a backslash in it (Windows's,
+  `C:\mysql\bin\mysqld`) is run as it is: the plugin looked for a
+  program by that name on the `PATH`.
 - On Windows, `mysqld.exe` on the `PATH` (or a `server:` path without
   its `.exe`) is found: the plugin looked for a file named `mysqld`.
 

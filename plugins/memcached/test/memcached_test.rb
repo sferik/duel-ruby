@@ -10,7 +10,7 @@ class MemcachedTest < PluginTest
   # then those on the process's shared server, and those that start
   # servers of their own last.
   if defined?(Mutant)
-    FIRST = %w[test_used_by_name test_its_cpu_time test_a_value test_a_value_that_isnt_one test_what_a_reading_allocates test_ready
+    FIRST = %w[test_used_by_name test_its_cpu_time test_a_value test_a_value_that_isnt_one test_what_a_reading_allocates test_ready test_ready_refused
       test_a_flush_closes_its_connection test_its_statistics test_its_errors test_its_statistics_errors
       test_its_statistics_in_pieces].freeze
     LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
@@ -406,6 +406,22 @@ class MemcachedTest < PluginTest
       assert closed
     end
     fake_server("", hang_up: true) { |path| refute Duel::Memcached::Connection.ready?(path) }
+  end
+
+  # Not ready where nothing listens on the socket's file (as on the
+  # server's, between its bind and its listen): CRuby's refusal is an
+  # Errno::ECONNREFUSED, and JRuby's an IOError.
+  def test_ready_refused
+    path = File.join(@dir, "refused.sock")
+    UNIXServer.new(path).close # (its file left)
+
+    refute Duel::Memcached::Connection.ready?(path)
+    socket = Duel::Memcached::Connection.method(:socket)
+    Duel::Memcached::Connection.define_singleton_method(:socket) { |_server| raise IOError, "Connection refused" }
+
+    refute Duel::Memcached::Connection.ready?(path), "JRuby's"
+  ensure
+    Duel::Memcached::Connection.define_singleton_method(:socket, socket) if socket
   end
 
   # Its metrics are costly to read, so a benchmark with an

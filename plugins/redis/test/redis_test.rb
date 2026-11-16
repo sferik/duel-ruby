@@ -11,7 +11,7 @@ class RedisTest < PluginTest
   # then those on the process's shared server, and those that start
   # servers of their own last.
   if defined?(Mutant)
-    FIRST = %w[test_used_by_name test_a_ping test_a_flush_closes_its_connection test_a_reply_of_another_type test_a_reply_cut_short].freeze
+    FIRST = %w[test_used_by_name test_a_ping test_a_ping_refused test_a_flush_closes_its_connection test_a_reply_of_another_type test_a_reply_cut_short].freeze
     LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
       test_a_server_on_a_port test_on_a_port_on_windows test_its_options test_its_directory test_the_connection].freeze
 
@@ -367,6 +367,22 @@ class RedisTest < PluginTest
       assert_equal "PING\r\n", sent
       assert closed
     end
+  end
+
+  # Not ready where nothing listens on the socket's file (as on the
+  # server's, between its bind and its listen): CRuby's refusal is an
+  # Errno::ECONNREFUSED, and JRuby's an IOError.
+  def test_a_ping_refused
+    path = File.join(@dir, "refused.sock")
+    UNIXServer.new(path).close # (its file left)
+
+    refute Duel::Redis::Connection.ping(path)
+    socket = Duel::Redis::Connection.method(:socket)
+    Duel::Redis::Connection.define_singleton_method(:socket) { |_url| raise IOError, "Connection refused" }
+
+    refute Duel::Redis::Connection.ping(path), "JRuby's"
+  ensure
+    Duel::Redis::Connection.define_singleton_method(:socket, socket) if socket
   end
 
   # Its metrics are costly to read, so a benchmark with an

@@ -132,7 +132,7 @@ module Duel
         ensure
           connection.close
         end
-      rescue SystemCallError
+      rescue SystemCallError, IOError # (JRuby's refusal on a Unix socket is an IOError)
         false
       end
 

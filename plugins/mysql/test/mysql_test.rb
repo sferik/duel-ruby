@@ -128,6 +128,21 @@ class MySQLTest < PluginTest
     assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld", bin, exe: ".exe"), "without its .exe too"
   end
 
+  # A path of Windows's, with a \ in it, is a path, not a name looked up
+  # on the PATH. (Off Windows, a file's name can have one: it's the one
+  # in the working directory that's found, not the one on the PATH.)
+  def test_finding_the_server_by_a_windows_path
+    skip "no file's name has a \\ in it on Windows" if Duel.windows?
+    path = File.join(@dir, "bin")
+    FileUtils.mkdir_p(path)
+    [@dir, path].each do |dir|
+      File.write(File.join(dir, "C:\\mysql\\bin\\mysqld"), "")
+      File.chmod(0o755, File.join(dir, "C:\\mysql\\bin\\mysqld"))
+    end
+
+    assert_equal "C:\\mysql\\bin\\mysqld", Duel::MySQL::DataDir.find_server("C:\\mysql\\bin\\mysqld", path), "the working directory's"
+  end
+
   # Windows's, by its .exe (this system's suffix, by default).
   def test_finding_the_server_by_its_exe
     windows = File.join(@dir, "windows")

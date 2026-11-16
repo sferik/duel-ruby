@@ -785,11 +785,12 @@ module Duel
       # A program's file ends with +EXE+: on Windows, .exe.
       EXE = RbConfig::CONFIG["EXEEXT"]
 
-      # The server program: +server+ if it's a path, or the one by that
-      # name on +path+; nil if there's none. Either may end with +exe+ too
-      # (on Windows, .exe: mysqld.exe, for mysqld).
+      # The server program: +server+ if it's a path (a / or, on Windows, a
+      # \ in it), or the one by that name on +path+; nil if there's none.
+      # Either may end with +exe+ too (on Windows, .exe: mysqld.exe, for
+      # mysqld).
       def self.find_server(server, path = ENV.fetch("PATH", ""), exe: EXE)
-        files = server.include?(File::SEPARATOR) ? [server] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
+        files = server.match?(%r{[/\\]}) ? [server] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
         files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.executable?(file) }
       end
 

@@ -186,7 +186,7 @@ module Duel
         ensure
           connection.close
         end
-      rescue SystemCallError, IOError # (JRuby's refusal is an IOError)
+      rescue SystemCallError, IOError # (JRuby's refusal on a Unix socket is an IOError)
         false
       end
 

@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the default on Windows, whose builds of Redis (Cygwin's, MSYS2's)
   have Unix sockets of their own, which Windows's Ruby can't reach.
 
+### Fixed
+
+- On JRuby, a worker that found its server's Unix socket before the
+  server listened on it failed, rather than waiting: JRuby's refusal
+  there is an `IOError` (CRuby's an `Errno::ECONNREFUSED`), which the
+  plugin now takes for a server not ready yet, as duel-memcached does.
+
 ## [0.1.8] - 2026-11-12
 
 No changes of its own: released in step with the other Duel gems.
