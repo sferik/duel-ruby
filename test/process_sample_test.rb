@@ -36,11 +36,13 @@ class ProcessSampleTest < DuelTest
     spawn = Process.method(:spawn)
     wait = Process.method(:wait)
     opened = %i[popen2 popen2e].to_h { |name| [name, Open3.method(name)] }
-    # (Open3's, where it starts them: not taskkill, run through it too.)
+    # (Open3's, where it starts them: not taskkill, run through it too, by
+    # its path, after an environment: see Duel::Spawn.open3.)
+    taskkill = ->(args) { args.any? { |arg| arg.is_a?(String) && File.basename(arg, ".*").casecmp?("taskkill") } }
     open3 = lambda do |name|
       lambda do |*args, **options, &block|
         opened.fetch(name).call(*args, **options, &block).tap do |*, waiter|
-          spawned << [waiter.pid, args, options] if Duel::Platform::JRUBY_ON_WINDOWS && args.first != "taskkill"
+          spawned << [waiter.pid, args, options] if Duel::Platform::JRUBY_ON_WINDOWS && !taskkill.call(args)
         end
       end
     end

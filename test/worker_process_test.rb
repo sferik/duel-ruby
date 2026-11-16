@@ -292,7 +292,11 @@ class WorkerProcessTest < DuelTest
       worker = worker_process
 
       kill = Process.method(:kill)
-      stopped = stub(Process, :kill, ->(_, pid) { kill.call("KILL", pid) && raise(error) }) { worker.stop(wait: 0.1) }
+      gone = ->(pid) { kill.call("KILL", pid) && raise(error) }
+      # (On Windows, its tree killed: see Duel::Spawn::Child#kill.)
+      stopped = stub(Process, :kill, ->(_, pid) { gone.call(pid) }) do
+        stub(Duel::Spawn, :kill_tree, ->(pid, **) { gone.call(pid) }) { worker.stop(wait: 0.1) }
+      end
 
       assert_nil stopped
     end

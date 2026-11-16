@@ -171,6 +171,7 @@ class PostgreSQLTest < PluginTest
       setup: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_POSTGRESQL_URL PGDATABASE PGHOST PGPORT PGUSER PRIMARY_URL], env.keys.sort
+      assert_equal !Duel.windows?, File.directory?(env.fetch("PGHOST")), "by default, on a Unix socket, but on Windows (by pg_ctl)"
       assert_equal env.fetch("DUEL_POSTGRESQL_URL"), env.fetch("PRIMARY_URL")
       assert_equal [["5MB", "on", "2"]], query("SELECT current_setting('work_mem'), current_setting('jit'), (SELECT count(*) FROM items)"),
         "the settings given, over the plugin's"
