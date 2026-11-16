@@ -231,11 +231,10 @@ module Duel
     # (CI_MERGE_REQUEST_LABELS, by commas), or none, where neither is
     # set, or DUEL_LABELS isn't a JSON array.
     def labels
-      set = variables
-      return set.fetch("CI_MERGE_REQUEST_LABELS").split(",") if !set.key?("DUEL_LABELS") && set.key?("CI_MERGE_REQUEST_LABELS")
-      return [] unless set.key?("DUEL_LABELS")
+      json = variable("DUEL_LABELS")
+      return variable("CI_MERGE_REQUEST_LABELS").to_s.split(",") unless json
 
-      names = JSON.parse(set.fetch("DUEL_LABELS"))
+      names = JSON.parse(json)
       names.instance_of?(Array) ? names : []
     rescue JSON::ParserError
       []
@@ -338,14 +337,15 @@ module Duel
     # writes them there too, as variables.
     def publish(status, markdown, json)
       comment = commenting(status)
-      set = variables
       outputs = "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n#{"passed=true\n" if @passed}"
-      File.write(set.fetch(STEP_OUTPUT), outputs, mode: "a") if set.key?(STEP_OUTPUT)
-      File.write(set.fetch(OUTPUT), outputs.gsub(/^\w+=/) { |name| "DUEL_#{name.upcase}" }, mode: "a") if set.key?(OUTPUT)
+      step_output = variable(STEP_OUTPUT)
+      File.write(step_output, outputs, mode: "a") if step_output
+      output = variable(OUTPUT)
+      File.write(output, outputs.gsub(/^\w+=/) { |name| "DUEL_#{name.upcase}" }, mode: "a") if output
       path = @json
       write(path, "#{JSON.pretty_generate(json.call(comment))}\n") if path
       path = @markdown
-      summary = (set.fetch(STEP_SUMMARY) if set.key?(STEP_SUMMARY))
+      summary = variable(STEP_SUMMARY)
       return unless path || summary
 
       text = markdown.call
@@ -526,8 +526,7 @@ module Duel
         o.on("--candidate-dir DIR", "Candidate tree (default: this one)") { |v| settings.candidate_dir = v }
         o.on("--filter REGEXP", "Only benchmarks whose names match") { |v| settings.filter = CLI.regexp(v) }
         o.on("--jobs N", Integer, "Benchmarks measured at once (default: one for every #{CPUS_PER_LANE} CPUs, as many as fit in memory)") do |v|
-          settings.jobs = v
-          settings.fit -= [:jobs]
+          set(settings, :jobs, v)
         end
         o.on("--processes N", Integer, "Worker processes per version (default: c.processes, or #{PROCESSES}, as many as fit in memory)") do |v|
           given(settings, :processes, v)
