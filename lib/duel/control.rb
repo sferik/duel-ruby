@@ -13,6 +13,13 @@ module Duel
     UNIX = !defined?(UNIXServer).nil?
     TCP = /\A127\.0\.0\.1:(\d+)\z/
 
+    # Whether a worker can reach a server on a Unix socket (see
+    # Duel.unix_sockets?): not on Windows (+windows+), whose builds of
+    # servers (Cygwin's, MSYS2's) have Unix sockets of their own, which
+    # Windows's Ruby can't reach, nor where Ruby has none (+unix+: JRuby's,
+    # on Windows).
+    def self.unix_sockets?(windows:, unix: UNIX) = !windows && unix
+
     # A server for a worker to connect to, at +path+ (or a port, unless
     # +unix+), and its address.
     def self.listen(path, unix:)

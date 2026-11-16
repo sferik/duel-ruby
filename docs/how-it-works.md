@@ -129,12 +129,16 @@ Instruction counts come from the CPU's counters, where the operating
 system lets Duel read them:
 
 - On Linux, they're the benchmark thread's, through `perf_event_open`,
-  which many virtual machines, including CI runners, don't offer. So
-  Linux doesn't count instructions for benchmarks with threads of their
-  own.
-- On macOS, they're the whole process's.
+  which many virtual machines, including CI runners, don't offer.
+- On macOS, they're the benchmark thread's too, through
+  `thread_selfcounts`. Where a thread's can't be counted (in a virtual
+  machine, say), they're the whole process's.
 - Elsewhere, and on JRuby and TruffleRuby, there's no `instructions`
   metric, and CPU time judges alone.
+
+Where they're the thread's, Duel doesn't count instructions for a
+benchmark with threads of its own, as the count would leave out their
+work.
 
 ## Where the extra time went
 

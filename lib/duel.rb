@@ -236,15 +236,13 @@ module Duel
     def windows? = Platform::WINDOWS
 
     # Whether a server that a plugin starts for a worker can listen on a
-    # Unix socket (in the worker's directory) that a worker can reach:
-    # not on Windows (+windows+), whose builds of servers (Cygwin's,
-    # MSYS2's) have Unix sockets of their own, which Windows's Ruby can't
-    # reach, nor where Ruby has none (+unix+: JRuby's, on Windows). Where
-    # it can't, the server listens on a port (see Resource#port). For a
-    # plugin's default:
+    # Unix socket (in the worker's directory) that a worker can reach: not
+    # on Windows, nor where Ruby has none (see Control.unix_sockets?).
+    # Where it can't, the server listens on a port (see Resource#port).
+    # For a plugin's default:
     #
     #   def self.configure(config, tcp: !Duel.unix_sockets?)
-    def unix_sockets?(windows: windows?, unix: Control::UNIX) = !windows && unix
+    def unix_sockets? = Control.unix_sockets?(windows: windows?)
 
     # The file of benchmarks that called the DSL method running (see
     # DSL.add), if one is: the file that what it defines is filed

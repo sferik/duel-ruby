@@ -7,6 +7,10 @@ module Duel
     UNIX: bool
     TCP: Regexp
 
+    # Whether a worker can reach a server on a Unix socket: not on
+    # Windows, nor where Ruby has none.
+    def self.unix_sockets?: (windows: bool, ?unix: bool) -> bool
+
     # A server for a worker to connect to, at +path+ (or a port, unless
     # +unix+), and its address.
     def self.listen: (String path, unix: bool) -> [UNIXServer | TCPServer, String]

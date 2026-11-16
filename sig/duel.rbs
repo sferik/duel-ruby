@@ -205,7 +205,7 @@ module Duel
   # Unix socket that a worker can reach: not on Windows, nor where Ruby
   # has none. Where it can't, the server listens on a port (see
   # Resource#port).
-  def self.unix_sockets?: (?windows: bool, ?unix: bool) -> bool
+  def self.unix_sockets?: () -> bool
 
   # Whether Duel runs on Windows: for a plugin to do what it does
   # differently there.

@@ -51,11 +51,11 @@ class DuelModuleTest < DuelTest
   # are none.
   def test_unix_sockets_but_on_windows_or_where_there_are_none
     assert_equal !Duel::Platform::WINDOWS && Duel::Control::UNIX, Duel.unix_sockets?
-    assert Duel.unix_sockets?(windows: false, unix: true)
-    refute Duel.unix_sockets?(windows: true, unix: true)
-    refute Duel.unix_sockets?(windows: false, unix: false)
-    refute with_constants(Duel::Platform, WINDOWS: true) { Duel.unix_sockets?(unix: true) }, "by default, on Windows"
-    refute stub(Duel, :windows?, -> { true }) { Duel.unix_sockets?(unix: true) }, "by default, where Duel.windows? says it's Windows"
+    with_constants(Duel::Control, UNIX: true) do
+      assert stub(Duel, :windows?, -> { false }) { Duel.unix_sockets? }
+      refute stub(Duel, :windows?, -> { true }) { Duel.unix_sockets? }, "where Duel.windows? says it's Windows"
+    end
+    refute with_constants(Duel::Control, UNIX: false) { stub(Duel, :windows?, -> { false }) { Duel.unix_sockets? } }, "where Ruby has none"
   end
 
   # Whether it's Windows, for a plugin.

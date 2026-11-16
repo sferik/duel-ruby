@@ -53,6 +53,16 @@ class ControlTest < DuelTest
     assert_equal defined?(UNIXServer) ? true : false, Duel::Control::UNIX
   end
 
+  # A worker reaches a server on a Unix socket, but on Windows, or where
+  # Ruby has none (by default, where this one has none).
+  def test_unix_sockets_but_on_windows_or_where_there_are_none
+    assert Duel::Control.unix_sockets?(windows: false, unix: true)
+    refute Duel::Control.unix_sockets?(windows: true, unix: true)
+    refute Duel::Control.unix_sockets?(windows: false, unix: false)
+    assert with_constants(Duel::Control, UNIX: true) { Duel::Control.unix_sockets?(windows: false) }
+    refute with_constants(Duel::Control, UNIX: false) { Duel::Control.unix_sockets?(windows: false) }, "by default, where there are none"
+  end
+
   def test_the_tcp_address
     assert_match Duel::Control::TCP, "127.0.0.1:5"
     refute_match Duel::Control::TCP, "x127.0.0.1:5"
