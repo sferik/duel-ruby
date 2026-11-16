@@ -234,11 +234,6 @@ module Duel
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
-  # What Duel raises when something a run needs fails: a resource that
-  # didn't start (Resource#failed), two that set a variable differently,
-  # a worker that died or hung.
-  class Failed < Error; end
-
   # Workers of both versions, taking turns: Settings#processes of each
   # (PROCESSES, by default). Where things landed in one process's memory
   # can make the very same code a few percent faster or slower for that

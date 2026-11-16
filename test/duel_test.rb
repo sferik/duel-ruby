@@ -10,6 +10,15 @@ class DuelModuleTest < DuelTest
   cover "Duel.unix_sockets?"
   cover "Duel.windows?"
 
+  # What a plugin rescues is there with Duel alone, before a run loads
+  # the runner.
+  def test_failed_with_duel_alone
+    said, status = Duel::Spawn.open3(:capture2e, *RUBY_COMMAND, "-I", File.expand_path("../lib", __dir__), "-e",
+      %(require "duel"; print Duel::Failed.superclass, " ", defined?(Duel::Runner).inspect))
+
+    assert_equal ["Duel::Error nil", true], [said.lines.last, status.success?]
+  end
+
   def test_version
     assert_match(/\A\d+\.\d+\.\d+\z/, Duel::VERSION)
   end

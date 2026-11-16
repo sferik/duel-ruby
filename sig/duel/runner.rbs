@@ -197,11 +197,6 @@ module Duel
     def monotonic: () -> Float
   end
 
-  # What Duel raises when something a run needs fails: a resource that
-  # didn't start, a worker that died or hung.
-  class Failed < Error
-  end
-
   # Workers of both versions, taking turns.
   # @api private
   class Lane

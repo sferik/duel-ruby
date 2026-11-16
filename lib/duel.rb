@@ -15,6 +15,11 @@ module Duel
   # that didn't start (Failed).
   class Error < StandardError; end
 
+  # What Duel raises when something a run needs fails: a resource that
+  # didn't start (Resource#failed), two that set a variable differently,
+  # a worker that died or hung.
+  class Failed < Error; end
+
   # The hooks, which run code around a benchmark's samples: in .duel.rb
   # (Config#setup, say), at the top of a file of benchmarks (DSL#setup),
   # or as an option of one benchmark (DSL#duel's setup:). Where several
