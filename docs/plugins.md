@@ -84,6 +84,13 @@ When you write a plugin, follow these guidelines:
   memory available by what one of each version takes as it starts, and
   a server takes more as it's used, so Duel counts at least this much
   for each worker. A version of Duel before 0.1.8 ignores it.
+- If a worker's server listens on a Unix socket in `w.dir`, give the
+  plugin an option to listen on `w.port` instead, and default it to
+  where `Duel.unix_sockets?` is false, for example
+  `def self.configure(config, tcp: !Duel.unix_sockets?)`. It's false on
+  Windows, where a server's own build often has Unix sockets that Ruby
+  can't reach, and where Ruby has no Unix sockets at all (JRuby on
+  Windows).
 
 > [!IMPORTANT]
 > A helper that's meant for setup, such as one that runs a query, must

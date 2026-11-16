@@ -76,7 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `w.port`, in a prepare block: a port of 127.0.0.1's that's free, for
   a server to listen on where it can't on a Unix socket (the plugins'
   servers, on Windows). The Redis, memcached, MySQL and PostgreSQL
-  plugins use it, in place of a method each of their own.
+  plugins use it, in place of a method each of their own. And
+  `Duel.unix_sockets?`, for a plugin's default: whether its server can
+  listen on a Unix socket that a worker can reach (not on Windows, nor
+  where Ruby has none), or should listen on that port.
 
 ### Changed
 

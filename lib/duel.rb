@@ -3,6 +3,7 @@
 require_relative "duel/version"
 require_relative "duel/config"
 require_relative "duel/metric"
+require_relative "duel/control"
 
 # Performance regression guards: every benchmark runs on two versions of
 # a codebase side by side, the baseline and the candidate, and the
@@ -225,6 +226,17 @@ module Duel
     # Every plugin registered, by name.
     # @api private
     def plugins = @plugins ||= {} #: Hash[Symbol, Module & _Plugin]
+
+    # Whether a server that a plugin starts for a worker can listen on a
+    # Unix socket (in the worker's directory) that a worker can reach:
+    # not on Windows (+windows+), whose builds of servers (Cygwin's,
+    # MSYS2's) have Unix sockets of their own, which Windows's Ruby can't
+    # reach, nor where Ruby has none (+unix+: JRuby's, on Windows). Where
+    # it can't, the server listens on a port (see Resource#port). For a
+    # plugin's default:
+    #
+    #   def self.configure(config, tcp: !Duel.unix_sockets?)
+    def unix_sockets?(windows: Native::WINDOWS, unix: Control::UNIX) = !windows && unix
 
     # The file of benchmarks that called the DSL method running (see
     # DSL.add), if one is: the file that what it defines is filed

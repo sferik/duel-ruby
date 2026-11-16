@@ -41,7 +41,7 @@ module Duel
     # connection to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
     def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), args: [], env: %w[MEMCACHE_SERVERS], cpu: false,
-      tcp: Native::WINDOWS)
+      tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         if tcp
           port = w.port

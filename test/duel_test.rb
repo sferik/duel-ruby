@@ -7,6 +7,7 @@ class DuelModuleTest < DuelTest
   cover "Duel.configure"
   cover "Duel.load_config"
   cover "Duel.benchmarks"
+  cover "Duel.unix_sockets?"
 
   def test_version
     assert_match(/\A\d+\.\d+\.\d+\z/, Duel::VERSION)
@@ -43,6 +44,16 @@ class DuelModuleTest < DuelTest
     assert_equal config.root, File.expand_path(config.root), "absolute"
   ensure
     $LOAD_PATH.delete(File.join(tmpdir, "lib"))
+  end
+
+  # A plugin's server on a Unix socket, but on Windows, or where there
+  # are none.
+  def test_unix_sockets_but_on_windows_or_where_there_are_none
+    assert_equal !Duel::Native::WINDOWS && Duel::Control::UNIX, Duel.unix_sockets?
+    assert Duel.unix_sockets?(windows: false, unix: true)
+    refute Duel.unix_sockets?(windows: true, unix: true)
+    refute Duel.unix_sockets?(windows: false, unix: false)
+    refute with_constants(Duel::Native, WINDOWS: true) { Duel.unix_sockets?(unix: true) }, "by default, on Windows"
   end
 end
 

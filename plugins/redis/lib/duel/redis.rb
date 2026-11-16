@@ -39,7 +39,7 @@ module Duel
     # metrics. Returns the plugin's own connection to it, a worker's
     # (see Config#in_worker, and in tests, Duel::Testing.in_worker).
     def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), args: [], env: %w[REDIS_URL],
-      tcp: Native::WINDOWS)
+      tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         if tcp
           # (Its port after OPTIONS' 0, which it takes the place of.)

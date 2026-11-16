@@ -79,6 +79,14 @@ class RedisTest < PluginTest
     refute Duel::Redis::Connection.ping(url), "stopped with the worker"
   end
 
+  # Elsewhere, by default, on a Unix socket.
+  def test_on_a_unix_socket_by_default
+    unix_sockets!
+    url = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_REDIS_URL") }
+
+    assert_match %r{\Aunix://.+/redis\.sock\z}, url
+  end
+
   # On Windows, by default.
   def test_on_a_port_on_windows
     windows = Duel::Native::WINDOWS

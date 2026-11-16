@@ -73,7 +73,7 @@ module Duel
     # to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
     def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], setup: nil, env: %w[DATABASE_URL],
-      scheme: "mysql2", tcp: Native::WINDOWS)
+      scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         program = DataDir.find_server(server) || w.failed("no #{server} on the PATH (give it as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")

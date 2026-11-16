@@ -82,6 +82,14 @@ class MemcachedTest < PluginTest
     refute Duel::Memcached::Connection.ready?(server), "stopped with the worker"
   end
 
+  # Elsewhere, by default, on a Unix socket.
+  def test_on_a_unix_socket_by_default
+    unix_sockets!
+    server = Duel::Testing.prepare(config) { |env| env.fetch("DUEL_MEMCACHED_SERVERS") }
+
+    assert_equal "memcached.sock", File.basename(server)
+  end
+
   # On Windows, by default.
   def test_on_a_port_on_windows
     windows = Duel::Native::WINDOWS

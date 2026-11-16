@@ -201,6 +201,12 @@ module Duel
   # @api private
   def self.plugins: () -> Hash[Symbol, Module & _Plugin]
 
+  # Whether a server that a plugin starts for a worker can listen on a
+  # Unix socket that a worker can reach: not on Windows, nor where Ruby
+  # has none. Where it can't, the server listens on a port (see
+  # Resource#port).
+  def self.unix_sockets?: (?windows: bool, ?unix: bool) -> bool
+
   self.@defining_file: String?
 
   # The file of benchmarks that called the DSL method running, if one is.
