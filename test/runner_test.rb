@@ -447,8 +447,9 @@ class RunnerTest < DuelTest
   end
 
   # Each version prepared once for the run, before its workers: its Ruby,
-  # and its prepare(:version) blocks, given the version, whose environment
-  # its workers get, and whose processes stop when the run ends.
+  # and its prepare(:version) blocks, given the version (and what the
+  # blocks before returned, in its environment), whose environment its
+  # workers get, and whose processes stop when the run ends.
   def test_each_version_prepared
     config = Duel::Config.new(candidate)
     given = []
@@ -458,7 +459,7 @@ class RunnerTest < DuelTest
       v.at_stop { stopped << v.name }
       {"BUNDLE_GEMFILE" => File.join(v.root, "Gemfile")}
     end
-    config.prepare(:version) { |v| (given << v.dir) && {"SECOND" => v.cached("t") { |_| nil }} }
+    config.prepare(:version) { |v| (given << [v.dir, v.env]) && {"SECOND" => v.cached("t") { |_| nil }} }
     ruby = fake_command(File.join(tmpdir, "bin", "ruby"), "")
     config.ruby = ->(root) { root.end_with?("base") ? ruby : RbConfig.ruby }
     with_fake_workers do |workers|
@@ -472,9 +473,11 @@ class RunnerTest < DuelTest
 
       run = File.join(lanes, "1")
 
+      first = ->(root) { {"BUNDLE_GEMFILE" => File.join(root, "Gemfile")} }
+
       assert_equal [["base", File.join(tmpdir, "base"), ruby, File.join(run, "base-1"), Duel::Rubies.environment(ruby)],
-        File.join(run, "base-2"), ["head", candidate, RbConfig.ruby, File.join(run, "head-1"), {}],
-        File.join(run, "head-2")], given
+        [File.join(run, "base-2"), Duel::Rubies.environment(ruby).merge(first.call(File.join(tmpdir, "base")))],
+        ["head", candidate, RbConfig.ruby, File.join(run, "head-1"), {}], [File.join(run, "head-2"), first.call(candidate)]], given
       assert_equal %w[head base], stopped, "last first, once the run's done"
       assert_equal({env: Duel::Rubies.environment(ruby).merge(bundle.call(File.join(tmpdir, "base"))), ruby: ruby},
         workers.made.assoc("base-1").last.slice(:env, :ruby))

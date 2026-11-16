@@ -98,9 +98,11 @@ class ConfigTest < DuelTest
     assert_empty config.metrics
   end
 
-  # What Duel keeps for a project is in its tmp/duel.
+  # What Duel keeps for a project is in its tmp/duel, and what its
+  # resources build once, in tmp/duel/cache.
   def test_state
     assert_equal "/project/tmp/duel", Duel::Config.new("/project").state
+    assert_equal "/project/tmp/duel/cache", Duel::Config.new("/project").cache
   end
 
   def test_load_into_puts_lib_first_by_default

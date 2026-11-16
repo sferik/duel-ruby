@@ -82,6 +82,16 @@ class ResourceTest < DuelTest
         kept.map { |r| [r.name, r.root, r.ruby, *%i[@timeout @cache].map { |ivar| r.instance_variable_get(ivar) }] }
     end
     assert_equal({"E" => "e"}, Duel::Resource.prepare([], "w", "head-1", "/c", env: {"E" => "e"}, ruby: "/ruby", timeout: 1.0, cache: "c") { flunk })
+    kept = []
+    Duel::Resource.prepare(blocks, File.join(tmpdir, "w"), "head-1", "/c", env: {}, ruby: "/ruby", timeout: 1.0, cache: "c") { |r| kept << r }
+
+    assert_equal [{}, {}], kept.map(&:env), "by default, a worker's: its version's alone"
+    clash = [->(_) { {"X" => "1"} }, ->(_) { {"X" => "2"} }]
+    error = assert_raises(Duel::Failed) do
+      Duel::Resource.prepare(clash, File.join(tmpdir, "w"), "head-1", "/c", env: {}, ruby: "/ruby", timeout: 1.0, cache: "c") { nil }
+    end
+
+    assert_equal "head-1: two prepare blocks set X (1, 2)", error.message
   end
 
   def test_a_directory_of_its_own
