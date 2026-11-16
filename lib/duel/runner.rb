@@ -399,13 +399,8 @@ module Duel
     def spawn(side, index)
       version = @sides.fetch(side)
       label = "#{version.label}-#{index + 1}"
-      env = version.env
-      @config.prepares.fetch(:worker).each_with_index do |block, i|
-        resource = Resource.new(File.join(@dir, "#{label}-#{i + 1}"), label, version.root, timeout: @settings.timeout,
-          cache: File.join(@config.state, "cache"), ruby: version.ruby, env: version.env)
-        keep(@resources, resource)
-        env = Resource.environment(label, env, block.call(resource))
-      end
+      env = Resource.prepare(@config.prepares.fetch(:worker), File.join(@dir, label), label, version.root, env: version.env,
+        ruby: version.ruby, timeout: @settings.timeout, cache: @config.cache) { |resource| keep(@resources, resource) }
       worker = WorkerProcess.new(label, version.root, @sides.fetch("candidate").root, @dir,
         config_path: @settings.config_path, env: env, timeout: @settings.timeout, ruby: version.ruby, engine: version.engine)
       keep(@workers, worker)
@@ -1185,7 +1180,7 @@ module Duel
       ensure
         @prepared.reverse_each(&:stop)
         FileUtils.rm_rf(@dir)
-        Resource.evict(File.join(@config.state, "cache"))
+        Resource.evict(@config.cache)
       end
     end
 
@@ -1275,12 +1270,8 @@ module Duel
         side.ruby = Rubies.find(choice, side.root, side.name)
         side.env = Rubies.environment(side.ruby)
         side.engine = Rubies.engine(side.ruby)
-        @config.prepares.fetch(:version).each_with_index do |block, i|
-          resource = Resource.new(File.join(@dir, "#{side.label}-#{i + 1}"), side.label, side.root, timeout: @settings.timeout,
-            cache: File.join(@config.state, "cache"), ruby: side.ruby, env: side.env)
-          @prepared << resource
-          side.env = Resource.environment(side.label, side.env, block.call(resource))
-        end
+        side.env = Resource.prepare(@config.prepares.fetch(:version), File.join(@dir, side.label), side.label, side.root,
+          env: side.env, ruby: side.ruby, timeout: @settings.timeout, cache: @config.cache, so_far: true) { |resource| @prepared << resource }
         side
       end
     end

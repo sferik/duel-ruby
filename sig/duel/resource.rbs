@@ -46,6 +46,12 @@ module Duel
 
     # +env+ with +vars+ too: two prepare blocks that set a variable differently
     # fail.
+    # Runs each prepare block, given a Resource of its own (kept by the
+    # block given), and returns +env+ with what each returned.
+    # @api private
+    def self.prepare: (Array[Config::prepare] blocks, String dir, String name, String root, env: Hash[String, String?],
+                       ruby: String, timeout: Float, cache: String, ?so_far: bool) { (Resource) -> void } -> Hash[String, String?]
+
     # @api private
     def self.environment: (String name, Hash[String, String?] env, Hash[String, String?] vars) -> Hash[String, String?]
 

@@ -39,6 +39,11 @@ module Duel
     # empty. `duel --clean` removes the rest.
     def state = File.join(root, "tmp", "duel")
 
+    # Where what a resource builds once is kept (see Resource#cached):
+    # tmp/duel/cache.
+    # @api private
+    def cache = File.join(state, "cache")
+
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor :benchmarks
 

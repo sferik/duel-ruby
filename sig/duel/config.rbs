@@ -52,6 +52,10 @@ module Duel
     # Where Duel keeps what it keeps for the project: tmp/duel.
     def state: () -> String
 
+    # Where what a resource builds once is kept: tmp/duel/cache.
+    # @api private
+    def cache: () -> String
+
     # A glob, from the root, of the files defining benchmarks.
     attr_accessor benchmarks: String
 

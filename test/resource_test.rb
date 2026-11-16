@@ -64,6 +64,26 @@ class ResourceTest < DuelTest
     false
   end
 
+  # Prepare blocks, in order, each given a Resource of its own (kept as
+  # it's made), and what they returned together. Each Resource's env is
+  # the one given, or (a version's, so_far) with what the blocks before it
+  # returned too.
+  def test_prepared_by_blocks
+    blocks = [->(_) { {"A" => "1"} }, ->(r) { {"B" => r.env.fetch("A", "none")} }]
+    [false, true].each do |so_far|
+      kept = []
+      env = Duel::Resource.prepare(blocks, File.join(tmpdir, "w"), "head-1", "/candidate", env: {"E" => "e"}, ruby: "/ruby", timeout: 7.0,
+        cache: File.join(tmpdir, "cache"), so_far:) { |r| kept << r }
+
+      assert_equal({"E" => "e", "A" => "1", "B" => so_far ? "1" : "none"}, env, "so_far: #{so_far}")
+      assert_equal [{"E" => "e"}, so_far ? {"E" => "e", "A" => "1"} : {"E" => "e"}], kept.map(&:env)
+      assert_equal [File.join(tmpdir, "w-1"), File.join(tmpdir, "w-2")], kept.map(&:dir)
+      assert_equal [["head-1", "/candidate", "/ruby", 7.0, File.join(tmpdir, "cache")]] * 2,
+        kept.map { |r| [r.name, r.root, r.ruby, *%i[@timeout @cache].map { |ivar| r.instance_variable_get(ivar) }] }
+    end
+    assert_equal({"E" => "e"}, Duel::Resource.prepare([], "w", "head-1", "/c", env: {"E" => "e"}, ruby: "/ruby", timeout: 1.0, cache: "c") { flunk })
+  end
+
   def test_a_directory_of_its_own
     r = resource
 

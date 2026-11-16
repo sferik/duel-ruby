@@ -74,6 +74,21 @@ module Duel
     # @api private
     Spawned = Data.define(:program, :log, :stop_signal, :child)
 
+    # Runs each of +blocks+ (Config#prepare's), in order, each given a
+    # Resource of its own (+dir+-1, +dir+-2...) for +name+ in +root+, on
+    # +ruby+, which it gives the block +kept+ (to stop it later). Returns
+    # +env+ with what each block returned (see .environment). Each
+    # Resource's own env is +env+: a worker's, its version's alone, but a
+    # version's (+so_far+), with what the blocks before it returned too.
+    # @api private
+    def self.prepare(blocks, dir, name, root, env:, ruby:, timeout:, cache:, so_far: false)
+      blocks.each_with_index.reduce(env) do |set, (block, i)|
+        resource = new("#{dir}-#{i + 1}", name, root, timeout:, cache:, ruby:, env: so_far ? set : env)
+        yield resource
+        environment(name, set, block.call(resource))
+      end
+    end
+
     # The worker it's for ("base-1", say), or the version ("base",
     # for Config#prepare(:version)), the directory it has of its own, the
     # tree of the version that worker runs, and the Ruby it runs on (see
