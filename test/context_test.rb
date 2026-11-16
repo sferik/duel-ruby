@@ -564,9 +564,10 @@ class ContextTest < DuelTest
   # macOS signals that CPU time is up only as a thread enters the kernel:
   # elapsed time it is, there.
   def test_what_a_profile_samples_by
-    assert_equal :wall, Duel::ProfileSample.mode("arm64-darwin24")
-    assert_equal :cpu, Duel::ProfileSample.mode("x86_64-linux")
-    assert_equal Duel::ProfileSample.mode(RUBY_PLATFORM), Duel::ProfileSample.mode
+    assert_equal :wall, Duel::ProfileSample.mode(platform: "darwin24")
+    assert_equal :cpu, Duel::ProfileSample.mode(platform: "linux-gnu")
+    assert_equal :wall, with_constants(Duel::Platform, OS: "darwin24") { Duel::ProfileSample.mode }, "by default, the host's"
+    assert_equal :cpu, with_constants(Duel::Platform, OS: "mingw32") { Duel::ProfileSample.mode }
     assert_equal Duel::ProfileSample.mode, Duel::ProfileSample::MODE
   end
 end

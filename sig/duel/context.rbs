@@ -338,16 +338,9 @@ module Duel
     # What StackProf samples by here (see .mode).
     MODE: :cpu | :wall
 
-    @started: true?
-    @stopped: true?
-
     # What StackProf samples by on +platform+: CPU time, but elapsed time
     # on macOS.
-    def self.mode: (?String platform) -> (:cpu | :wall)
-
-    attr_reader started: true?
-
-    attr_reader stopped: true?
+    def self.mode: (?platform: String) -> (:cpu | :wall)
 
     def start: () -> void
 

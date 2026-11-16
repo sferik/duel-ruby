@@ -599,26 +599,19 @@ module Duel
   class ProfileSample
     INTERVAL = 100 # microseconds between StackProf's samples
 
-    # What StackProf samples by on +platform+: CPU time, but on macOS,
-    # elapsed time. macOS signals that CPU time is up only as the thread
-    # enters the kernel, so its samples pile up on whatever makes system
-    # calls, the most CPU-hungry code or not. A benchmark busy on the CPU
-    # spends elapsed time the same way.
-    def self.mode(platform = RUBY_PLATFORM) = platform.include?("darwin") ? :wall : :cpu
+    # What StackProf samples by on +platform+ (the host's system, as
+    # Platform tells it): CPU time, but on macOS, elapsed time. macOS
+    # signals that CPU time is up only as the thread enters the kernel, so
+    # its samples pile up on whatever makes system calls, the most
+    # CPU-hungry code or not. A benchmark busy on the CPU spends elapsed
+    # time the same way.
+    def self.mode(platform: Platform::OS) = platform.include?("darwin") ? :wall : :cpu
 
     MODE = mode
 
-    attr_reader :started, :stopped
+    def start = Sample::QUIET_GC.call
 
-    def start
-      @started = true
-      Sample::QUIET_GC.call
-    end
-
-    def stop
-      GC.enable
-      @stopped = true
-    end
+    def stop = GC.enable
 
     # Runs the block (an untimed one, or the around_iteration hooks of a
     # benchmark with them: see #between): what it does is sampled in this
