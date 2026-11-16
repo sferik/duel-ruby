@@ -73,7 +73,8 @@ module Duel
     # branch pushed (Settings#pushed), for Config#push_base:
     # duel/passed/main, or for a project in a subdirectory of its
     # repository, with its path (duel/passed-gems-parser/main), so each
-    # branch, and each of a monorepo's projects, has its own.
+    # branch, and each of a monorepo's projects, has its own. (As
+    # Init#passed_branch names them, which the workflow is given.)
     def passed_branch = "#{prefix.empty? ? "duel/passed" : "duel/passed-#{prefix.tr("/", "-")}"}/#{@settings.pushed}"
 
     # The last commit Duel passed in a push, as checked out from GitHub
@@ -87,8 +88,7 @@ module Duel
 
       # (There's a ref: CLI#run checks first.)
       commit = ref #: String
-      _, status = Spawn.open3(:capture2e, "git", "-C", @config.root, "diff", "--quiet", commit, "--", *watched)
-      status.success?
+      !git("diff", "--quiet", commit, "--", *watched, allow_failure: true).nil?
     end
 
     # What a change must touch to be compared, from the root: the code
@@ -223,7 +223,7 @@ module Duel
     # push, or nil where that isn't here (a branch's first push, or one
     # that rewrote history).
     def pushed
-      return passed if @config.push_base == :last_passed && git("merge-base", "--is-ancestor", passed, "HEAD", allow_failure: true)
+      return passed if @config.push_base == :last_passed && ancestor?(passed, "HEAD")
 
       before = @settings.base #: String
       before if git("cat-file", "-e", "#{before}^{commit}", allow_failure: true)
