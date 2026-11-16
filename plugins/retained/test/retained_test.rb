@@ -120,7 +120,7 @@ class RetainedTest < PluginTest
     here = "test/retained_test.rb"
 
     assert_in_delta 900, retained, NOISE
-    assert_equal "an iteration: 3 Array (#{here}:#{line}), 3 String (#{here}:#{line}), 2 RetainedTest::Kept (#{here}:#{line + 1})", said
+    assert_equal "an iteration: 3 Array (#{here}:#{line}); 3 String (#{here}:#{line}); 2 RetainedTest::Kept (#{here}:#{line + 1})", said
     assert_nil ObjectSpace.allocation_sourcefile(KEPT.last), "its trace cleared"
   end
 

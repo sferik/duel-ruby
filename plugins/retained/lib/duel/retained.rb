@@ -141,7 +141,7 @@ module Duel
         return if within?(@retained, @n)
 
         kinds = Retained.traced.first(SHOWN).map { |(klass, site), count| format("%.4g %s (%s)", count.fdiv(@n), klass, site) }
-        "an iteration: #{kinds.join(", ")}" unless kinds.empty? # (none it can see: internal objects, or a trace cleared)
+        "an iteration: #{kinds.join("; ")}" unless kinds.empty? # (none it can see: internal objects, or a trace cleared)
       ensure
         ObjectSpace.trace_object_allocations_clear
       end

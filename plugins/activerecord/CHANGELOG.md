@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-11-16
 
-No changes of its own: released in step with the other Duel gems.
+### Changed
+
+- A regression's statements are shortened to 80 characters, ending in
+  `…`, as duel-mysql's and duel-postgresql's are, rather than 100
+  ending in `...`: where the plugins explain the same regression, their
+  statements read alike.
 
 ## [0.1.8] - 2026-11-12
 

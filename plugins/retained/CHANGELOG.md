@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-11-16
 
-No changes of its own: released in step with the other Duel gems.
+### Changed
+
+- The kinds of object a regression shows are separated by `; `, as
+  other plugins' statements are, rather than `, `: "an iteration: 3
+  Array (lib/a.rb:1); 2 String (lib/b.rb:2)".
 
 ## [0.1.8] - 2026-11-12
 

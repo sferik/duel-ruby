@@ -230,7 +230,7 @@ class ActiveRecordTest < PluginTest
       8.times { |i| Post.connection.execute("SELECT #{i + 10}") }
     end
 
-    assert_equal "an iteration: 4× SELECT 2, 3; 1× SELECT 1 AS #{"a" * 85}...; 1× SELECT 10; 7× others",
+    assert_equal "an iteration: 4× SELECT 2, 3; 1× SELECT 1 AS #{"a" * 67}…; 1× SELECT 10; 7× others",
       measured.details.fetch("active_record_queries")
     measured = measure(config) do
       8.times { |i| Post.connection.execute("SELECT #{i + 10}") }
@@ -309,7 +309,7 @@ class ActiveRecordComparisonTest < PluginTest
     assert_match(/^  active_record_queries: 2 queries → 6 queries an iteration$/, n_plus_one.output)
     assert_match(/^  active_record_queries \(candidate\): an iteration: 5× SELECT COUNT\(\*\) FROM "comments" WHERE "comments"\."post_id" = \?; 1× SELECT "posts"\.\* FROM "posts"$/,
       n_plus_one.output)
-    assert_match(/^  active_record_queries \(baseline\): an iteration: 1× SELECT "comments"\.\* FROM "comments" WHERE "comments"\."post_id" IN \(\?(, \?)*\); 1× SELECT "posts"\.\* FROM "posts"$/,
+    assert_match(/^  active_record_queries \(baseline\): an iteration: 1× SELECT "comments"\.\* FROM "comments" WHERE "comments"\."post_id" IN \(\?, \?, \?, \?, …; 1× SELECT "posts"\.\* FROM "posts"$/,
       n_plus_one.output)
   end
 

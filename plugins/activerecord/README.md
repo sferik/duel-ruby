@@ -72,7 +72,7 @@ REGRESSION posts: the index page: worse instructions, cpu, active_record_queries
   ...
   active_record_queries: 2 queries → 11 queries an iteration
   active_record_queries (candidate): an iteration: 10× SELECT "comments".* FROM "comments" WHERE "comments"."post_id" = ?; 1× SELECT "posts".* FROM "posts"
-  active_record_queries (baseline): an iteration: 1× SELECT "comments".* FROM "comments" WHERE "comments"."post_id" IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?); 1× SELECT "posts".* FROM "posts"
+  active_record_queries (baseline): an iteration: 1× SELECT "comments".* FROM "comments" WHERE "comments"."post_id" IN (?, ?, ?, ?, …; 1× SELECT "posts".* FROM "posts"
 ```
 
 > [!TIP]
@@ -123,7 +123,7 @@ explained (with [duel-retained](https://github.com/sferik/duel-ruby/tree/main/pl
 that's within its allowance), and the rest are told as others. A regression
 shows the three a sample sent most, and how many times an iteration
 (and others'), of its last 1,000 queries, but those in `untimed` blocks,
-with at most 100 characters of each.
+with at most 80 characters of each.
 
 `active_record_queries` counts what Rails' log counts as queries, but
 leaves out cached ones, which never reach the database: they're

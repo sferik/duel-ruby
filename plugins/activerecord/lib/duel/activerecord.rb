@@ -84,7 +84,7 @@ module Duel
 
       # The most statements shown, and the most shown of each one's SQL.
       SHOWN = 3
-      LENGTH = 100
+      LENGTH = 80
 
       def initialize(query_time:, ignore:)
         @query_time = query_time
@@ -176,10 +176,11 @@ module Duel
       # The queries counted by a reading of the totals.
       def queries(reading) = reading.total("active_record_queries")
 
-      # +sql+ on one line, and at most LENGTH long.
+      # +sql+ on one line, and at most LENGTH long (with … where it's
+      # cut).
       def shorten(sql)
         line = sql.gsub(/\s+/, " ").strip
-        (line.length > LENGTH) ? "#{line[0, LENGTH - 3]}..." : line
+        (line.length > LENGTH) ? "#{line[0, LENGTH - 1]}…" : line
       end
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond)
