@@ -3,7 +3,8 @@
 require_relative "test_helper"
 
 # Starting a process with its output in a log, or with a pipe each way:
-# spawned with redirects, or through Open3 (as on JRuby on Windows).
+# spawned with redirects (Directly), or through Open3 (ThroughOpen3, as
+# on JRuby on Windows), and waiting for it and stopping it (Child).
 class SpawnTest < DuelTest
   cover "Duel::Spawn*"
   hangs_after 5
@@ -43,12 +44,22 @@ class SpawnTest < DuelTest
     ObjectSpace.each_object(File).select { |f| !f.closed? && f.path == @log }
   end
 
-  # Whether +redirects+ is one Process.spawn can be given here: not on
-  # JRuby on Windows, whose spawn redirects nothing.
-  def ways = Duel::Spawn::REDIRECTS ? [true, false] : [false]
+  # Whether +pid+ is gone, and waited for (not a zombie), within ten
+  # seconds.
+  def reaped?(pid)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+    sleep 0.01 while Process.kill(0, pid) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+    false
+  rescue Errno::ESRCH
+    true
+  end
 
-  def skip_unless_spawn_redirects
-    skip "JRuby's spawn on Windows redirects nothing" unless Duel::Spawn::REDIRECTS
+  # The ways a process can start here: not Directly on JRuby on Windows,
+  # whose spawn redirects nothing (and whose wait doesn't wait).
+  def starters = (Duel::Spawn::STARTER == Duel::Spawn::Directly) ? [Duel::Spawn::Directly, Duel::Spawn::ThroughOpen3] : [Duel::Spawn::ThroughOpen3]
+
+  def skip_unless_directly
+    skip "JRuby's spawn on Windows redirects nothing" unless Duel::Spawn::STARTER == Duel::Spawn::Directly
   end
 
   # (A JRuby child on Windows copies a process it spawned's output itself,
@@ -57,9 +68,11 @@ class SpawnTest < DuelTest
     skip "a JRuby child's own children's output, on Windows, is the child's to copy" if Duel::Platform::JRUBY_ON_WINDOWS
   end
 
-  # Process.spawn redirects, but on JRuby on Windows.
+  # Process.spawn redirects and waits, and a process starts Directly,
+  # but on JRuby on Windows.
   def test_redirects
-    assert_equal !Duel::Platform::JRUBY_ON_WINDOWS, Duel::Spawn::REDIRECTS
+    assert_equal [!Duel::Platform::JRUBY_ON_WINDOWS] * 2, [Duel::Spawn::REDIRECTS, Duel::Spawn::WAITS]
+    assert_equal (Duel::Platform::JRUBY_ON_WINDOWS ? Duel::Spawn::ThroughOpen3 : Duel::Spawn::Directly), Duel::Spawn::STARTER
     assert_equal [5, 65_536], [Duel::Spawn::COPY_WAIT, Duel::Spawn::CHUNK]
   end
 
@@ -67,15 +80,14 @@ class SpawnTest < DuelTest
   # place), its input nothing, with the options given, and waited for as
   # any child.
   def test_logged_spawned
-    skip_unless_spawn_redirects
+    skip_unless_directly
     File.write(@log, "before\n")
     size = File.size(@log) # (8 bytes on Windows, its line ending CRLF)
     calls = []
     code = "$stdout.sync = true; puts ENV['X'], File.basename(Dir.pwd), $stdin.read.inspect; warn :err; exit 3"
-    started = noting(calls) { Duel::Spawn.logged(env, ruby(code), log: @log, mode: "a", redirects: true, chdir: tmpdir) }
+    child = noting(calls) { Duel::Spawn::Directly.logged(env, ruby(code), log: @log, mode: "a", chdir: tmpdir) }
 
-    assert_equal [started.first, nil], started
-    assert_equal 3, Process.wait2(started.first).last.exitstatus
+    assert_equal 3, child.wait.first, "waited for as any child (with wait4, where it's there)"
     assert_equal "before\nx\n#{File.basename(tmpdir)}\n\"\"\nerr\n", File.read(@log)
     (called, options), = calls
 
@@ -83,8 +95,7 @@ class SpawnTest < DuelTest
     assert_same options[:out], options[:err]
     assert_equal size, options[:at], "given at its end (where Windows's child writes)"
     assert_empty open_logs, "closed here"
-    pid, = Duel::Spawn.logged(env, ruby("puts :again"), log: @log, mode: "w", redirects: true)
-    Process.wait(pid)
+    Duel::Spawn::Directly.logged(env, ruby("puts :again"), log: @log, mode: "w").wait
 
     assert_equal "again\n", File.read(@log), "in its place"
   end
@@ -100,44 +111,44 @@ class SpawnTest < DuelTest
     popen2e = Open3.method(:popen2e)
     copy = Duel::Spawn.method(:copy)
     copied = []
-    pid, waiter = stub(Open3, :popen2e, ->(*args, **options) { popen2e.call(*args, **options).tap { |opened| pipes.concat(opened.first(2)) } }) do
+    child = stub(Open3, :popen2e, ->(*args, **options) { popen2e.call(*args, **options).tap { |opened| pipes.concat(opened.first(2)) } }) do
       stub(Duel::Spawn, :copy, ->(output, out, **options) { (copied << out.binmode?) && copy.call(output, out, **options) }) do
-        noting(calls) { Duel::Spawn.logged(env, ruby(code), log: @log, mode: "a", redirects: false, chdir: tmpdir) }
+        noting(calls) { Duel::Spawn::ThroughOpen3.logged(env, ruby(code), log: @log, mode: "a", chdir: tmpdir) }
       end
     end
 
-    assert_equal waiter.value.pid, pid
-    assert_equal 3, waiter.value.exitstatus
+    assert_equal child.waiter.value.pid, child.pid
+    assert_equal [3, nil, nil], child.wait, "as its thread says"
     assert_equal "before\nx\n#{File.basename(tmpdir)}\n\"\"\nerr\n", File.read(@log)
     assert_equal [[:popen2e, {chdir: tmpdir}]], calls.reject { |call| call.first == :spawn }
     assert_equal [true], copied, "copied to as it's written (not CRCRLF, on Windows)"
     assert_empty open_logs, "closed, once it's done"
     assert_equal [true, true], pipes.map(&:closed?), "its input at once, its output once it's done"
-    pid, waiter = Duel::Spawn.logged(env, ruby("puts :again"), log: @log, mode: "w", redirects: false)
+    child = Duel::Spawn::ThroughOpen3.logged(env, ruby("puts :again"), log: @log, mode: "w")
 
-    assert_predicate waiter.value, :success?
+    assert_predicate child.waiter.value, :success?
     assert_equal "again\n", File.read(@log), "in its place"
     # (JRuby's Process.wait on Windows waits for nothing.)
-    assert_raises(Errno::ECHILD, "waited for") { Process.wait(pid) } unless Duel::Platform::JRUBY_ON_WINDOWS
+    assert_raises(Errno::ECHILD, "waited for") { Process.wait(child.pid) } unless Duel::Platform::JRUBY_ON_WINDOWS
   end
 
   # What it says is in the log as it runs, for what waits on it to see.
   def test_logged_through_open3_as_it_runs
-    pid, waiter = Duel::Spawn.logged(env, ruby("$stdout.sync = true; puts :ready; sleep"), log: @log, mode: "w", redirects: false)
+    child = Duel::Spawn::ThroughOpen3.logged(env, ruby("$stdout.sync = true; puts :ready; sleep"), log: @log, mode: "w")
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
     sleep 0.01 until File.read(@log).include?("ready") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
     assert_includes File.read(@log), "ready", "while it runs"
   ensure
-    Process.kill("KILL", pid) if pid
-    waiter&.join
+    Process.kill("KILL", child.pid) if child
+    child&.waiter&.join
   end
 
   # All of what it says is in the log once it's ended, however much.
   def test_logged_through_open3_says_a_lot
-    _, waiter = Duel::Spawn.logged(env, ruby("$stdout.write('x' * 8_000_000)"), log: @log, mode: "w", redirects: false)
+    child = Duel::Spawn::ThroughOpen3.logged(env, ruby("$stdout.write('x' * 8_000_000)"), log: @log, mode: "w")
 
-    assert_predicate waiter.value, :success?
+    assert_predicate child.waiter.value, :success?
     assert_equal 8_000_000, File.size(@log)
   end
 
@@ -147,31 +158,22 @@ class SpawnTest < DuelTest
     skip_a_jruby_childs_children
     code = "$stdout.sync = true; puts :first; Process.spawn(RbConfig.ruby, '-e', '$stdout.sync = true; sleep 0.5; puts :later')"
     # (Seconds enough for a JVM, JRuby's, to start on a busy machine.)
-    _, waiter = with_constants(Duel::Spawn, COPY_WAIT: 60) do
-      Duel::Spawn.logged(env, ruby(code), log: @log, mode: "w", redirects: false).tap { |_, thread| thread.join }
+    child = with_constants(Duel::Spawn, COPY_WAIT: 60) do
+      Duel::Spawn::ThroughOpen3.logged(env, ruby(code), log: @log, mode: "w").tap { |started| started.waiter.join }
     end
 
-    assert_predicate waiter.value, :success?
+    assert_predicate child.waiter.value, :success?
     assert_equal "first\nlater\n", File.read(@log)
-  end
-
-  # Spawned unless Process.spawn redirects nothing, by default.
-  def test_logged_by_default
-    calls = []
-    pid, waiter = noting(calls) { Duel::Spawn.logged(env, ruby("1"), log: @log, mode: "w") }
-    waiter ? waiter.join : Process.wait(pid)
-
-    assert_equal (Duel::Spawn::REDIRECTS ? :spawn : :popen2e), calls.first.first
   end
 
   # The log is there as soon as it starts, for a failure to show.
   def test_the_log_is_there_at_once
-    ways.each do |redirects|
+    starters.each do |starter|
       FileUtils.rm_f(@log)
-      pid, waiter = Duel::Spawn.logged(env, ruby("sleep 0.2"), log: @log, mode: "a", redirects: redirects)
+      child = starter.logged(env, ruby("sleep 0.2"), log: @log, mode: "a")
 
       assert_path_exists @log
-      waiter ? waiter.join : Process.wait(pid)
+      child.wait
     end
   end
 
@@ -183,11 +185,11 @@ class SpawnTest < DuelTest
     pids = File.join(tmpdir, "pids")
     code = "$stdout.sync = true; puts :started; pid = Process.spawn(RbConfig.ruby, '-e', 'sleep 30'); File.write(ARGV[0], pid.to_s)"
     _, err = capture_io do
-      _, waiter = with_constants(Duel::Spawn, COPY_WAIT: 0.2) do
-        Duel::Spawn.logged(env, ruby(code, pids), log: @log, mode: "w", redirects: false).tap { |_, thread| thread.join }
+      child = with_constants(Duel::Spawn, COPY_WAIT: 0.2) do
+        Duel::Spawn::ThroughOpen3.logged(env, ruby(code, pids), log: @log, mode: "w").tap { |started| started.waiter.join }
       end
 
-      assert_predicate waiter.value, :success?
+      assert_predicate child.waiter.value, :success?
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
       sleep 0.01 until open_logs.empty? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
@@ -208,32 +210,73 @@ class SpawnTest < DuelTest
   # A command that can't start raises, as Process.spawn does, and leaves
   # nothing open.
   def test_logged_that_cant_start
-    ways.each do |redirects|
-      assert_raises(Errno::ENOENT) { Duel::Spawn.logged(env, ["duel-no-such-program"], log: @log, mode: "w", redirects: redirects) }
-    end
+    log = Duel::Spawn.method(:log)
+    starters.each do |starter|
+      opened = []
+      error = stub(Duel::Spawn, :log, ->(*args) { log.call(*args).tap { |file| opened << file } }) do
+        assert_raises(Errno::ENOENT) { starter.logged(env, ["duel-no-such-program"], log: @log, mode: "w") }
+      end
 
-    assert_empty open_logs
+      assert_kind_of Errno::ENOENT, error
+      assert_equal [true], opened.map(&:closed?), starter.name
+    end
   end
 
   # A pipe each way, spawned (its ends, not this process's, closed here)
   # or through Open3, with the options given, and a thread whose value is
   # how it ended.
   def test_piped
-    {true => :spawn, false => :popen2}.slice(*ways).each do |redirects, expected|
+    {Duel::Spawn::Directly => :spawn, Duel::Spawn::ThroughOpen3 => :popen2}.slice(*starters).each do |starter, expected|
       calls = []
-      pid, input, output, waiter = noting(calls) do
-        Duel::Spawn.piped(env, ruby("$stdout.sync = true; puts $stdin.gets.upcase, ENV['X'], File.basename(Dir.pwd); exit 4"),
-          redirects: redirects, chdir: tmpdir)
+      child, input, output = noting(calls) do
+        starter.piped(env, ruby("$stdout.sync = true; puts $stdin.gets.upcase, ENV['X'], File.basename(Dir.pwd); exit 4"), chdir: tmpdir)
       end
       input.puts "hi"
       input.close
 
       assert_equal ["HI", "x", File.basename(tmpdir)], output.read.split("\n")
-      assert_equal [pid, 4], [waiter.value.pid, waiter.value.exitstatus], "redirects: #{redirects}"
+      assert_equal [child.pid, 4], [child.waiter.value.pid, child.waiter.value.exitstatus], starter.name
       assert_equal [expected, tmpdir], [calls.first.first, calls.first.last[:chdir]]
       assert_equal 1, calls.count { |called, _| called == expected }, "started once"
+      refute calls.first.last.key?(:pgroup) || calls.first.last.key?(:new_pgroup), "in no group of its own"
       output.close
     end
+  end
+
+  # In a group of its own, if it's asked, which killing it kills (or on
+  # Windows, its tree, as for any). Elsewhere, it alone.
+  def test_piped_in_a_group
+    starters.product([true, false]).each do |starter, group|
+      calls = []
+      child, input, output = noting(calls) { starter.piped(env, ruby("$stdin.read"), group: group, chdir: tmpdir) }
+
+      assert_equal (group ? Duel::Spawn.group : {}), calls.first.last.slice(:pgroup, :new_pgroup), "#{starter.name}, group: #{group}"
+      assert_equal tmpdir, calls.first.last[:chdir], "and the options given"
+      killed = []
+      kill_tree = Duel::Spawn.method(:kill_tree)
+      kill = Process.method(:kill)
+      stub(Duel::Spawn, :kill_tree, ->(pid, **options) { (killed << :tree) && kill_tree.call(pid, **options) }) do
+        stub(Process, :kill, ->(signal, pid) { (killed << :alone) && kill.call(signal, pid) }) { child.kill }
+      end
+
+      assert_equal (group || windows?) ? :tree : :alone, killed.first, "#{starter.name}, group: #{group}"
+      input.close
+      output.close
+    end
+  end
+
+  # Spawned with a pipe each way, or its output this process's, it's
+  # waited for on a thread from the start (Process.detach's), so it's
+  # reaped as it ends, though nothing asks.
+  def test_piped_and_started_reaped_as_they_end
+    skip_unless_directly
+    child, input, output = Duel::Spawn::Directly.piped(env, ruby("1"))
+    started = Duel::Spawn::Directly.started(env, ruby("1"))
+
+    assert reaped?(child.pid), "piped"
+    assert reaped?(started.pid), "started"
+    input.close
+    output.close
   end
 
   # Through Open3, what Open3 started, alone.
@@ -242,69 +285,51 @@ class SpawnTest < DuelTest
     popen2 = Open3.method(:popen2)
     spawned = []
     spawn = Process.method(:spawn)
-    pid, input, output, waiter = stub(Open3, :popen2, ->(*args, **options) { popen2.call(*args, **options).tap { |ends| opened.concat(ends) } }) do
+    child, input, output = stub(Open3, :popen2, ->(*args, **options) { popen2.call(*args, **options).tap { |ends| opened.concat(ends) } }) do
       stub(Process, :spawn, ->(*args, **options) { spawn.call(*args, **options).tap { |id| spawned << id } }) do
-        Duel::Spawn.piped(env, ruby("1"), redirects: false)
+        Duel::Spawn::ThroughOpen3.piped(env, ruby("1"))
       end
     end
     input.close
 
-    assert_equal opened, [input, output, waiter]
-    assert_equal opened.last.pid, pid
-    assert_predicate waiter.value, :success?
+    assert_equal opened, [input, output, child.waiter]
+    assert_equal opened.last.pid, child.pid
+    assert_predicate child.waiter.value, :success?
     output.close
     spawned.each { |id| Process.wait(id) }
-  end
-
-  # Spawned unless Process.spawn redirects nothing, by default.
-  def test_piped_by_default
-    calls = []
-    _, input, output, waiter = noting(calls) { Duel::Spawn.piped(env, ruby("1")) }
-    input.close
-    waiter.join
-    output.close
-
-    assert_equal (Duel::Spawn::REDIRECTS ? :spawn : :popen2), calls.first.first
   end
 
   # Started, its output this process's, and a thread whose value is how
   # it ended: spawned (and detached), or through Open3, its output copied
   # here (as where Process.spawn can't wait: JRuby on Windows).
   def test_started
-    {true => :spawn, false => :popen3}.slice(*ways).each do |redirects, expected|
+    {Duel::Spawn::Directly => :spawn, Duel::Spawn::ThroughOpen3 => :popen3}.slice(*starters).each do |starter, expected|
       calls = []
       out, err = capture_subprocess_io do
-        pid, waiter = noting(calls) do
-          Duel::Spawn.started(env, ruby("$stdout.sync = true; puts ENV['X'], $stdin.read.inspect; warn :err; exit 5"), redirects: redirects,
-            close_others: true)
+        child = noting(calls) do
+          starter.started(env, ruby("$stdout.sync = true; puts ENV['X'], $stdin.read.inspect; warn :err; exit 5"), close_others: true)
         end
 
-        assert_equal [pid, 5], [waiter.value.pid, waiter.value.exitstatus]
+        assert_equal [child.pid, 5], [child.waiter.value.pid, child.waiter.value.exitstatus]
         # (Through Open3, all of it copied once its thread has ended.)
         $stdout.flush
       end
 
       # (On Windows, this process's output in CRuby's text mode: CRCRLF.)
-      assert_equal ["x\n\"\"\n", "err\n"], [out, err].map { |said| said.gsub(/\r+\n/, "\n") }, "redirects: #{redirects}"
+      assert_equal ["x\n\"\"\n", "err\n"], [out, err].map { |said| said.gsub(/\r+\n/, "\n") }, starter.name
       assert_equal [expected, true], [calls.first.first, calls.first.last[:close_others]]
-      assert_equal File::NULL, calls.first.last[:in] if redirects
+      assert_equal File::NULL, calls.first.last[:in] if starter == Duel::Spawn::Directly
     end
   end
 
-  # Spawned unless Process.spawn can't wait, by default. Through Open3,
-  # it's returned at once, its output copied meanwhile.
-  def test_started_by_default_and_at_once
-    calls = []
-    pid, waiter = noting(calls) { Duel::Spawn.started(env, ruby("1")) }
-    waiter.join
-
-    assert_equal [(Duel::Spawn::REDIRECTS ? :spawn : :popen3), pid], [calls.first.first, waiter.value.pid]
-    started = Thread.new { Duel::Spawn.started(env, ruby("sleep"), redirects: false) }
+  # Through Open3, it's returned at once, its output copied meanwhile.
+  def test_started_through_open3_at_once
+    started = Thread.new { Duel::Spawn::ThroughOpen3.started(env, ruby("sleep")) }
 
     assert started.join(10), "not once it's ended"
-    pid, waiter = started.value
-    Process.kill("KILL", pid)
-    waiter.join
+    child = started.value
+    Process.kill("KILL", child.pid)
+    child.waiter.join
   end
 
   # Through Open3, one whose output something it started holds open: its
@@ -317,13 +342,13 @@ class SpawnTest < DuelTest
     pipes = []
     popen3 = Open3.method(:popen3)
     out, err = capture_subprocess_io do
-      _, waiter = with_constants(Duel::Spawn, COPY_WAIT: 0.2) do
+      child = with_constants(Duel::Spawn, COPY_WAIT: 0.2) do
         stub(Open3, :popen3, ->(*args, **options) { popen3.call(*args, **options).tap { |opened| pipes.concat(opened[1, 2]) } }) do
-          Duel::Spawn.started(env, ruby(code, pids), redirects: false).tap { |_, thread| thread.join }
+          Duel::Spawn::ThroughOpen3.started(env, ruby(code, pids)).tap { |started| started.waiter.join }
         end
       end
 
-      assert_predicate waiter.value, :success?
+      assert_predicate child.waiter.value, :success?
       sleep 0.01 until pipes.all?(&:closed?)
       $stdout.flush
     end
@@ -346,11 +371,11 @@ class SpawnTest < DuelTest
   def test_open3
     called = []
     stub(Open3, :capture2, ->(*args, **options) { (called << [args, options]) && ["out", :status] }) do
-      assert_equal ["out", :status], Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", "x", java: false, chdir: "/d")
+      assert_equal ["out", :status], Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", "x", jruby_on_windows: false, chdir: "/d")
       stub(Duel::Spawn, :program, ->(command) { ["/bin/#{command.first}.cmd", *command.drop(1)] }) do
         stub(ENV, :to_h, -> { {"A" => "0", "B" => "2"} }) do
-          Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", "x", java: true, chdir: "/d")
-          Duel::Spawn.open3(:capture2, "prog", java: true)
+          Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", "x", jruby_on_windows: true, chdir: "/d")
+          Duel::Spawn.open3(:capture2, "prog", jruby_on_windows: true)
         end
       end
       Duel::Spawn.open3(:capture2, "prog") unless Duel::Platform::JRUBY_ON_WINDOWS
@@ -367,32 +392,32 @@ class SpawnTest < DuelTest
     assert_equal [[{"B" => "2", "A" => "1"}, "prog"], {}], called.pop, "by default, on JRuby on Windows: an environment of a Hash's kind"
     stub(Open3, :capture2, ->(*args, **options) { (called << [args, options]) && ["out", :status] }) do
       stub(Duel::Spawn, :program, ->(command) { command }) do
-        stub(ENV, :to_h, -> { {"A" => "0", "B" => "2"} }) { Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", java: true, unsetenv_others: true) }
+        stub(ENV, :to_h, -> { {"A" => "0", "B" => "2"} }) { Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", jruby_on_windows: true, unsetenv_others: true) }
       end
     end
 
     assert_equal [[{"A" => "1", "B" => nil}, "prog"], {unsetenv_others: true}], called.pop, "the rest of ENV unset, which JRuby's doesn't"
     stub(Open3, :capture2, ->(*args, **options) { (called << [args, options]) && ["out", :status] }) do
       stub(Duel::Spawn, :program, ->(command) { command }) do
-        stub(ENV, :to_h, -> { {"B" => "2"} }) { Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", java: true, unsetenv_others: false) }
+        stub(ENV, :to_h, -> { {"B" => "2"} }) { Duel::Spawn.open3(:capture2, {"A" => "1"}, "prog", jruby_on_windows: true, unsetenv_others: false) }
       end
     end
 
     assert_equal [[{"B" => "2", "A" => "1"}, "prog"], {unsetenv_others: false}], called.pop, "not unless it's asked"
     stub(Open3, :capture2, ->(*args, **options) { (called << [args, options]) && ["out", :status] }) do
       stub(Duel::Spawn, :program, ->(command) { command }) do
-        stub(ENV, :to_h, -> { {"Path" => "C:/x", "B" => "2"} }) { Duel::Spawn.open3(:capture2, {"PATH" => "C:/mine"}, "prog", java: true) }
+        stub(ENV, :to_h, -> { {"Path" => "C:/x", "B" => "2"} }) { Duel::Spawn.open3(:capture2, {"PATH" => "C:/mine"}, "prog", jruby_on_windows: true) }
       end
     end
 
     assert_equal [[{"Path" => "C:/mine", "B" => "2"}, "prog"], {}], called.pop, "a PATH given, by ENV's name for it, Path: Windows's are one"
     assert_equal [[[{"A" => "1"}, "prog", "x"], {chdir: "/d"}], [[{"A" => "1", "B" => "2"}, "/bin/prog.cmd", "x"], {chdir: "/d"}],
       [[{"A" => "0", "B" => "2"}, "/bin/prog.cmd"], {}], *([[["prog"], {}]] unless Duel::Platform::JRUBY_ON_WINDOWS)], called, "by default, as it is (here)"
-    yielded = Duel::Spawn.open3(:popen2e, *ruby("print :hi"), java: false) { |input, output, _| input.close || output.read }
+    yielded = Duel::Spawn.open3(:popen2e, *ruby("print :hi"), jruby_on_windows: false) { |input, output, _| input.close || output.read }
 
     assert_equal "hi", yielded, "with a block"
     yielded = stub(Duel::Spawn, :program, ->(command) { command }) do
-      Duel::Spawn.open3(:popen2e, *ruby("print :hi"), java: true) { |input, output, _| input.close || output.read }
+      Duel::Spawn.open3(:popen2e, *ruby("print :hi"), jruby_on_windows: true) { |input, output, _| input.close || output.read }
     end
 
     assert_equal "hi", yielded, "with a block, on JRuby on Windows"
@@ -455,12 +480,12 @@ class SpawnTest < DuelTest
   # Spawned, the child's ends of its pipes are closed here, however the
   # spawn ends.
   def test_piped_that_cant_start
-    skip_unless_spawn_redirects
+    skip_unless_directly
     pipes = []
     pipe = IO.method(:pipe)
 
     stub(IO, :pipe, -> { pipe.call.tap { |ends| pipes << ends } }) do
-      assert_raises(Errno::ENOENT) { Duel::Spawn.piped(env, ["duel-no-such-program"], redirects: true) }
+      assert_raises(Errno::ENOENT) { Duel::Spawn::Directly.piped(env, ["duel-no-such-program"]) }
     end
     (input, requests), (replies, output) = pipes
 
@@ -473,13 +498,14 @@ class SpawnTest < DuelTest
     assert_equal({new_pgroup: true}, with_constants(Duel::Platform, WINDOWS: true) { Duel::Spawn.group }, "by default, on Windows")
   end
 
-  # Its group killed, or on Windows, its tree, with taskkill.
+  # Its group killed, or on Windows, its tree, with taskkill (through
+  # Spawn.open3, its output read, not shown).
   def test_killing_its_tree
     killed = []
     ran = []
     status = Struct.new(:success?).new(:tree)
     trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
-      stub(Open3, :capture2e, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
+      stub(Duel::Spawn, :open3, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
         [false, true].map { |windows| Duel::Spawn.kill_tree(42, windows: windows) } +
           [with_constants(Duel::Platform, WINDOWS: true) { Duel::Spawn.kill_tree(42) }]
       end
@@ -487,12 +513,111 @@ class SpawnTest < DuelTest
 
     assert_equal %i[group tree tree], trees
     assert_equal [["KILL", -42]], killed
-    assert_equal [[%w[taskkill /T /F /PID 42], {}]] * 2, ran, "its output read, not shown"
+    assert_equal [[[:capture2e, "taskkill", "/T", "/F", "/PID", "42"], {}]] * 2, ran
     killed.clear
     gone = stub(Process, :kill, ->(*args) { (killed << args) && 1 }) do
-      stub(Open3, :capture2e, ->(*) { raise Errno::ENOENT, "taskkill" }) { Duel::Spawn.kill_tree(42, windows: true) }
+      stub(Duel::Spawn, :open3, ->(*) { raise Errno::ENOENT, "taskkill" }) { Duel::Spawn.kill_tree(42, windows: true) }
     end
 
     assert_equal [1, [["KILL", 42]]], [gone, killed], "without taskkill, the process alone"
+  end
+
+  # A Child's thread is the one it was given, or Process.detach's, made
+  # once, as it's asked for, or detached (so that until then, it's waited
+  # for as any child: see test_a_child_waited_for).
+  def test_a_childs_thread
+    detached = []
+    thread = Thread.new { :status }
+    child = Duel::Spawn::Child.new(42)
+
+    stub(Process, :detach, ->(pid) { (detached << pid) && thread }) do
+      assert_equal [42, []], [child.pid, detached], "not yet"
+      assert_same child, child.detach
+      assert_equal [42], detached, "detached, as it's asked"
+      assert_same thread, child.waiter
+      assert_same thread, child.waiter
+    end
+    assert_equal [42], detached, "once"
+    thread.join
+
+    refute_predicate child, :alive?
+    given = Thread.new { sleep }
+
+    assert_same given, Duel::Spawn::Child.new(42, given).waiter
+    assert_predicate Duel::Spawn::Child.new(42, given), :alive?
+  ensure
+    given&.kill
+  end
+
+  # How it ended: as its thread says, or where it has none yet, as
+  # Native::Child.wait waits for it (with its peak memory).
+  def test_a_child_waited_for
+    status = Struct.new(:exitstatus, :termsig).new(nil, 9)
+
+    assert_equal [nil, 9, nil], Duel::Spawn::Child.new(42, Thread.new { status }).wait
+    assert_equal [:waited, 42], stub(Duel::Native::Child, :wait, ->(pid) { [:waited, pid] }) { Duel::Spawn::Child.new(42).wait }
+  end
+
+  # Signalled, but on Windows, killed with its tree (see .kill_tree), by
+  # default there. One that's gone (ESRCH, or JRuby on Windows's EPERM)
+  # is let be.
+  def test_signalling_a_child
+    sent = []
+    trees = []
+    stub(Process, :kill, ->(*args) { sent << args }) do
+      stub(Duel::Spawn, :kill_tree, ->(pid, windows:) { trees << [pid, windows] }) do
+        Duel::Spawn::Child.new(42, windows: false).signal("TERM")
+        Duel::Spawn::Child.new(43, windows: true).signal("TERM")
+        with_constants(Duel::Platform, WINDOWS: true) { Duel::Spawn::Child.new(44) }.signal("INT")
+      end
+    end
+
+    assert_equal [[["TERM", 42]], [[43, true], [44, true]]], [sent, trees]
+    [Errno::ESRCH, Errno::EPERM].each do |error|
+      assert_nil stub(Process, :kill, ->(*) { raise error }) { Duel::Spawn::Child.new(42, windows: false).signal("TERM") }
+      assert_nil stub(Duel::Spawn, :kill_tree, ->(*, **) { raise error }) { Duel::Spawn::Child.new(42, windows: true).signal("TERM") }
+    end
+  end
+
+  # Killed (with its group, if it has one of its own, or on Windows, its
+  # tree), then waited for. One that's gone is let be.
+  def test_killing_a_child
+    sent = []
+    trees = []
+    killed = stub(Process, :kill, ->(*args) { sent << args }) do
+      stub(Duel::Spawn, :kill_tree, ->(pid, windows:) { trees << [pid, windows] }) do
+        [[false, false], [true, false], [false, true], [true, true]].map.with_index do |(group, windows), pid|
+          waiter = Thread.new { sleep 0.01 }
+          Duel::Spawn::Child.new(pid, waiter, group: group, windows: windows).kill
+          waiter.alive?
+        end
+      end
+    end
+
+    assert_equal [[["KILL", 0]], [[1, false], [2, true], [3, true]]], [sent, trees]
+    assert_equal [false] * 4, killed, "waited for"
+    sent.clear
+    stub(Process, :kill, ->(*args) { sent << args }) { Duel::Spawn::Child.new(4, Thread.new {}, windows: false).kill }
+
+    assert_equal [["KILL", 4]], sent, "in no group of its own, by default"
+    [Errno::ESRCH, Errno::EPERM].each do |error|
+      waiter = Thread.new { sleep }
+
+      assert_nil stub(Process, :kill, ->(*) { raise error }) { Duel::Spawn::Child.new(42, waiter, windows: false).kill }
+      assert_predicate waiter, :alive?, "not waited for: gone already"
+      waiter.kill
+    end
+  end
+
+  # Stopping it waits up to the seconds given for it to end, then kills
+  # it.
+  def test_stopping_a_child
+    ended = Duel::Spawn::Child.new(42, Thread.new {})
+    running = Duel::Spawn::Child.new(43, Thread.new { sleep })
+    killed = []
+    stub(ended, :kill, -> { flunk "ended already" }) { ended.stop(10) }
+    stub(running, :kill, -> { (killed << 43) && running.waiter.kill }) { running.stop(0.01) }
+
+    assert_equal [43], killed
   end
 end

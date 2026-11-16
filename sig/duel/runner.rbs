@@ -127,14 +127,13 @@ module Duel
     @env: Hash[String, String?]
     @ruby: String
     @engine: String
-    @waiter: Thread
+    @child: Spawn::Child
     @launch: Array[String]?
     @runs: ProcessSample?
     @description: String
     @extensions: Hash[String, String]
     @twice: Hash[String, Array[String]]
     @gem_dirs: Array[String]
-    @pid: Integer
     @socket: UNIXSocket | TCPSocket
     @benchmarks: Hash[String, Definition::summary]
     @metrics: Array[Metric::spec]
@@ -194,8 +193,6 @@ module Duel
 
     # Kills a worker that didn't +what+ within the timeout, and fails.
     def hung: (String what) -> bot
-
-    def kill: () -> void
 
     def monotonic: () -> Float
   end

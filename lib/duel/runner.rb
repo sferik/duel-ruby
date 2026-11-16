@@ -155,7 +155,7 @@ module Duel
       # worker's connection: TruffleRuby's sockets aren't close-on-exec,
       # and one left open in another worker would keep it from ending.)
       worker_env = Rubies.worker_environment(env, engine)
-      @pid, @waiter = Spawn.started(worker_env, [*Rubies.launch(ruby, engine, worker_env),
+      @child = Spawn::STARTER.started(worker_env, [*Rubies.launch(ruby, engine, worker_env),
         *WorkerProcess.load_path(ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/worker", "-e", "Duel::Worker.main(*ARGV)", root,
         candidate_root, control, *[config_path].compact], close_others: true)
       @socket = accept(server, control)
@@ -201,7 +201,7 @@ module Duel
     def stop(wait: STOP_WAIT)
       @runs&.stop
       @socket.close
-      kill unless @waiter.join(wait)
+      @child.stop(wait)
     end
 
     private
@@ -211,7 +211,7 @@ module Duel
     def accept(server, path)
       deadline = monotonic + @timeout
       until server.wait_readable(POLL)
-        raise Failed, "#{@label} worker exited while loading" unless @waiter.alive?
+        raise Failed, "#{@label} worker exited while loading" unless @child.alive?
         hung("load") if monotonic > deadline
       end
       server.accept
@@ -227,16 +227,8 @@ module Duel
 
     # Kills a worker that didn't +what+ within the timeout, and fails.
     def hung(what)
-      kill
+      @child.kill
       raise Failed, "#{@label} worker didn't #{what} within #{@timeout}s (killed: a benchmark that hangs?)"
-    end
-
-    # (Gone already: JRuby's EPERM, on Windows, for a process that ended.)
-    def kill
-      Process.kill("KILL", @pid)
-      @waiter.join
-    rescue Errno::ESRCH, Errno::EPERM
-      nil
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

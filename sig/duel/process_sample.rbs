@@ -17,13 +17,12 @@ module Duel
     @chdir: String
     @log: String
     @timeout: Float
-    @pid: Integer?
+    @child: Spawn::Child?
     @requests: IO
     @replies: IO
-    @waiter: Thread?
-    @redirects: bool
+    @starter: Spawn::starter
 
-    def initialize: (String label, env: Hash[String, String?], chdir: String, log: String, timeout: Float, ?redirects: bool) -> void
+    def initialize: (String label, env: Hash[String, String?], chdir: String, log: String, timeout: Float, ?starter: Spawn::starter) -> void
 
     # The fastest of +samples+: the least CPU time and peak memory.
     def self.fastest: (Array[sampled] samples) -> sampled
@@ -39,7 +38,7 @@ module Duel
     def self.main: (?input: IO, ?output: IO) -> void
 
     # Runs +command+ once, and returns what it took.
-    def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log, ?windows: bool, ?redirects: bool) -> ended
+    def self.once: (Array[String] command, Hash[String, String?] env, String chdir, String log, ?windows: bool, ?starter: Spawn::starter) -> ended
 
     # The CPU time of the children waited for so far, in nanoseconds.
     def self.cpu: () -> Integer

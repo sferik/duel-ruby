@@ -1,37 +1,90 @@
 module Duel
   # Starts a process with its output in a log, or pipes for its input and
-  # output: with Process.spawn's redirects, or through Open3 where spawn
-  # ignores them (JRuby on Windows).
+  # output, and gives the Child to wait for it and stop it by: with
+  # Process.spawn's redirects, or through Open3 where spawn can't redirect
+  # or wait (JRuby on Windows).
   # @api private
   module Spawn
+    # How a process starts: Directly, or ThroughOpen3.
+    type starter = singleton(Directly) | singleton(ThroughOpen3)
+
     REDIRECTS: bool
+    WAITS: bool
     SHELL: Regexp
     COPY_WAIT: Integer
     CHUNK: Integer
+    STARTER: starter
 
-    # Starts +command+, its output this process's: its pid, and a thread
-    # whose value is how it ended.
-    def self.started: (Hash[String, String?] env, Array[String] command, ?redirects: bool, **untyped options) -> [Integer, Thread]
+    # A process started, to wait for and stop.
+    class Child
+      GONE: Array[singleton(SystemCallError)]
+
+      attr_reader pid: Integer
+
+      @pid: Integer
+      @waiter: Thread?
+      @group: bool
+      @windows: bool
+
+      def initialize: (Integer pid, ?Thread? waiter, ?group: bool, ?windows: bool) -> void
+
+      # The thread whose value is how it ended (a Process::Status).
+      def waiter: () -> Thread
+
+      # Waits for it on a thread from now on: returns itself.
+      def detach: () -> self
+
+      def alive?: () -> bool
+
+      # Waits for it, and returns how it ended, and its peak memory where
+      # that can be told.
+      def wait: () -> [Integer?, Integer?, Integer?]
+
+      # Sends it +signal+: on Windows, kills it with what it started.
+      def signal: (String signal) -> void
+
+      # Kills it, with what it started where that can be told, and waits
+      # for it to end.
+      def kill: () -> void
+
+      # Waits up to +seconds+ for it to end, then kills it.
+      def stop: (Numeric seconds) -> void
+    end
+
+    # Starts a process with Process.spawn, given its redirects and pipes.
+    module Directly
+      # Starts +command+, its output and errors in +log+.
+      def self.logged: (Hash[String, String?] env, Array[String] command, log: String, mode: String, **untyped options) -> Child
+
+      # Starts +command+ with a pipe each way: its Child, its input and its
+      # output.
+      def self.piped: (Hash[String, String?] env, Array[String] command, ?group: bool, **untyped options) -> [Child, IO, IO]
+
+      # Starts +command+, its output this process's.
+      def self.started: (Hash[String, String?] env, Array[String] command, **untyped options) -> Child
+    end
+
+    # Starts a process through Open3, as Directly does.
+    module ThroughOpen3
+      def self.logged: (Hash[String, String?] env, Array[String] command, log: String, mode: String, **untyped options) -> Child
+
+      def self.piped: (Hash[String, String?] env, Array[String] command, ?group: bool, **untyped options) -> [Child, IO, IO]
+
+      def self.started: (Hash[String, String?] env, Array[String] command, **untyped options) -> Child
+    end
+
+    # The log at +path+, opened for a process's output.
+    def self.log: (String path, String mode) -> File
 
     # Open3's +name+d method, on JRuby on Windows with ENV and the
     # program found.
-    def self.open3: (Symbol name, *untyped args, ?java: bool, **untyped options) ?{ (*untyped) -> untyped } -> untyped
+    def self.open3: (Symbol name, *untyped args, ?jruby_on_windows: bool, **untyped options) ?{ (*untyped) -> untyped } -> untyped
 
     # +command+ as Windows runs it, its program found.
     def self.program: (Array[String] command, ?path: String, ?exts: Array[String]) -> Array[String]
 
     # +arg+ as a Windows program's command line has it.
     def self.quote: (String arg) -> String
-
-    # Starts +command+, its output and errors in +log+: its pid, and a
-    # thread whose value is how it ended, where it was started through
-    # Open3.
-    def self.logged: (Hash[String, String?] env, Array[String] command, log: String, mode: String, ?redirects: bool,
-                      **untyped options) -> [Integer, Thread?]
-
-    # Starts +command+ with a pipe each way: its pid, its input, its
-    # output, and a thread whose value is how it ended.
-    def self.piped: (Hash[String, String?] env, Array[String] command, ?redirects: bool, **untyped options) -> [Integer, IO, IO, Thread]
 
     # Process.spawn's options that start a process in a group of its own:
     # a process group, or on Windows, a console's.

@@ -26,11 +26,11 @@ module Duel
 
     # Runs for the worker +label+, in +chdir+ with +env+ (over the
     # runner's own), each process's output to +log+. A run that takes
-    # more than +timeout+ seconds fails. (+redirects+: whether its Ruby
-    # process is spawned with pipes, or started through Open3: see Spawn.)
-    def initialize(label, env:, chdir:, log:, timeout:, redirects: Spawn::REDIRECTS)
+    # more than +timeout+ seconds fails. (+starter+: how its Ruby process
+    # starts, Spawn::Directly or Spawn::ThroughOpen3.)
+    def initialize(label, env:, chdir:, log:, timeout:, starter: Spawn::STARTER)
       @label = label
-      @redirects = redirects
+      @starter = starter
       @env = env
       @chdir = chdir
       @log = log
@@ -52,7 +52,7 @@ module Duel
     # timeout (it's killed, with what it started, and the Ruby process
     # that ran it), fails.
     def run(command)
-      start unless @pid
+      start unless @child
       @requests.puts JSON.generate(command)
       # (Read on a thread of its own, waited for until the timeout: on JRuby
       # on Windows, IO.select takes Open3's pipe for ready before it is,
@@ -85,17 +85,13 @@ module Duel
     # started: on Windows, a process started meanwhile (another worker)
     # can have inherited the input's other end, which keeps it open.
     def stop(wait: STOP_WAIT)
-      pid = @pid
-      return unless pid
+      child = @child
+      return unless child
 
       @requests.close
-      waiter = @waiter #: Thread
-      unless waiter.join(wait)
-        Spawn.kill_tree(pid)
-        waiter.join
-      end
+      child.stop(wait)
       @replies.close
-      @pid = nil
+      @child = nil
     end
 
     # Runs a process for each line of +input+ (a command, in JSON) after
@@ -119,17 +115,16 @@ module Duel
     # CycleClock). A command that can't start (there's no such program,
     # say, or on Windows, a shell command with no COMSPEC in +env+ to
     # find cmd.exe by) failed, and took nothing.
-    def self.once(command, env, chdir, log, windows: Platform::WINDOWS, redirects: Spawn::REDIRECTS)
+    def self.once(command, env, chdir, log, windows: Platform::WINDOWS, starter: Spawn::STARTER)
       before = cpu
       begin
-        pid, waiter = Spawn.logged(env, command, log: log, mode: "w", redirects: redirects, chdir: chdir, unsetenv_others: true,
-          close_others: true)
+        child = starter.logged(env, command, log: log, mode: "w", chdir: chdir, unsetenv_others: true, close_others: true)
       rescue SystemCallError => e
         return {"cpu" => 0, "peak" => nil, "failed" => "couldn't start: #{e}"}
       end
-      spawned = Native::Windows::Spawned.open(pid) if windows
+      spawned = Native::Windows::Spawned.open(child.pid) if windows
       begin
-        code, signal, peak = waiter ? Native::Child.ended(waiter.value) : Native::Child.wait(pid)
+        code, signal, peak = child.wait
         if spawned
           taken = CycleClock.ns(spawned.cycles)
           peak = spawned.peak
@@ -172,21 +167,19 @@ module Duel
     # command be.)
     def start
       # (Out of the runner's bundle: it needs nothing of it.)
-      @pid, @requests, @replies, @waiter = Spawn.piped({"RUBYOPT" => nil, "RUBYLIB" => nil},
+      @child, @requests, @replies = @starter.piped({"RUBYOPT" => nil, "RUBYLIB" => nil},
         [RbConfig.ruby, *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-          "Duel::ProcessSample.main"], redirects: @redirects, **Spawn.group, close_others: true)
+          "Duel::ProcessSample.main"], group: true, close_others: true)
       @requests.puts JSON.generate({"env" => {**ENV, **@env}, "chdir" => @chdir, "log" => @log})
     end
 
     # Kills the Ruby process of its own, and what it started.
     def kill
-      pid = @pid #: Integer
-      waiter = @waiter #: Thread
-      Spawn.kill_tree(pid)
-      waiter.join
+      child = @child #: Spawn::Child
+      child.kill
       @requests.close
       @replies.close
-      @pid = nil
+      @child = nil
     end
   end
 end

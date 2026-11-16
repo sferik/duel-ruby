@@ -49,7 +49,7 @@ class WorkerProcessTest < DuelTest
   def worker_process(command = %w[sleep 30], hello: HELLO, config_path: nil, timeout: 5.0, delay: 0, ruby: RbConfig.ruby, engine: "ruby",
     unix: nil, &serve)
     @spawned = []
-    real = Duel::Spawn.method(:started)
+    real = Duel::Spawn::STARTER.method(:started)
     spawned = @spawned
     pids = @pids
     waiters = @waiters
@@ -65,9 +65,9 @@ class WorkerProcessTest < DuelTest
           sleep(delay) && play.call(control, hello, &serve)
         end
       end
-      real.call({}, command, **options).tap { |pid, waiter| (pids << pid) && (waiters << waiter) }
+      real.call({}, command, **options).tap { |child| (pids << child.pid) && (waiters << child.waiter) }
     end
-    stub(Duel::Spawn, :started, fake) do
+    stub(Duel::Spawn::STARTER, :started, fake) do
       Duel::WorkerProcess.new("head-1", "/base", "/candidate", @dir, config_path: config_path, env: {"E" => "1"},
         timeout: timeout, ruby: ruby, engine: engine, **(unix.nil? ? {} : {unix: unix}))
     end.tap { |worker| @workers << worker }
@@ -279,7 +279,8 @@ class WorkerProcessTest < DuelTest
     kills = stop(worker, wait: 0.1)
 
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 2
-    assert_equal ["KILL"], kills
+    # (On Windows, its tree killed, with taskkill: see Duel::Spawn.kill_tree.)
+    assert_equal (windows? ? [] : ["KILL"]), kills
     refute_predicate @waiters.first, :alive?, "killed, and waited for"
     assert_empty stop(worker), "already gone"
   end
@@ -290,14 +291,17 @@ class WorkerProcessTest < DuelTest
     [Errno::EPERM, Errno::ESRCH].each do |error|
       worker = worker_process
 
-      stub(Process, :kill, ->(*) { raise error }) { assert_nil worker.stop(wait: 0.1) }
+      kill = Process.method(:kill)
+      stopped = stub(Process, :kill, ->(_, pid) { kill.call("KILL", pid) && raise(error) }) { worker.stop(wait: 0.1) }
+
+      assert_nil stopped
     end
   end
 
   def test_waits_ten_seconds_by_default
     assert_equal 10, Duel::WorkerProcess::STOP_WAIT
     worker = worker_process(%w[sleep 0.2])
-    waiter = worker.instance_variable_get(:@waiter)
+    waiter = worker.instance_variable_get(:@child).waiter
     joined = []
     stub(waiter, :join, ->(*args) { (joined << args) && waiter.value && waiter }) { worker.stop }
 

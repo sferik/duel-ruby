@@ -282,23 +282,23 @@ class ResourceTest < DuelTest
   end
 
   # Windows can send another process no signal but KILL: what it spawned
-  # is killed.
+  # there is killed.
   def test_stopped_on_windows
     r = resource
     ready = r.path("ready")
-    r.spawn(*ruby("File.write(ARGV[0], ''); sleep", ready))
+    new = Duel::Spawn::Child.method(:new)
+    pid = stub(Duel::Spawn::Child, :new, ->(*args, **options) { new.call(*args, **options, windows: true) }) do
+      r.spawn(*ruby("File.write(ARGV[0], ''); sleep", ready))
+    end
     r.wait_until { File.exist?(ready) }
-    pid = r.instance_variable_get(:@processes).keys.fetch(0)
     killed = []
     kill = Process.method(:kill)
-    with_constants(Duel::Platform, WINDOWS: true) do
-      # (Its tree, with taskkill, here as this system kills one.)
-      stub(Duel::Spawn, :kill_tree, ->(id) { (killed << id) && kill.call("KILL", id) }) do
-        stub(Process, :kill, ->(*args) { flunk "sent #{args.inspect}, not its tree killed" }) { r.stop }
-      end
+    # (Its tree, with taskkill, here as this system kills one.)
+    stub(Duel::Spawn, :kill_tree, ->(id, windows:) { (killed << [id, windows]) && kill.call("KILL", id) }) do
+      stub(Process, :kill, ->(*args) { flunk "sent #{args.inspect}, not its tree killed" }) { r.stop }
     end
 
-    assert_equal [pid], killed, "with what it started (JRuby's JVM, say)"
+    assert_equal [[pid, true]], killed, "with what it started (JRuby's JVM, say)"
   end
 
   # One that's gone already, as JRuby on Windows says of a process that
@@ -307,9 +307,8 @@ class ResourceTest < DuelTest
     [Errno::EPERM, Errno::ESRCH].each do |error|
       r = resource
       r.spawn(*ruby("sleep"))
-      pid = r.instance_variable_get(:@processes).keys.fetch(0)
-      stub(r, :send_signal, ->(*) { raise error }) { r.stop }
-      Process.kill("KILL", pid)
+      kill = Process.method(:kill)
+      stub(Process, :kill, ->(_, id) { kill.call("KILL", id) && raise(error) }) { r.stop }
     end
   end
 
@@ -508,21 +507,23 @@ end
 class ResourceThroughOpen3Test < ResourceTest
   def resource(timeout: 30.0)
     Duel::Resource.new(File.join(short_tmpdir, "head-1-1"), "head-1", "/candidate", timeout: timeout,
-      cache: File.join(tmpdir, "cache"), redirects: false).tap { |r| @made << r }
+      cache: File.join(tmpdir, "cache"), starter: Duel::Spawn::ThroughOpen3).tap { |r| @made << r }
   end
 
   def redirects? = false
 
-  # Its processes are waited for by the thread Spawn.logged gives, which
-  # ends once the output is in the log, not detached.
+  # Its processes are started by the starter it's given, and waited for
+  # by the thread their Child has (Open3's, which ends once the output is
+  # in the log), not detached.
   def test_waited_for_by_the_thread_it_was_given
     r = resource
-    waiter = Thread.new { :ended }
-    stub(Duel::Spawn, :logged, ->(*, **) { [42, waiter] }) do
-      stub(Process, :detach, ->(*) { flunk "detached" }) { r.spawn(*ruby("1")) }
+    child = Duel::Spawn::Child.new(42, Thread.new { :ended })
+    stub(Duel::Spawn::ThroughOpen3, :logged, ->(*, **) { child }) do
+      stub(Process, :detach, ->(*) { flunk "detached" }) { assert_equal 42, r.spawn(*ruby("1")) }
     end
 
-    assert_same waiter, r.instance_variable_get(:@processes).fetch(42).last
+    assert_same child, r.instance_variable_get(:@processes).fetch(42).last
+    assert_equal :ended, child.waiter.value
     r.instance_variable_get(:@processes).clear
   end
 

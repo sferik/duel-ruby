@@ -1,21 +1,29 @@
 # frozen_string_literal: true
 
 require "open3"
+require_relative "native"
 require_relative "platform"
 
 module Duel
   # Starts a process whose output goes to a log, or whose input and
-  # output are pipes: with Process.spawn's redirects, or where spawn
-  # ignores them (JRuby on Windows, whose spawn writes to neither a file
-  # nor a pipe it's given), through Open3, the output copied to the log
-  # on a thread of its own. (JRuby's Open3 there does what it's asked,
-  # but with the JVM's own environment, not ENV, and only a program
-  # that's an .exe found by name: see .open3.)
+  # output are pipes, and gives the Child to wait for it and stop it by:
+  # with Process.spawn's redirects (Directly), or where spawn can't
+  # redirect or wait (JRuby on Windows), through Open3 (ThroughOpen3),
+  # the output copied to the log on a thread of its own. STARTER is the
+  # one that works here. (JRuby's Open3 there does what it's asked, but
+  # with the JVM's own environment, not ENV, and only a program that's an
+  # .exe found by name: see .open3.)
   # @api private
   module Spawn
-    # Whether Process.spawn redirects a process's input and output (and
-    # Process.wait waits for it): not on JRuby on Windows.
+    # Whether Process.spawn redirects a process's input and output: not on
+    # JRuby on Windows, whose spawn writes to neither a file nor a pipe
+    # it's given.
     REDIRECTS = !Platform::JRUBY_ON_WINDOWS
+
+    # Whether Process.wait waits for a process spawned: not on JRuby on
+    # Windows, where it returns at once, and so does Process.detach's
+    # thread.
+    WAITS = !Platform::JRUBY_ON_WINDOWS
 
     # A lone String, as Process.spawn takes one, that a shell runs.
     SHELL = /[\s"'*?<>|&;$`()]/
@@ -28,74 +36,162 @@ module Duel
     # The most of a process's output copied to its log at a time.
     CHUNK = 65_536
 
-    # Starts +command+ (as Process.spawn takes it, an environment first),
-    # its input nothing and its output and errors in +log+, opened with
-    # +mode+ ("a" or "w"), with +options+ (Process.spawn's: chdir:, say).
-    # Returns its pid, and where it was started through Open3, a thread
-    # whose value is how it ended (a Process::Status), once its output is
-    # in the log. (Where it was spawned, it's waited for as any child.)
-    def self.logged(env, command, log:, mode:, redirects: REDIRECTS, **options)
-      # (Here, so it's there for a failure to show. Binary, so what's copied
-      # to it is as the process wrote it: on Windows, CRuby's text mode
-      # would make its CRLF CRCRLF.)
-      out = File.new(log, mode, binmode: true)
-      if redirects
+    # A process started, to wait for and stop.
+    class Child
+      # What Process.kill raises for a process that's gone: ESRCH, or on
+      # JRuby on Windows, EPERM.
+      GONE = [Errno::ESRCH, Errno::EPERM].freeze
+
+      attr_reader :pid
+
+      # +pid+'s, waited for by +waiter+, a thread whose value is how it
+      # ended (a Process::Status), or for one spawned, by Process.detach's,
+      # once it's asked for (see #waiter and #detach). +group+: whether it
+      # was started in a group of its own (see Spawn.group), which #kill
+      # kills with it. (+windows+: whether it's on Windows, where it can
+      # only be killed: see #signal.)
+      def initialize(pid, waiter = nil, group: false, windows: Platform::WINDOWS)
+        @pid = pid
+        @waiter = waiter
+        @group = group
+        @windows = windows
+      end
+
+      # The thread whose value is how it ended (a Process::Status). For one
+      # spawned, Process.detach's, made once it's asked for: until then,
+      # #wait waits for it itself.
+      def waiter = @waiter ||= Process.detach(@pid)
+
+      # Waits for it on a thread from now on (see #waiter), so that it's
+      # reaped as it ends: returns itself.
+      def detach = tap { waiter }
+
+      def alive? = waiter.alive?
+
+      # Waits for it, and returns how it ended, as Native::Child.wait says:
+      # its exit status (or nil), the signal that killed it (or nil), and
+      # its peak memory, where it was spawned and nothing else waits for it
+      # (see #waiter), and that can be told (or nil).
+      def wait
+        waiter = @waiter
+        waiter ? Native::Child.ended(waiter.value) : Native::Child.wait(@pid)
+      end
+
+      # Sends it +signal+. On Windows, which can send another process no
+      # signal but KILL, kills it, with what it started (taskkill /T): a
+      # process it started would go on otherwise (JRuby's JVM, started by
+      # its jruby.exe, say). One that's gone is let be.
+      def signal(signal)
+        @windows ? Spawn.kill_tree(@pid, windows: true) : Process.kill(signal, @pid)
+      rescue *GONE
+        nil
+      end
+
+      # Kills it, with what it started where that can be told (its group,
+      # or on Windows, its tree: see Spawn.kill_tree), and waits for it to
+      # end. One that's gone is let be.
+      def kill
+        (@group || @windows) ? Spawn.kill_tree(@pid, windows: @windows) : Process.kill("KILL", @pid)
+        waiter.join
+      rescue *GONE
+        nil
+      end
+
+      # Waits up to +seconds+ for it to end, then kills it (see #kill).
+      def stop(seconds) = (kill unless waiter.join(seconds))
+    end
+
+    # Starts a process with Process.spawn, given its redirects and pipes.
+    module Directly
+      # Starts +command+ (as Process.spawn takes it, an environment first),
+      # its input nothing and its output and errors in +log+, opened with
+      # +mode+ ("a" or "w"), with +options+ (Process.spawn's: chdir:, say).
+      # Returns its Child, not yet waited for, so that Child#wait can wait
+      # for it as any child, with wait4 (or Child#detach, on a thread).
+      def self.logged(env, command, log:, mode:, **options)
+        out = Spawn.log(log, mode)
         # (At its end: on Windows, a child given a file opened to append
         # writes from where the file's at, which is its start.)
         out.seek(0, IO::SEEK_END)
-        pid = begin
-          Process.spawn(env, *command, in: File::NULL, out: out, err: out, **options)
+        begin
+          Child.new(Process.spawn(env, *command, in: File::NULL, out: out, err: out, **options))
         ensure
           out.close
         end
-        return [pid, nil]
       end
 
-      input, output, waiter = begin
-        open3(:popen2e, env, *command, **options)
-      rescue SystemCallError
-        out.close
-        raise
+      # Starts +command+ (as Process.spawn takes it, an environment first)
+      # with a pipe each way, and +options+, in a group of its own if
+      # +group+ (see Spawn.group). Returns its Child, its input and its
+      # output.
+      def self.piped(env, command, group: false, **options)
+        options = options.merge(Spawn.group) if group
+        input, requests = IO.pipe
+        replies, output = IO.pipe
+        pid = begin
+          Process.spawn(env, *command, in: input, out: output, **options)
+        ensure
+          input.close
+          output.close
+        end
+        [Child.new(pid, Process.detach(pid), group: group), requests, replies]
       end
-      input.close
-      [waiter.pid, ended(waiter, copy(output, out), output)]
+
+      # Starts +command+ (as Process.spawn takes it, an environment first),
+      # its input nothing, and its output and errors this process's, with
+      # +options+. Returns its Child.
+      def self.started(env, command, **options)
+        pid = Process.spawn(env, *command, in: File::NULL, **options)
+        Child.new(pid, Process.detach(pid))
+      end
     end
 
-    # Starts +command+ (as Process.spawn takes it, an environment first)
-    # with a pipe each way, and +options+. Returns its pid, its input and
-    # its output, and a thread whose value is how it ended.
-    def self.piped(env, command, redirects: REDIRECTS, **options)
-      return open3(:popen2, env, *command, **options).then { |input, output, waiter| [waiter.pid, input, output, waiter] } unless redirects
-
-      input, requests = IO.pipe
-      replies, output = IO.pipe
-      pid = begin
-        Process.spawn(env, *command, in: input, out: output, **options)
-      ensure
+    # Starts a process through Open3, as Directly does, where
+    # Process.spawn can't redirect or wait: what it says is copied to its
+    # log (or to this process's output) on a thread of its own, and its
+    # Child's thread (Child#waiter) is Open3's, its value once what it
+    # said is copied (see Spawn.ended).
+    module ThroughOpen3
+      def self.logged(env, command, log:, mode:, **options)
+        out = Spawn.log(log, mode)
+        input, output, waiter = begin
+          Spawn.open3(:popen2e, env, *command, **options)
+        rescue SystemCallError
+          out.close
+          raise
+        end
         input.close
-        output.close
+        Child.new(waiter.pid, Spawn.ended(waiter, Spawn.copy(output, out), output))
       end
-      [pid, requests, replies, Process.detach(pid)]
-    end
 
-    # Starts +command+ (as Process.spawn takes it, an environment first),
-    # its input nothing, and its output and errors this process's, with
-    # +options+. Returns its pid and a thread whose value is how it ended:
-    # where Process.spawn can't wait (JRuby on Windows), started through
-    # Open3, its output and errors copied to this one's, and the thread's
-    # value once they're copied (see .ended), so what it said as it failed
-    # is there to see.
-    def self.started(env, command, redirects: REDIRECTS, **options)
-      unless redirects
-        input, output, errors, waiter = open3(:popen3, env, *command, **options)
+      def self.piped(env, command, group: false, **options)
+        options = options.merge(Spawn.group) if group
+        input, output, waiter = Spawn.open3(:popen2, env, *command, **options)
+        [Child.new(waiter.pid, waiter, group: group), input, output]
+      end
+
+      # (Its output and errors copied to this one's, so what it said as it
+      # failed is there to see.)
+      def self.started(env, command, **options)
+        input, output, errors, waiter = Spawn.open3(:popen3, env, *command, **options)
         input.close
-        copies = [copy(output, $stdout, close: false), copy(errors, $stderr, close: false)]
-        return [waiter.pid, ended(waiter, Thread.new { copies.each(&:join) }, output, errors)]
+        copies = [Spawn.copy(output, $stdout, close: false), Spawn.copy(errors, $stderr, close: false)]
+        Child.new(waiter.pid, Spawn.ended(waiter, Thread.new { copies.each(&:join) }, output, errors))
       end
-
-      pid = Process.spawn(env, *command, in: File::NULL, **options)
-      [pid, Process.detach(pid)]
     end
+
+    # How a process starts here: Directly, but where Process.spawn can't
+    # redirect or wait, ThroughOpen3.
+    # simplecov:disable ThroughOpen3 is JRuby on Windows's (its test run
+    # covers it).
+    STARTER = (REDIRECTS && WAITS) ? Directly : ThroughOpen3
+    # simplecov:enable
+
+    # The log at +path+, opened with +mode+, for a process's output: here,
+    # so it's there for a failure to show, and binary, so what's copied to
+    # it is as the process wrote it (on Windows, CRuby's text mode would
+    # make its CRLF CRCRLF).
+    def self.log(path, mode) = File.new(path, mode, binmode: true)
 
     # Process.spawn's options (and Open3's) that start a process in a
     # group of its own, for .kill_tree to kill it with what it starts: a
@@ -110,10 +206,11 @@ module Duel
     def self.kill_tree(pid, windows: Platform::WINDOWS)
       return Process.kill("KILL", -pid) unless windows
 
-      # (Through Open3: JRuby's system on Windows ignores out: and err:.
-      # Where there's no taskkill, the process alone is killed.)
+      # (Its output read, not shown, through Open3: JRuby's system on
+      # Windows ignores out: and err:. Where there's no taskkill, the
+      # process alone is killed.)
       begin
-        Open3.capture2e("taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
+        open3(:capture2e, "taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
       rescue Errno::ENOENT
         Process.kill("KILL", pid)
       end
@@ -121,13 +218,14 @@ module Duel
 
     # Open3's +name+d method (capture3, popen2e...), given +args+ (an
     # environment first, or none) and +options+. On JRuby on Windows
-    # (+java+), whose Open3 gives a process the JVM's own environment and
-    # ignores unsetenv_others, with ENV under the environment given (or
-    # with unsetenv_others, every one of ENV's variables unset but those
-    # given), each by ENV's name for it, and the program found, and its
-    # arguments quoted, as Windows takes them (see .program).
-    def self.open3(name, *args, java: Platform::JRUBY_ON_WINDOWS, **options, &)
-      return Open3.public_send(name, *args, **options, &) unless java
+    # (+jruby_on_windows+), whose Open3 gives a process the JVM's own
+    # environment and ignores unsetenv_others, with ENV under the
+    # environment given (or with unsetenv_others, every one of ENV's
+    # variables unset but those given), each by ENV's name for it, and the
+    # program found, and its arguments quoted, as Windows takes them (see
+    # .program).
+    def self.open3(name, *args, jruby_on_windows: Platform::JRUBY_ON_WINDOWS, **options, &)
+      return Open3.public_send(name, *args, **options, &) unless jruby_on_windows
 
       none = {} #: Hash[String, String?]
       env, *command = args.first.is_a?(Hash) ? args : [none, *args]

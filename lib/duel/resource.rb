@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "rbconfig"
-require_relative "platform"
 require_relative "control"
 require_relative "spawn"
 
@@ -96,10 +95,10 @@ module Duel
       end
     end
 
-    # (+redirects+: whether Process.spawn redirects output, or its
-    # processes start through Open3: see Spawn.)
+    # (+starter+: how its processes start, Spawn::Directly or
+    # Spawn::ThroughOpen3.)
     # @api private
-    def initialize(dir, name, root, timeout:, cache:, ruby: RbConfig.ruby, env: {}, redirects: Spawn::REDIRECTS)
+    def initialize(dir, name, root, timeout:, cache:, ruby: RbConfig.ruby, env: {}, starter: Spawn::STARTER)
       @name = name
       @dir = dir
       @root = root
@@ -107,7 +106,7 @@ module Duel
       @env = env
       @timeout = timeout
       @cache = cache
-      @redirects = redirects
+      @starter = starter
       @processes = {}
       @stops = []
       FileUtils.mkdir_p(dir)
@@ -160,9 +159,9 @@ module Duel
     # environment (on its Ruby: see Config#ruby), under any it's given.
     def spawn(*command, log: nil, stop_signal: "TERM", **options)
       log = log_path(command, log)
-      pid, waiter = start(command, log, options)
-      @processes[pid] = [File.basename(log, ".log"), log, stop_signal, waiter]
-      pid
+      child = start(command, log, options)
+      @processes[child.pid] = [File.basename(log, ".log"), log, stop_signal, child]
+      child.pid
     end
 
     # Runs a command (setting something up, say) to its end, its output
@@ -170,7 +169,7 @@ module Duel
     # succeeds.
     def run(*command, log: nil, **options)
       log = log_path(command, log)
-      status = start(command, log, options).last.value #: Process::Status
+      status = start(command, log, options).waiter.value #: Process::Status
       return if status.success?
 
       code = status.exitstatus
@@ -183,7 +182,7 @@ module Duel
     def wait_until
       deadline = monotonic + @timeout
       until yield
-        ended = @processes.find { |_, (*, waiter)| !waiter.alive? }
+        ended = @processes.find { |_, process| !process.last.alive? }
         if ended
           # (It may have got ready, and ended, since the last look.)
           break if yield
@@ -211,7 +210,10 @@ module Duel
     # @api private
     def stop
       @stops.reverse_each(&:call)
-      @processes.each { |pid, (_, _, signal, waiter)| end_process(pid, signal, waiter) }
+      @processes.each_value do |_, _, signal, child|
+        child.signal(signal)
+        child.stop(STOP_WAIT)
+      end
     end
 
     private
@@ -243,34 +245,15 @@ module Duel
       path("#{name || File.basename(program)}.log")
     end
 
-    # Starts +command+, its output added to +log+, and returns its pid and
-    # a thread whose value is how it ended. (Waited for on a thread of its
-    # own: a Timeout can't interrupt a wait on JRuby.)
+    # Starts +command+, its output added to +log+, and returns its
+    # Spawn::Child, waited for on a thread from the start (see
+    # Child#detach), so it's reaped as it ends. (On a thread: a Timeout
+    # can't interrupt a wait on JRuby.)
     def start(command, log, options)
       # (Its own environment, if it's given one, over its version's.)
       none = {} #: Hash[String, String?]
       env, *program = command.first.is_a?(Hash) ? command : [none, *command]
-      pid, waiter = Spawn.logged(@env.merge(env), program, log: log, mode: "a", redirects: @redirects, close_others: true, **options)
-      [pid, waiter || Process.detach(pid)]
-    end
-
-    def end_process(pid, signal, waiter)
-      send_signal(pid, signal)
-      return if waiter.join(STOP_WAIT)
-
-      send_signal(pid, "KILL")
-      waiter.join
-    # (Gone already: JRuby's EPERM, on Windows, for a process that ended.)
-    rescue Errno::ESRCH, Errno::EPERM
-      nil
-    end
-
-    # Sends +pid+ +signal+, but on Windows, which can send another process
-    # no signal but KILL, kills it, with what it started (taskkill /T): a
-    # process it started would go on otherwise (JRuby's JVM, started by
-    # its jruby.exe, say).
-    def send_signal(pid, signal, windows: Platform::WINDOWS)
-      windows ? Spawn.kill_tree(pid) : Process.kill(signal, pid)
+      @starter.logged(@env.merge(env), program, log: log, mode: "a", close_others: true, **options).detach
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
