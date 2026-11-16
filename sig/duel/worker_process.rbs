@@ -1,0 +1,90 @@
+module Duel
+  # A worker process (Duel::Worker) running one version of the code.
+  # @api private
+  class WorkerProcess
+    # A worker's reply to a request (see Worker#handle), parsed from JSON.
+    type reply = untyped
+
+    LIB: String
+    POLL: Float
+    STOP_WAIT: Integer
+    # The gems that are Duel's: Duel, and its plugins.
+    DUEL_GEM: Regexp
+
+    @label: String
+    @timeout: Float
+    @root: String
+    @dir: String
+    @env: Hash[String, String?]
+    @ruby: String
+    @engine: String
+    @child: Spawn::Child
+    @launch: Array[String]?
+    @runs: ProcessSample?
+    @description: String
+    @extensions: Hash[String, String]
+    @twice: Hash[String, Array[String]]
+    @gem_dirs: Array[String]
+    @socket: UNIXSocket | TCPSocket
+    @benchmarks: Hash[String, Definition::summary]
+    @metrics: Array[Metric::spec]
+    @memory: bool
+    @profiler: bool
+    @yjit: bool
+
+    attr_reader label: String
+
+    attr_reader benchmarks: Hash[String, Definition::summary]
+
+    attr_reader metrics: Array[Metric::spec]
+
+    attr_reader memory: bool
+
+    attr_reader profiler: bool
+
+    attr_reader yjit: bool
+
+    # The Ruby it runs on (RUBY_DESCRIPTION).
+    attr_reader description: String
+
+    # The native extensions it loaded, by feature.
+    attr_reader extensions: Hash[String, String]
+
+    # Those it loaded from more than one file, by feature.
+    attr_reader twice: Hash[String, Array[String]]
+
+    # The directories gems are installed in, as real paths ending in "/".
+    attr_reader gem_dirs: Array[String]
+
+    # Where a worker on +ruby+ loads Duel from, ahead of anything else.
+    def self.load_path: (String ruby, ?specs: Hash[String, Gem::BasicSpecification]) -> Array[String]
+
+    def initialize: (String label, String root, String candidate_root, String dir, config_path: String?,
+                     env: Hash[String, String?], timeout: Float, ruby: String, engine: String, ?unix: bool) -> void
+
+    # Sends a request, and returns the reply, or raises Failed with its
+    # error.
+    def request: (String op, String name, **untyped args) -> reply
+
+    def sample: (String name, Integer n, ?runs: Integer, ?count: bool) -> reply
+
+    # A run of a process benchmark: its process, fresh, started as this
+    # worker was.
+    def run: (Definition::process process) -> ProcessSample::sampled
+
+    # Closing the connection ends the worker. One still running +wait+
+    # seconds later is killed.
+    def stop: (?wait: Numeric) -> void
+
+    private
+
+    def accept: (UNIXServer | TCPServer server, String path) -> (UNIXSocket | TCPSocket)
+
+    def read: () -> reply
+
+    # Kills a worker that didn't +what+ within the timeout, and fails.
+    def hung: (String what) -> bot
+
+    def monotonic: () -> Float
+  end
+end

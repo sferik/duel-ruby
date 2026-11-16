@@ -1,0 +1,164 @@
+module Duel
+  # What one comparison of a benchmark found (Testing::Comparison#results
+  # has them).
+  class Result
+    # A ratio metric's verdict, and each version's (the median of its
+    # samples).
+    type timed = { "median" => Float, "limit" => Float, "across" => bool, "unit" => String?, "plural" => String?, "interval" => Array[Float]?, "pairs" => Integer,
+                   ?"processes" => Integer, "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
+
+    # Each worker's median of a measure judged by process, by version,
+    # and its lane's number.
+    type processes = { "lane" => Integer, "baseline" => Array[Metric::value], "candidate" => Array[Metric::value] }
+
+    # A counted metric's fewest, on each version, in +n+ iterations.
+    type counted = { "baseline" => Metric::value, "candidate" => Metric::value, ?"more" => Metric::value?, "n" => Integer,
+                     "tolerance" => Metric::value, "allowance" => Metric::value, "unit" => String?, "plural" => String? }
+
+    # Where a regression's time went (see Profile#to_h), or why there's no
+    # telling.
+    # @api private
+    type profile = Profile::report | { "unavailable" => String }
+
+    # Peak memory grows by more than MEMORY_RATIO, and by MEMORY_FLOOR
+    # bytes at least, before it's worse.
+    # @api private
+    MEMORY_RATIO: Float
+
+    # @api private
+    MEMORY_FLOOR: Integer
+
+    # What a sample says when no metric said anything.
+    # @api private
+    NOTHING_SAID: Hash[String, String]
+
+    # The verdicts that say a timing isn't slower.
+    # @api private
+    CLEARED: Array[String]
+
+    @name: String
+    @timed: Hash[String, timed]
+    @counted: Hash[String, counted]
+    @details: Hash[String, Hash[String, String]]
+    @confirmations: Array[Result]
+    @undecided: Array[Result]
+    @processes: Hash[String, processes]
+    @n: Integer?
+    @seconds: Float?
+    @skipped: String?
+    @error: String?
+    @memory: Hash[String, Integer]?
+    @profile: profile?
+
+    # The benchmark's name.
+    attr_reader name: String
+
+    # Each ratio measure's verdict and medians, by name.
+    attr_reader timed: Hash[String, timed]
+
+    # Each counted measure's fewest on each version, by name.
+    attr_reader counted: Hash[String, counted]
+
+    # What metrics said of the latest samples (Metric#details): by
+    # measure, by version.
+    attr_reader details: Hash[String, Hash[String, String]]
+
+    # The measurements that confirmed it was worse.
+    attr_reader confirmations: Array[Result]
+
+    # The measurements again that were too close to call.
+    # @api private
+    attr_reader undecided: Array[Result]
+
+    # Each worker's median of each measure judged by process, by metric.
+    # @api private
+    attr_reader processes: Hash[String, processes]
+
+    # Its iterations a sample.
+    attr_reader n: Integer?
+
+    # @api private
+    attr_writer n: Integer?
+
+    # The seconds it took.
+    attr_reader seconds: Float?
+
+    # @api private
+    attr_writer seconds: Float?
+
+    # Why it was skipped (the baseline couldn't run it), or nil.
+    attr_reader skipped: String?
+
+    # @api private
+    attr_writer skipped: String?
+
+    # How it failed, or nil.
+    attr_reader error: String?
+
+    # @api private
+    attr_writer error: String?
+
+    # Each version's peak memory, in bytes.
+    attr_reader memory: Hash[String, Integer]?
+
+    # @api private
+    attr_writer memory: Hash[String, Integer]?
+
+    # Where a regression's time went.
+    # @api private
+    attr_accessor profile: profile?
+
+    # @api private
+    def initialize: (String name) -> void
+
+    # Keeps what metrics said of a pair of samples.
+    # @api private
+    def note: (Worker::sampled base, Worker::sampled candidate, ?String? measure) -> void
+
+    # The metrics on which the candidate did worse.
+    # @api private
+    def worse: () -> Array[String]
+
+    # The timed metrics on which the candidate was slower.
+    # @api private
+    def slower: () -> Array[String]
+
+    # Whether its timings say slower: one is, and none says it isn't.
+    # @api private
+    def slower_in_time?: () -> bool
+
+    # Whether it's to be measured again.
+    # @api private
+    def confirming?: () -> bool
+
+    # Keeps a measurement again as a confirmation, or sets it aside
+    # where it's too close to call. Whether it was set aside.
+    # @api private
+    def confirm: (Result again) -> bool
+
+    # Whether its peak memory grew by too much.
+    # @api private
+    def more_memory?: () -> bool
+
+    # Worse on a metric in the first measurement and in every confirmation,
+    # or slower in time in all of them (see #mixed?).
+    def regressed: () -> Array[String]
+
+    # Whether it regressed in time on one timed metric in some
+    # measurements and on another in the rest.
+    # @api private
+    def mixed?: () -> bool
+
+    # Whether it regressed on nothing, and didn't fail.
+    def passed?: () -> bool
+
+    # Whether a timed measure's verdict was too close to the limit to settle.
+    # @api private
+    def unsettled?: () -> bool
+
+    private
+
+    # The first measurement and its confirmations.
+    def measurements: () -> Array[Result]
+  end
+end

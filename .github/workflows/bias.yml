@@ -14,6 +14,8 @@ on:
   pull_request:
     paths:
       - lib/duel/across.rb
+      - lib/duel/lane.rb
+      - lib/duel/result.rb
       - lib/duel/runner.rb
       - lib/duel/stats.rb
       - lib/duel/worker.rb
