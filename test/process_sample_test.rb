@@ -116,7 +116,7 @@ class ProcessSampleTest < DuelTest
     (input, requests), (replies, output) = pipes
 
     assert_equal [input, output, true], options.values_at(:in, :out, :close_others), "a pipe each way"
-    assert_equal Duel::ProcessSample.group, options.slice(:pgroup, :new_pgroup), "in a group of its own"
+    assert_equal Duel::Spawn.group, options.slice(:pgroup, :new_pgroup), "in a group of its own"
     assert_equal [true, false, false, true], [input, requests, replies, output].map(&:closed?), "its ends, not this process's"
     assert alive?(pid)
     noting { runs.stop }
@@ -124,7 +124,7 @@ class ProcessSampleTest < DuelTest
     refute alive?(pid), "ended, and waited for"
     assert_equal [true, true], [requests, replies].map(&:closed?)
     assert_still_to_wait_for(other, "and only it")
-    stub(Duel::ProcessSample, :kill_tree, ->(*) { flunk "stopped once" }) { noting { runs.stop(wait: 0) } }
+    stub(Duel::Spawn, :kill_tree, ->(*) { flunk "stopped once" }) { noting { runs.stop(wait: 0) } }
     noting { runs.run(["true"]) }
 
     assert_equal 2, @spawned.size, "and started again"
@@ -354,8 +354,8 @@ class ProcessSampleTest < DuelTest
     pid = @spawned.first.first
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     killed = []
-    kill_tree = Duel::ProcessSample.method(:kill_tree)
-    stub(Duel::ProcessSample, :kill_tree, ->(*args) { (killed << args) && kill_tree.call(*args) }) { noting { runs.stop(wait: 0.3) } }
+    kill_tree = Duel::Spawn.method(:kill_tree)
+    stub(Duel::Spawn, :kill_tree, ->(*args) { (killed << args) && kill_tree.call(*args) }) { noting { runs.stop(wait: 0.3) } }
 
     assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 0.3, "given the while"
     assert_equal [[pid]], killed
@@ -636,35 +636,6 @@ class ProcessSampleTest < DuelTest
     times = Process::Tms.new(9.0, 9.0, 1.5, 0.2500000004)
 
     assert_equal 1_750_000_000, stub(Process, :times, -> { times }) { Duel::ProcessSample.cpu }
-  end
-
-  # A process group of its own, or on Windows, a console's.
-  def test_its_group
-    assert_equal [{pgroup: true}, {new_pgroup: true}], [false, true].map { |windows| Duel::ProcessSample.group(windows: windows) }
-    assert_equal({new_pgroup: true}, with_constants(Duel::Platform, WINDOWS: true) { Duel::ProcessSample.group }, "by default, on Windows")
-  end
-
-  # Its group killed, or on Windows, its tree, with taskkill.
-  def test_killing_its_tree
-    killed = []
-    ran = []
-    status = Struct.new(:success?).new(:tree)
-    trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
-      stub(Open3, :capture2e, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
-        [false, true].map { |windows| Duel::ProcessSample.kill_tree(42, windows: windows) } +
-          [with_constants(Duel::Platform, WINDOWS: true) { Duel::ProcessSample.kill_tree(42) }]
-      end
-    end
-
-    assert_equal %i[group tree tree], trees
-    assert_equal [["KILL", -42]], killed
-    assert_equal [[%w[taskkill /T /F /PID 42], {}]] * 2, ran, "its output read, not shown"
-    killed.clear
-    gone = stub(Process, :kill, ->(*args) { (killed << args) && 1 }) do
-      stub(Open3, :capture2e, ->(*) { raise Errno::ENOENT, "taskkill" }) { Duel::ProcessSample.kill_tree(42, windows: true) }
-    end
-
-    assert_equal [1, [["KILL", 42]]], [gone, killed], "without taskkill, the process alone"
   end
 
   # How it ended: a signal by its name, where Ruby knows one, or else by

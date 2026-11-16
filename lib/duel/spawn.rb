@@ -97,6 +97,28 @@ module Duel
       [pid, Process.detach(pid)]
     end
 
+    # Process.spawn's options (and Open3's) that start a process in a
+    # group of its own, for .kill_tree to kill it with what it starts: a
+    # process group, or on Windows, which has none, a console's (and
+    # Ctrl-C at the runner's doesn't reach it, as a process group's
+    # doesn't).
+    def self.group(windows: Platform::WINDOWS) = windows ? {new_pgroup: true} : {pgroup: true}
+
+    # Kills +pid+ and what it started: its process group (see .group), or
+    # on Windows, where no group can be killed, its tree of children
+    # (taskkill /T).
+    def self.kill_tree(pid, windows: Platform::WINDOWS)
+      return Process.kill("KILL", -pid) unless windows
+
+      # (Through Open3: JRuby's system on Windows ignores out: and err:.
+      # Where there's no taskkill, the process alone is killed.)
+      begin
+        Open3.capture2e("taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
+      rescue Errno::ENOENT
+        Process.kill("KILL", pid)
+      end
+    end
+
     # Open3's +name+d method (capture3, popen2e...), given +args+ (an
     # environment first, or none) and +options+. On JRuby on Windows
     # (+java+), whose Open3 gives a process the JVM's own environment and

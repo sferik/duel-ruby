@@ -27,7 +27,7 @@ class ResourceTest < DuelTest
     groups = @groups = []
     spawn = @spawn = Process.method(:spawn)
     Process.define_singleton_method(:spawn) do |*command, **options|
-      spawn.call(*command, **options, **Duel::ProcessSample.group).tap { |pid| groups << pid }
+      spawn.call(*command, **options, **Duel::Spawn.group).tap { |pid| groups << pid }
     end
   end
 
@@ -37,7 +37,7 @@ class ResourceTest < DuelTest
     @groups.each { |pid| end_group(pid) }
     # (Through Open3, on JRuby on Windows, none leads a group of the test's:
     # each resource's processes, killed with what they started.)
-    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::ProcessSample.kill_tree(pid) } if Duel::Platform::JRUBY_ON_WINDOWS
+    @made.flat_map { |r| r.instance_variable_get(:@processes).keys }.each { |pid| Duel::Spawn.kill_tree(pid) } if Duel::Platform::JRUBY_ON_WINDOWS
     Dir.chdir(@dir)
     super
   end
@@ -293,7 +293,7 @@ class ResourceTest < DuelTest
     kill = Process.method(:kill)
     with_constants(Duel::Platform, WINDOWS: true) do
       # (Its tree, with taskkill, here as this system kills one.)
-      stub(Duel::ProcessSample, :kill_tree, ->(id) { (killed << id) && kill.call("KILL", id) }) do
+      stub(Duel::Spawn, :kill_tree, ->(id) { (killed << id) && kill.call("KILL", id) }) do
         stub(Process, :kill, ->(*args) { flunk "sent #{args.inspect}, not its tree killed" }) { r.stop }
       end
     end

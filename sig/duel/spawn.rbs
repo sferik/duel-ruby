@@ -33,6 +33,14 @@ module Duel
     # output, and a thread whose value is how it ended.
     def self.piped: (Hash[String, String?] env, Array[String] command, ?redirects: bool, **untyped options) -> [Integer, IO, IO, Thread]
 
+    # Process.spawn's options that start a process in a group of its own:
+    # a process group, or on Windows, a console's.
+    def self.group: (?windows: bool) -> ({ pgroup: true } | { new_pgroup: true })
+
+    # Kills +pid+ and what it started: its process group, or on Windows,
+    # its tree of children.
+    def self.kill_tree: (Integer pid, ?windows: bool) -> untyped
+
     # A thread copying +output+ to +out+, then closing both.
     def self.copy: (IO output, IO out, ?close: bool) -> Thread
 

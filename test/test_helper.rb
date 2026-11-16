@@ -239,14 +239,14 @@ class DuelTest < Minitest::Test
   end
 
   # What Process.spawn takes to start a process leading a group of its
-  # own (on Windows, a console's: see ProcessSample.group), for
+  # own (on Windows, a console's: see Spawn.group), for
   # end_group to end with what it started.
-  def own_group = Duel::ProcessSample.group
+  def own_group = Duel::Spawn.group
 
   # Kills the process +pid+ and what it started, and waits for it, if
   # it's still there.
   def end_group(pid)
-    Duel::ProcessSample.kill_tree(pid)
+    Duel::Spawn.kill_tree(pid)
     # (Not on JRuby on Windows, whose Process.wait waits for nothing, or
     # fails, of no errno.)
     Process.wait(pid) unless Duel::Platform::JRUBY_ON_WINDOWS

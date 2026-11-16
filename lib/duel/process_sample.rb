@@ -91,7 +91,7 @@ module Duel
       @requests.close
       waiter = @waiter #: Thread
       unless waiter.join(wait)
-        ProcessSample.kill_tree(pid)
+        Spawn.kill_tree(pid)
         waiter.join
       end
       @replies.close
@@ -162,26 +162,6 @@ module Duel
       name ? "was killed by SIG#{name}" : "was killed by signal #{killed}"
     end
 
-    # The Ruby process of its own's group, for .kill_tree to kill it with
-    # what it started: a process group of its own, or on Windows, which
-    # has none, a console's (and Ctrl-C at the runner's doesn't reach it,
-    # as a process group's doesn't).
-    def self.group(windows: Platform::WINDOWS) = windows ? {new_pgroup: true} : {pgroup: true}
-
-    # Kills +pid+ and what it started: its process group, or on Windows,
-    # where no group can be killed, its tree of children (taskkill /T).
-    def self.kill_tree(pid, windows: Platform::WINDOWS)
-      return Process.kill("KILL", -pid) unless windows
-
-      # (Through Open3: JRuby's system on Windows ignores out: and err:.
-      # Where there's no taskkill, the process alone is killed.)
-      begin
-        Open3.capture2e("taskkill", "/T", "/F", "/PID", pid.to_s).last.success?
-      rescue Errno::ENOENT
-        Process.kill("KILL", pid)
-      end
-    end
-
     private
 
     # Starts the Ruby process of its own, connected by a pipe each way
@@ -194,7 +174,7 @@ module Duel
       # (Out of the runner's bundle: it needs nothing of it.)
       @pid, @requests, @replies, @waiter = Spawn.piped({"RUBYOPT" => nil, "RUBYLIB" => nil},
         [RbConfig.ruby, *WorkerProcess.load_path(RbConfig.ruby).flat_map { |lib| ["-I", lib] }, "-r", "duel/process_sample", "-e",
-          "Duel::ProcessSample.main"], redirects: @redirects, **ProcessSample.group, close_others: true)
+          "Duel::ProcessSample.main"], redirects: @redirects, **Spawn.group, close_others: true)
       @requests.puts JSON.generate({"env" => {**ENV, **@env}, "chdir" => @chdir, "log" => @log})
     end
 
@@ -202,7 +182,7 @@ module Duel
     def kill
       pid = @pid #: Integer
       waiter = @waiter #: Thread
-      ProcessSample.kill_tree(pid)
+      Spawn.kill_tree(pid)
       waiter.join
       @requests.close
       @replies.close

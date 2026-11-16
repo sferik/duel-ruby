@@ -466,4 +466,33 @@ class SpawnTest < DuelTest
 
     assert_equal [true, false, false, true], [input, requests, replies, output].map(&:closed?)
   end
+
+  # A process group of its own, or on Windows, a console's.
+  def test_its_group
+    assert_equal [{pgroup: true}, {new_pgroup: true}], [false, true].map { |windows| Duel::Spawn.group(windows: windows) }
+    assert_equal({new_pgroup: true}, with_constants(Duel::Platform, WINDOWS: true) { Duel::Spawn.group }, "by default, on Windows")
+  end
+
+  # Its group killed, or on Windows, its tree, with taskkill.
+  def test_killing_its_tree
+    killed = []
+    ran = []
+    status = Struct.new(:success?).new(:tree)
+    trees = stub(Process, :kill, ->(*args) { (killed << args) && :group }) do
+      stub(Open3, :capture2e, ->(*args, **options) { (ran << [args, options]) && ["SUCCESS", status] }) do
+        [false, true].map { |windows| Duel::Spawn.kill_tree(42, windows: windows) } +
+          [with_constants(Duel::Platform, WINDOWS: true) { Duel::Spawn.kill_tree(42) }]
+      end
+    end
+
+    assert_equal %i[group tree tree], trees
+    assert_equal [["KILL", -42]], killed
+    assert_equal [[%w[taskkill /T /F /PID 42], {}]] * 2, ran, "its output read, not shown"
+    killed.clear
+    gone = stub(Process, :kill, ->(*args) { (killed << args) && 1 }) do
+      stub(Open3, :capture2e, ->(*) { raise Errno::ENOENT, "taskkill" }) { Duel::Spawn.kill_tree(42, windows: true) }
+    end
+
+    assert_equal [1, [["KILL", 42]]], [gone, killed], "without taskkill, the process alone"
+  end
 end

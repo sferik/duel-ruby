@@ -5,7 +5,6 @@ require "rbconfig"
 require_relative "platform"
 require_relative "control"
 require_relative "spawn"
-require_relative "process_sample"
 
 module Duel
   # What a prepare block (see Config#prepare) gets: a worker's, or a
@@ -271,7 +270,7 @@ module Duel
     # process it started would go on otherwise (JRuby's JVM, started by
     # its jruby.exe, say).
     def send_signal(pid, signal, windows: Platform::WINDOWS)
-      windows ? ProcessSample.kill_tree(pid) : Process.kill(signal, pid)
+      windows ? Spawn.kill_tree(pid) : Process.kill(signal, pid)
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
