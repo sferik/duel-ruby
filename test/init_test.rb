@@ -1363,7 +1363,7 @@ class InitTest < DuelTest
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")
-    inputs = %w[ruby-version version-file yjit runs-on timeout-minutes working-directory gemfile submodules setup report accept-label release-tags
+    inputs = %w[ruby-version version-file yjit zjit runs-on timeout-minutes working-directory gemfile submodules setup report accept-label release-tags
       comment-on-pushes mark-passed badge passed-branch badge-branch marker]
 
     assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
@@ -1380,11 +1380,23 @@ class InitTest < DuelTest
     yjit = {"name" => "Turn on YJIT", "if" => "inputs.yjit", "run" => %(echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV")}
 
     assert_equal [gemfile, yjit], steps[3, 2]
-    assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 4
+    assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 5
     assert_equal "${{ inputs.accept-label }}", steps.fetch(1).dig("env", "ACCEPT_LABEL")
     assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
     assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
+  end
+
+  # YJIT or ZJIT, where the caller says, for every worker of both
+  # versions: not both, which Ruby won't run, as the job says, and fails.
+  def test_the_reusable_workflows_jits
+    steps = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml")).dig("jobs", "duel", "steps")
+    zjit = steps.find { |step| step["name"] == "Turn on ZJIT" }
+
+    assert_equal ["inputs.zjit", {"YJIT" => "${{ inputs.yjit }}"}], zjit.values_at("if", "env")
+    assert_equal steps.index { |step| step["name"] == "Turn on YJIT" } + 1, steps.index(zjit)
+    assert_includes zjit.fetch("run"), %(echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV")
+    assert_includes zjit.fetch("run"), %(if [ "$YJIT" = true ]; then\n  echo "::error::yjit and zjit are both on: Ruby runs one JIT at most"\n  exit 1\n)
   end
 
   # The reusable Perf workflow narrows what its caller grants (the

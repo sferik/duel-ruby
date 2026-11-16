@@ -703,11 +703,11 @@ class LaneTest < DuelTest
     end
   end
 
-  # Without --warm, a lane where a worker has YJIT on (an app turned it
-  # on, say, or only the candidate did, upgraded) warms up for as long as
-  # YJIT_WARM says at most, and else as JIT_WARM does (nothing on CRuby, 5
-  # seconds on JRuby). --warm says otherwise.
-  def test_warming_up_with_yjit
+  # Without --warm, a lane where a worker has YJIT or ZJIT on (an app
+  # turned it on, say, or only the candidate did, upgraded) warms up for
+  # as long as CRUBY_JIT_WARM says at most, and else as JIT_WARM does
+  # (nothing on CRuby, 5 seconds on JRuby). --warm says otherwise.
+  def test_warming_up_with_a_jit
     with_fake_workers do |workers|
       workers.benchmark("b")
       warm = lambda do |seconds|
@@ -718,17 +718,20 @@ class LaneTest < DuelTest
       end
 
       assert_equal Duel::JIT_WARM, warm.call(nil)
-      workers.yjit = true
+      workers.jit = "yjit"
 
-      assert_equal Duel::YJIT_WARM, warm.call(nil)
-      workers.yjit = "candidate"
+      assert_equal Duel::CRUBY_JIT_WARM, warm.call(nil)
+      workers.jit = "zjit"
 
-      assert_equal Duel::YJIT_WARM, warm.call(nil), "YJIT on in one version's workers"
-      workers.yjit = true
+      assert_equal Duel::CRUBY_JIT_WARM, warm.call(nil), "ZJIT's"
+      workers.jit = {"candidate" => "yjit"}
+
+      assert_equal Duel::CRUBY_JIT_WARM, warm.call(nil), "a JIT on in one version's workers"
+      workers.jit = "zjit"
 
       assert_in_delta 0.0, warm.call(0.0)
     end
-    assert_in_delta 10.0, Duel::YJIT_WARM
+    assert_in_delta 10.0, Duel::CRUBY_JIT_WARM
   end
 
   # Without --warm, each worker warms up until the median of its samples

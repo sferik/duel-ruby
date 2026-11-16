@@ -98,15 +98,15 @@ class WorkerTest < DuelTest
   def test_hello_tells_whether_memory_and_profiles_can_be_measured
     worker = Duel::Worker.new
     hello = stub(Duel::Native::Memory, :used, -> { 1 }) do
-      stub(Duel::Worker, :profiler?, -> { true }) { stub(Duel::Worker, :yjit?, -> { true }) { worker.hello } }
+      stub(Duel::Worker, :profiler?, -> { true }) { stub(Duel::Worker, :jit, -> { "zjit" }) { worker.hello } }
     end
 
-    assert_equal [true, true, true], hello.values_at("memory", "profiler", "yjit")
+    assert_equal [true, true, "zjit"], hello.values_at("memory", "profiler", "jit")
     hello = stub(Duel::Native::Memory, :used, -> {}) do
-      stub(Duel::Worker, :profiler?, -> { false }) { stub(Duel::Worker, :yjit?, -> { false }) { worker.hello } }
+      stub(Duel::Worker, :profiler?, -> { false }) { stub(Duel::Worker, :jit, -> {}) { worker.hello } }
     end
 
-    assert_equal [false, false, false], hello.values_at("memory", "profiler", "yjit")
+    assert_equal [false, false, nil], hello.values_at("memory", "profiler", "jit")
   end
 
   # The native extensions loaded, by feature (from the directory on the
@@ -614,18 +614,38 @@ class WorkerRequestsTest < DuelTest
     refute_includes names, "WorkerRequestsTest#untimed_work"
   end
 
-  # YJIT is on where Ruby has it, and it's enabled (by an app, say).
-  def test_yjit
-    skip "no YJIT here" unless defined?(RubyVM::YJIT)
+  # Which of CRuby's JITs is on (an app may turn one on, say): YJIT or
+  # ZJIT, or none, where Ruby has neither on, or wasn't built with it,
+  # or isn't CRuby (JRuby's and TruffleRuby's have neither).
+  def test_jit
+    skip "CRuby's alone" unless RUBY_ENGINE == "ruby"
 
-    assert stub(RubyVM::YJIT, :enabled?, -> { true }) { Duel::Worker.yjit? }
-    refute stub(RubyVM::YJIT, :enabled?, -> { false }) { Duel::Worker.yjit? }
+    jit = ->(on) { Object.new.tap { |compiler| compiler.define_singleton_method(:enabled?) { on } } }
+    with_constants(RubyVM, YJIT: jit.call(true), ZJIT: jit.call(false)) do
+      assert_equal "yjit", Duel::Worker.jit
+      assert_nil Duel::Worker.jit(engine: "jruby"), "not CRuby"
+    end
+    with_constants(RubyVM, YJIT: jit.call(false), ZJIT: jit.call(true)) do
+      assert_equal "zjit", Duel::Worker.jit
+      assert_nil stub(RubyVM, :const_defined?, ->(name) { name != "ZJIT" }) { Duel::Worker.jit }, "a CRuby built without ZJIT"
+    end
+    assert_nil with_constants(RubyVM, YJIT: jit.call(false), ZJIT: jit.call(false)) { Duel::Worker.jit }
   end
 
-  def test_no_yjit_without_it
-    skip "YJIT here" if defined?(RubyVM::YJIT)
+  # A Ruby with a JIT on, as a version's worker could be (turned on by
+  # RUBY_YJIT_ENABLE, say), says so: each JIT this Ruby has.
+  def test_jit_of_a_ruby_with_one_on
+    skip "CRuby's alone" unless RUBY_ENGINE == "ruby"
 
-    refute_predicate Duel::Worker, :yjit?
+    variables = {"yjit" => "RUBY_YJIT_ENABLE", "zjit" => "RUBY_ZJIT_ENABLE"}
+    variables.select { |name, _| RubyVM.const_defined?(name.upcase) }.each do |name, variable|
+      # (The other unset: Ruby won't run with both, and the tests may.)
+      env = variables.values.to_h { |other| [other, (other == variable) ? "1" : nil] }
+      said, = Duel::Spawn.open3(:capture2, env, RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-rduel/worker", "-e",
+        "print Duel::Worker.jit")
+
+      assert_equal name, said
+    end
   end
 
   # StackProf, where it's installed (it is, here, on CRuby off Windows:

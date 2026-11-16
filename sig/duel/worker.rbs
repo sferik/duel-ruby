@@ -4,7 +4,7 @@ module Duel
   # @api private
   class Worker
     type hello = { "benchmarks" => Array[Definition::summary], "metrics" => Array[Metric::spec], "ruby" => String,
-                   "memory" => bool, "profiler" => bool, "yjit" => bool, "extensions" => Hash[String, String],
+                   "memory" => bool, "profiler" => bool, "jit" => String?, "extensions" => Hash[String, String],
                    "twice" => Hash[String, Array[String]], "gem_dirs" => Array[String] }
 
     type ok = { "ok" => true }
@@ -45,11 +45,12 @@ module Duel
     # Whether StackProf is installed, for profiles: on CRuby only.
     def self.profiler?: (?String engine) -> bool
 
-    # Whether YJIT is on, by Ruby.
-    YJIT: ^() -> bool
+    # CRuby's JITs, as RubyVM names them.
+    JITS: Array[String]
 
-    # Whether YJIT is on, for a longer warm-up.
-    def self.yjit?: () -> bool
+    # Which of CRuby's JITs is on ("yjit" or "zjit"), for a longer
+    # warm-up, or nil.
+    def self.jit: (?engine: String) -> String?
 
     def initialize: (?Array[singleton(Metric)] plugin_metrics, ?Hash[String, Hash[Symbol, untyped]] measures,
                      ?hooks: Hash[Symbol, Array[hook]], ?before: Array[String]) -> void

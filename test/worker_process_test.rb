@@ -10,7 +10,7 @@ class WorkerProcessTest < DuelTest
   hangs_after 5
 
   HELLO = {"benchmarks" => [{"name" => "a", "n" => 1}, {"name" => "b", "n" => 2}], "metrics" => [{"name" => "cpu"}],
-           "memory" => true, "profiler" => false, "yjit" => false, "ruby" => "ruby 9.9", "extensions" => {"x.so" => "/x.so"}, "twice" => {"y.so" => ["/a/y.so", "/b/y.so"]},
+           "memory" => true, "profiler" => false, "jit" => nil, "ruby" => "ruby 9.9", "extensions" => {"x.so" => "/x.so"}, "twice" => {"y.so" => ["/a/y.so", "/b/y.so"]},
            "gem_dirs" => ["/gems/"]}.freeze
 
   def setup
@@ -96,7 +96,7 @@ class WorkerProcessTest < DuelTest
     assert_equal "head-1", worker.label
     assert_equal({"a" => {"name" => "a", "n" => 1}, "b" => {"name" => "b", "n" => 2}}, worker.benchmarks)
     assert_equal [{"name" => "cpu"}], worker.metrics
-    assert_equal [true, false, false], [worker.memory, worker.profiler, worker.yjit]
+    assert_equal [true, false, nil], [worker.memory, worker.profiler, worker.jit]
     assert_equal ["ruby 9.9", {"x.so" => "/x.so"}, {"y.so" => ["/a/y.so", "/b/y.so"]}, ["/gems/"]],
       [worker.description, worker.extensions, worker.twice, worker.gem_dirs]
     refute_path_exists File.join(@dir, "head-1.sock"), "its socket is gone once it's connected"
@@ -193,10 +193,10 @@ class WorkerProcessTest < DuelTest
     servers = []
     listen = Duel::Control.method(:listen)
     worker = stub(Duel::Control, :listen, ->(path, **options) { listen.call(path, **options).tap { |server, _| servers << server } }) do
-      worker_process(hello: HELLO.merge("memory" => false, "profiler" => true, "yjit" => true), delay: 0.1)
+      worker_process(hello: HELLO.merge("memory" => false, "profiler" => true, "jit" => "zjit"), delay: 0.1)
     end
 
-    assert_equal [false, true, true], [worker.memory, worker.profiler, worker.yjit]
+    assert_equal [false, true, "zjit"], [worker.memory, worker.profiler, worker.jit]
     assert_predicate servers.first, :closed?
   end
 

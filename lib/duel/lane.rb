@@ -79,7 +79,7 @@ module Duel
       @bases = started.first(processes)
       @candidates = started.drop(processes)
       @profiler = @candidates.first.profiler
-      @warm = settings.warm || (started.any?(&:yjit) ? YJIT_WARM : JIT_WARM)
+      @warm = settings.warm || (started.any?(&:jit) ? CRUBY_JIT_WARM : JIT_WARM)
       check_builds
     rescue Exception # rubocop:disable Lint/RescueException
       stop
@@ -336,7 +336,7 @@ module Duel
     # Every worker runs the benchmark a few times, and then, all at once
     # (none of it is measured, so they needn't take turns), for the
     # seconds --warm says (Settings#warm), or else until it's steady (see
-    # #steady), for JIT_WARM's or YJIT_WARM's seconds at most.
+    # #steady), for JIT_WARM's or CRUBY_JIT_WARM's seconds at most.
     def warm(name, n)
       warm_until = monotonic + @warm
       in_parallel(@bases + @candidates) do |worker|

@@ -15,7 +15,7 @@ class FakeWorkers
   attr_reader :log, :made
 
   # What every worker says it has.
-  attr_accessor :metrics, :memory, :profiler, :yjit
+  attr_accessor :metrics, :memory, :profiler, :jit
 
   # Each version's Ruby (RUBY_DESCRIPTION), native extensions
   # ({feature => path}), those loaded twice ({feature => paths}) and
@@ -32,7 +32,7 @@ class FakeWorkers
     @metrics = [CPU, ALLOCATIONS]
     @memory = true
     @profiler = true
-    @yjit = false
+    @jit = nil
     @benchmarks = {}
     @measures = {}
     @failures = {}
@@ -120,8 +120,9 @@ class FakeWorkers
 
     def profiler = @workers.profiler
 
-    # (YJIT on in every worker, with true, or in one version's, by name.)
-    def yjit = [true, side].include?(@workers.yjit)
+    # (A JIT on in every worker, by its name, or in one version's, by
+    # {version => its name}.)
+    def jit = @workers.jit.is_a?(Hash) ? @workers.jit[side] : @workers.jit
 
     def request(op, name, **args)
       raise IOError, "closed stream" if @stopped

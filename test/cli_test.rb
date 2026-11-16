@@ -87,7 +87,7 @@ class CLITest < DuelTest
               --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: c.time_limit, or 7200)
               --limit RATIO                Ratio above which a timing is slower (default: c.limit, or 1.02)
               --confidence LEVEL           Confidence of every interval (default: c.confidence, or 0.99)
-              --warm SECONDS               Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)
+              --warm SECONDS               Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT or ZJIT on, else 0)
               --ruby version-file|PATH     Each version's Ruby: the one its version file names (.ruby-version, say), or a
                                            path (default: c.ruby, or this one)
               --force                      Compare even if nothing watched changed

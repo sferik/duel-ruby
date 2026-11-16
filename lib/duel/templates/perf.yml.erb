@@ -26,6 +26,10 @@ on:
         description: Whether the benchmarks run with YJIT on (RUBY_YJIT_ENABLE=1)
         type: boolean
         default: false
+      zjit:
+        description: Whether the benchmarks run with ZJIT on (RUBY_ZJIT_ENABLE=1), on Ruby 4.0 or later, not with yjit
+        type: boolean
+        default: false
       runs-on:
         description: The runner the Duel job runs on (a larger one, say, for steadier timings), Linux or macOS
         type: string
@@ -223,6 +227,17 @@ jobs:
       - name: Turn on YJIT
         if: inputs.yjit
         run: echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV"
+      # Or ZJIT: Ruby runs one JIT at most, and exits where both are on.
+      - name: Turn on ZJIT
+        if: inputs.zjit
+        env:
+          YJIT: ${{ inputs.yjit }}
+        run: |
+          if [ "$YJIT" = true ]; then
+            echo "::error::yjit and zjit are both on: Ruby runs one JIT at most"
+            exit 1
+          fi
+          echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV"
 <% else -%>
       # (And whatever else your tests need set up: packages, services.)
 <% end -%>

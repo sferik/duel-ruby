@@ -21,12 +21,13 @@ module Duel
   JIT_WARM = {"jruby" => 60.0, "truffleruby" => 60.0}.fetch(RUBY_ENGINE, 0.0)
 
   # The most seconds each benchmark runs before it's measured where a
-  # worker has YJIT on (an app may turn it on as it boots, as Rails
-  # does), unless --warm says. A small library's methods are compiled
-  # within the warm-up samples, but a big app's only after 120 calls
-  # each, more than a slow benchmark's warm-up samples make.
+  # worker has one of CRuby's JITs on, YJIT or ZJIT (an app may turn one
+  # on as it boots, as Rails does YJIT), unless --warm says. A small
+  # library's methods are compiled within the warm-up samples, but a big
+  # app's only after YJIT's 120 calls each, more than a slow benchmark's
+  # warm-up samples make.
   # @api private
-  YJIT_WARM = 10.0
+  CRUBY_JIT_WARM = 10.0
 
   # Worker processes of each version, by default: enough for an interval
   # over processes (see Lane#judge_processes), which takes 5 at 99%, and

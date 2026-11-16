@@ -206,8 +206,8 @@ module Duel
 
     # The seconds each benchmark warms up for, before it's measured
     # (--warm), or nil (the default) for until it's steady, for up to a
-    # minute on JRuby and TruffleRuby, ten seconds with YJIT on, and none
-    # otherwise.
+    # minute on JRuby and TruffleRuby, ten seconds with YJIT or ZJIT on,
+    # and none otherwise.
     #
     #   c.warm = 10
     attr_reader :warm

@@ -30,7 +30,7 @@ module Duel
     @metrics: Array[Metric::spec]
     @memory: bool
     @profiler: bool
-    @yjit: bool
+    @jit: String?
 
     attr_reader label: String
 
@@ -42,7 +42,7 @@ module Duel
 
     attr_reader profiler: bool
 
-    attr_reader yjit: bool
+    attr_reader jit: String?
 
     # The Ruby it runs on (RUBY_DESCRIPTION).
     attr_reader description: String

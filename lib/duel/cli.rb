@@ -539,7 +539,7 @@ module Duel
         end
         o.on("--limit RATIO", Float, "Ratio above which a timing is slower (default: c.limit, or 1.02)") { |v| given(settings, :limit, v) }
         o.on("--confidence LEVEL", Float, "Confidence of every interval (default: c.confidence, or 0.99)") { |v| given(settings, :confidence, v) }
-        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT on, else 0)") do |v|
+        o.on("--warm SECONDS", Float, "Warm-up per benchmark, in seconds (default: c.warm, or until steady, up to 60 on JRuby and TruffleRuby, 10 with YJIT or ZJIT on, else 0)") do |v|
           given(settings, :warm, v)
         end
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",

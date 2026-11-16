@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ZJIT, the JIT compiler that's experimental in Ruby 4.0 and is due to
+  ship in Ruby 4.1, is taken for a JIT as YJIT is: where a worker has
+  it on (`RUBY_ZJIT_ENABLE=1`, or turned on as the app loads), Duel
+  runs each benchmark until it's steady before it measures it, for up
+  to ten seconds (or as `--warm` says). It measured from the first
+  sample before, while ZJIT was still compiling. Duel's reusable Perf
+  workflow takes `zjit: true` too, as it takes `yjit: true`, and fails
+  at once where both are on, as Ruby runs one JIT at most.
+
 ### Fixed
 
 - The Perf workflow `duel init --reusable` writes grants

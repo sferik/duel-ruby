@@ -772,6 +772,7 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | `ruby-version` | `default` | The Ruby the Duel job runs (`default`: the one `.ruby-version` names). |
 | `version-file` | `false` | Whether each version runs on the Ruby its own `.ruby-version` names ([`c.ruby = :version_file`](configuration.md)). |
 | `yjit` | `false` | Whether the benchmarks run with YJIT on (`RUBY_YJIT_ENABLE=1`), as a Rails app runs, say. |
+| `zjit` | `false` | Whether the benchmarks run with ZJIT on (`RUBY_ZJIT_ENABLE=1`), on Ruby 4.0 or later. Not with `yjit`: Ruby runs one JIT at most. |
 | `runs-on` | `ubuntu-latest` | The runner the Duel job runs on, Linux or macOS: a larger one, say, for steadier timings. |
 | `timeout-minutes` | `60` | How long the Duel job may take before it's cancelled. |
 | `working-directory` | `.` | The project's directory, from the repository's root. |
@@ -805,6 +806,15 @@ jobs:
     with:
       yjit: true
       report: yjit
+  zjit:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: write
+      pull-requests: read
+    with:
+      ruby-version: "4.0"
+      zjit: true
+      report: zjit
   interpreter:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:

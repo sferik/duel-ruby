@@ -12,9 +12,9 @@ module Duel
   JIT_WARM: Float
 
   # Seconds each benchmark runs before it's measured where a worker has
-  # YJIT on, unless --warm says.
+  # YJIT or ZJIT on, unless --warm says.
   # @api private
-  YJIT_WARM: Float
+  CRUBY_JIT_WARM: Float
 
   # The seconds a run measures for, at most, by default.
   # @api private

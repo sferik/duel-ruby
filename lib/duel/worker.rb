@@ -101,10 +101,11 @@ module Duel
     end
 
     # What the runner learns first: the benchmarks, the metrics, whether
-    # peak memory and profiles can be measured here, and whether YJIT is on.
+    # peak memory and profiles can be measured here, and which of CRuby's
+    # JITs is on.
     def hello
       {"benchmarks" => @benchmarks.values.map(&:to_h), "metrics" => @specs, "ruby" => RUBY_DESCRIPTION,
-       "memory" => !Native::Memory.used.nil?, "profiler" => Worker.profiler?, "yjit" => Worker.yjit?,
+       "memory" => !Native::Memory.used.nil?, "profiler" => Worker.profiler?, "jit" => Worker.jit,
        "extensions" => Worker.extensions, "twice" => Worker.twice(@before + $LOADED_FEATURES), "gem_dirs" => Worker.gem_dirs}
     end
 
@@ -144,13 +145,19 @@ module Duel
       dirs.select { |dir| File.directory?(dir) }.map { |dir| File.join(File.realpath(dir), "") }.uniq
     end
 
-    # Whether YJIT is on, by Ruby: JRuby and TruffleRuby have none, and a
-    # CRuby built without it has no RubyVM::YJIT.
-    YJIT = {"ruby" => -> { RubyVM.const_defined?(:YJIT) && RubyVM::YJIT.enabled? }}.fetch(RUBY_ENGINE, -> { false })
+    # CRuby's JITs, as RubyVM names them: YJIT, and since Ruby 4.0, ZJIT.
+    # Ruby runs one at most.
+    JITS = %w[YJIT ZJIT].freeze
 
-    # Whether YJIT is on (which the version may have turned on as it
-    # loaded), for a longer warm-up (YJIT_WARM).
-    def self.yjit? = YJIT.call
+    # Which of CRuby's JITs is on ("yjit" or "zjit"), which the version may
+    # have turned on as it loaded, for a longer warm-up (CRUBY_JIT_WARM),
+    # or nil: none, or a Ruby (+engine+) other than CRuby, which has
+    # neither. (A CRuby built without one has no RubyVM constant for it.)
+    def self.jit(engine: RUBY_ENGINE)
+      return unless engine == "ruby"
+
+      JITS.find { |name| RubyVM.const_defined?(name) && RubyVM.const_get(name).enabled? }&.downcase
+    end
 
     # Whether StackProf is installed, for profiles: on CRuby (+engine+)
     # only. TruffleRuby installs it, but it fails to start there, and

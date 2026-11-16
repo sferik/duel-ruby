@@ -265,12 +265,14 @@ when the gems are installed in the project's directory, as
 
 ## JIT compilers
 
-If YJIT is on in a worker, Duel runs each benchmark until it's steady
-before it measures it, for up to ten seconds. A small library's methods
-are compiled within Duel's first samples, but in a big app, YJIT
-compiles a method only after 120 calls. YJIT can be on because you
-turned it on (`RUBY_YJIT_ENABLE=1`, for example), or because your code
-did as it loaded, as Rails 7.2 and later do.
+If one of CRuby's JIT compilers is on in a worker, YJIT or ZJIT (Ruby
+4.0's newer one, experimental there), Duel runs each benchmark until
+it's steady before it measures it, for up to ten seconds. A small
+library's methods are compiled within Duel's first samples, but in a
+big app, YJIT compiles a method only after 120 calls. A JIT can be on
+because you turned it on (`RUBY_YJIT_ENABLE=1` or `RUBY_ZJIT_ENABLE=1`,
+for example), or because your code did as it loaded, as Rails 7.2 and
+later do YJIT. Ruby runs one JIT at most.
 
 A worker is steady once the median of its samples over each of three
 half seconds in a row is no more than 1% faster than over the last half

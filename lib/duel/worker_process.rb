@@ -20,7 +20,7 @@ module Duel
     # The gems that are Duel's: Duel, and its plugins (duel-redis, say).
     DUEL_GEM = /\Aduel(-|\z)/
 
-    attr_reader :label, :benchmarks, :metrics, :memory, :profiler, :yjit
+    attr_reader :label, :benchmarks, :metrics, :memory, :profiler, :jit
 
     # The Ruby it runs on (RUBY_DESCRIPTION), the native extensions it
     # loaded (see Worker.extensions), those it loaded twice (see
@@ -70,7 +70,7 @@ module Duel
       @metrics = hello.fetch("metrics")
       @memory = hello.fetch("memory")
       @profiler = hello.fetch("profiler")
-      @yjit = hello.fetch("yjit")
+      @jit = hello.fetch("jit")
       @description = hello.fetch("ruby")
       @extensions = hello.fetch("extensions")
       @twice = hello.fetch("twice")
