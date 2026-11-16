@@ -48,9 +48,6 @@ module Duel
     def self.configure: (Config config, ?bin: String?, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
                          ?env: Array[String], ?pg_ctl: bool) -> InWorker[::PG::Connection]
 
-    # A port of 127.0.0.1's that's free, for a worker's server.
-    def self.free_port: () -> Integer
-
     # Runs SQL on a connection of its own to +url+; returns the last
     # statement's result.
     def self.run: (String url, String sql) -> ::PG::Result

@@ -3,6 +3,7 @@
 require "fileutils"
 require "rbconfig"
 require_relative "native"
+require_relative "control"
 require_relative "spawn"
 require_relative "process_sample"
 
@@ -116,6 +117,18 @@ module Duel
     # A path in its directory. (Unix socket paths are short: up to 104
     # bytes on macOS. Duel's directories leave room.)
     def path(file) = File.join(@dir, file)
+
+    # A port of 127.0.0.1's that's free (one the system chose, let go of
+    # again), for a server of its own to listen on, rather than on a Unix
+    # socket in its directory (see #path).
+    def port
+      server = Control.tcp_server
+      begin
+        server.addr.fetch(1)
+      ensure
+        server.close
+      end
+    end
 
     # A directory built once, by the block, for every worker of this run
     # and later ones (a database's initial files, say, for each worker to

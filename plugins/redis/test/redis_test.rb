@@ -351,14 +351,6 @@ class RedisTest < PluginTest
     end
   end
 
-  # A port the system chose, free again.
-  def test_a_free_port
-    ports = Array.new(3) { Duel::Redis.free_port }
-
-    assert(ports.all? { |port| port.between?(1, 65_535) })
-    TCPServer.new("127.0.0.1", ports.last).close
-  end
-
   # Ready only when the server answers PONG; it hangs up either way.
   def test_a_ping
     ["+PONG\r\n", "-LOADING\r\n"].each do |reply|

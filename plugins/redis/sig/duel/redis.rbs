@@ -25,9 +25,6 @@ module Duel
     # For benchmarks: the worker's server.
     def self.url: () -> String
 
-    # A port of 127.0.0.1's that's free, for a worker's server.
-    def self.free_port: () -> Integer
-
     # Empties it, over a connection of its own: in setup or untimed blocks
     # only (it fails while a benchmark is measured).
     def self.flush: () -> String

@@ -15,14 +15,19 @@ module Duel
 
     # A server for a worker to connect to, at +path+ (or a port, unless
     # +unix+), and its address.
-    # mutant:disable -- a port of nil is 0's alike: any that's free
     def self.listen(path, unix:)
       return [UNIXServer.new(path), path] if unix
 
+      server = tcp_server
+      [server, "#{HOST}:#{server.addr.fetch(1)}"]
+    end
+
+    # A server on a port of 127.0.0.1's that the system chose.
+    # mutant:disable -- a port of nil is 0's alike: any that's free
+    def self.tcp_server
       # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
       # before it.)
-      server = TCPServer.new(HOST, 0) # steep:ignore UnexpectedPositionalArgument
-      [server, "#{HOST}:#{server.addr.fetch(1)}"]
+      TCPServer.new(HOST, 0) # steep:ignore UnexpectedPositionalArgument
     end
 
     # A connection to the server at +address+.

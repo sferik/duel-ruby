@@ -73,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run's lock held by another run is told from the Java exception JRuby
   raises for one, and a process that's ended from its EPERM. The tests
   run on JRuby 10.0 and 10.1 on Windows in CI.
+- `w.port`, in a prepare block: a port of 127.0.0.1's that's free, for
+  a server to listen on where it can't on a Unix socket (the plugins'
+  servers, on Windows). The Redis, memcached, MySQL and PostgreSQL
+  plugins use it, in place of a method each of their own.
 
 ### Changed
 

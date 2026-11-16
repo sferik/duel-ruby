@@ -50,9 +50,6 @@ module Duel
     def self.configure: (Config config, ?server: String, ?args: Array[String], ?setup: String?, ?env: Array[String],
                          ?scheme: String, ?tcp: bool) -> InWorker[Connection]
 
-    # A port of 127.0.0.1's that's free, for a worker's server.
-    def self.free_port: () -> Integer
-
     # The most memory a worker's server takes.
     def self.worker_memory: () -> Integer
 

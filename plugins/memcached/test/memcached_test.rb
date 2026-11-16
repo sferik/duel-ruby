@@ -129,14 +129,6 @@ class MemcachedTest < PluginTest
     end
   end
 
-  # A port the system chose, free again.
-  def test_a_free_port
-    ports = Array.new(3) { Duel::Memcached.free_port }
-
-    assert(ports.all? { |port| port.between?(1, 65_535) })
-    TCPServer.new("127.0.0.1", ports.last).close
-  end
-
   def test_its_options
     worker(config(args: ["-m", "8"], env: %w[CACHE_SERVERS])) do |env|
       assert_equal %w[CACHE_SERVERS DUEL_MEMCACHED_SERVERS], env.keys.sort

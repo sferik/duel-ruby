@@ -43,7 +43,7 @@ module Duel
       config.prepare(:worker) do |w|
         if tcp
           # (Its port after OPTIONS' 0, which it takes the place of.)
-          port = free_port
+          port = w.port
           w.spawn(*[server, "--dir", w.dir, *OPTIONS, "--port", port.to_s, "--bind", "127.0.0.1"] + args)
           url = "redis://127.0.0.1:#{port}"
         else
@@ -81,21 +81,6 @@ module Duel
 
     # For benchmarks: the worker's server.
     def self.url = ENV.fetch(URL)
-
-    # A port of 127.0.0.1's that's free (one the system chose, let go of
-    # again), for a server of a worker's to listen on.
-    # mutant:disable -- any address the system binds to gives a port free
-    # alike: 127.0.0.1's is the one the server listens on
-    def self.free_port
-      # (RBS's TCPServer.new takes a port alone, but Ruby's takes the host
-      # before it.)
-      server = TCPServer.new("127.0.0.1", 0) # steep:ignore UnexpectedPositionalArgument
-      begin
-        server.addr.fetch(1)
-      ensure
-        server.close
-      end
-    end
 
     # Empties it, over a connection of its own (opened and closed: a Unix
     # socket's is cheap). For setup or untimed blocks only: while a

@@ -11,6 +11,9 @@ module Duel
     # +unix+), and its address.
     def self.listen: (String path, unix: bool) -> [UNIXServer | TCPServer, String]
 
+    # A server on a port of 127.0.0.1's that the system chose.
+    def self.tcp_server: () -> TCPServer
+
     # A connection to the server at +address+.
     def self.connect: (String address) -> (UNIXSocket | TCPSocket)
 

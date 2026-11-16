@@ -28,9 +28,6 @@ module Duel
     # own connection to it, a worker's.
     def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?cpu: bool, ?tcp: bool) -> InWorker[Connection]
 
-    # A port of 127.0.0.1's that's free, for a worker's server.
-    def self.free_port: () -> Integer
-
     # What the worker's server has done so far (but memcached_cpu), read
     # over +connection+ (the plugin's own). It allocates only its Hash.
     def self.stats: (Connection connection) -> Hash[String, Integer]

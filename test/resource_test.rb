@@ -74,6 +74,15 @@ class ResourceTest < DuelTest
     assert_equal File.join(r.dir, "redis.sock"), r.path("redis.sock")
   end
 
+  # A port the system chose, free again, for a server to listen on.
+  def test_a_free_port
+    r = resource
+    ports = Array.new(3) { r.port }
+
+    assert(ports.all? { |port| port.between?(1, 65_535) })
+    TCPServer.new("127.0.0.1", ports.last).close
+  end
+
   # Its version's Ruby (the runner's, by default), and its version's
   # environment for what it runs, under a command's own.
   def test_its_versions_ruby_and_environment
