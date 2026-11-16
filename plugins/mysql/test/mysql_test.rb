@@ -792,11 +792,7 @@ class MySQLTest < PluginTest
   # It connects to the host it's given (not another of the machine's:
   # one listening on ::1 alone isn't 127.0.0.1).
   def test_the_host_given
-    server = begin
-      TCPServer.new("::1", 0)
-    rescue SystemCallError
-      skip "no IPv6 loopback"
-    end
+    server = ipv6_alone
 
     assert_raises(Errno::ECONNREFUSED) { Duel::MySQL::Connection.socket("127.0.0.1:#{server.addr.fetch(1)}").close }
   ensure
@@ -928,6 +924,27 @@ class MySQLTest < PluginTest
   end
 
   private
+
+  # A server on ::1, on a port that nothing listens on at 127.0.0.1 (the
+  # system can choose one that another process, a test's server, say,
+  # has there).
+  def ipv6_alone
+    10.times do
+      server = begin
+        TCPServer.new("::1", 0)
+      rescue SystemCallError
+        skip "no IPv6 loopback"
+      end
+      begin
+        TCPServer.new("127.0.0.1", server.addr.fetch(1)).close
+        return server
+      rescue Errno::EADDRINUSE
+        server.close
+      end
+    end
+
+    flunk "no port free on 127.0.0.1 that ::1 had"
+  end
 
   # A file in the worker's resource's directory.
   def log(env, name) = File.join(File.dirname(env.fetch("DUEL_MYSQL_SOCKET")), name)
