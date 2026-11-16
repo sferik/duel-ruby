@@ -177,10 +177,11 @@ module Duel
       def queries(reading) = reading.total("active_record_queries")
 
       # +sql+ on one line, and at most LENGTH long (with … where it's
-      # cut).
+      # cut, in place: no other String is made for it).
       def shorten(sql)
         line = sql.gsub(/\s+/, " ").strip
-        (line.length > LENGTH) ? "#{line[0, LENGTH - 1]}…" : line
+        line[LENGTH - 1, line.length] = "…" if line.length > LENGTH
+        line
       end
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond)
