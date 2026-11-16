@@ -186,7 +186,7 @@ module Duel
     # (Connection#quote'd: the plugin's own readings'). A statement's run
     # (LAST_SEEN) is when it ended, but it's counted just after.
     DIGESTS = <<~SQL
-      SELECT DIGEST, COUNT_STAR, SUM_ROWS_SENT + SUM_ROWS_AFFECTED, SUM_ROWS_EXAMINED, SUM_TIMER_WAIT
+      SELECT COUNT_STAR, SUM_ROWS_SENT + SUM_ROWS_AFFECTED, SUM_ROWS_EXAMINED, SUM_TIMER_WAIT, DIGEST
       FROM performance_schema.events_statements_summary_by_digest
       WHERE DIGEST IS NOT NULL AND UNIX_TIMESTAMP(LAST_SEEN) >= %d AND DIGEST NOT IN (%s)
     SQL
@@ -213,13 +213,10 @@ module Duel
       end
     end
 
-    # The same by measure (time in µs).
-    def self.stats(connection) = Statements.by_measure(totals(connection))
-
     # What the server has done so far, by statement, read over
     # +connection+: those run since +since+ (seconds since the epoch), but
-    # the +own+ digests, each one's [digest, queries, rows, rows examined,
-    # time (ps)].
+    # the +own+ digests, each one's [queries, rows, rows examined, time
+    # (ps), digest].
     def self.digests(connection, since, own)
       connection.query(format(DIGESTS, since, own.map { |digest| connection.quote(digest) }.join(", "))).rows
     end
@@ -279,10 +276,6 @@ module Duel
       SHOWN = 3
       TEXT = 80
 
-      # A statement not read yet, as a row of MySQL.digests: it did
-      # nothing.
-      UNREAD = [nil, 0, 0, 0, 0].freeze
-
       # A statement that did nothing yet.
       NOTHING = [0, 0, 0, 0].freeze
 
@@ -292,9 +285,10 @@ module Duel
       # No statement changed.
       UNCHANGED = [] #: Array[String]
 
-      # A reading's context: every statement's row as of it, by digest (a
-      # Hash it shares with the last reading, if none changed), the last
-      # reading's, and the digests of those that changed since.
+      # A reading's context: every statement's row as of it (its numbers,
+      # then its digest), by digest (a Hash it shares with the last
+      # reading, if none changed), the last reading's, and the digests of
+      # those that changed since.
       Reading = Data.define(:rows, :previous, :changed)
 
       # How long before a reading (in seconds) the next one reads the
@@ -368,7 +362,7 @@ module Duel
         rows = previous
         changed = UNCHANGED
         MySQL.digests(connection, since, own).each do |row|
-          digest = row.fetch(0)
+          digest = row.last
           next if row == previous[digest]
 
           # (The last reading's Hash is its own: copied, at the first change.)
@@ -400,9 +394,9 @@ module Duel
           digests = after.previous.equal?(before) ? after.changed : after.rows.keys
           digests.each do |digest|
             now = after.rows.fetch(digest)
-            was = before.fetch(digest, UNREAD)
+            was = before.fetch(digest, NOTHING)
             so_far = grew.fetch(digest, NOTHING)
-            grew[digest] = Array.new(NAMES.size) { |i| so_far.fetch(i) + now.fetch(i + 1) - was.fetch(i + 1) }
+            grew[digest] = Array.new(NAMES.size) { |i| so_far.fetch(i) + now.fetch(i) - was.fetch(i) }
           end
         end
         grew.select { |_, more| more.any?(&:positive?) }

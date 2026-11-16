@@ -289,9 +289,9 @@ class MySQLTest < PluginTest
       db.query("CREATE TABLE items (id int, name text)")
       db.query("INSERT INTO items VALUES #{(1..1000).map { |i| "(#{i}, 'n')" }.join(", ")}")
       find = lambda do
-        before = Duel::MySQL.stats(@connection.value)
+        before = stats(@connection.value)
         db.query("SELECT name FROM items WHERE id = 7")
-        Duel::MySQL.stats(@connection.value).fetch("mysql_rows_examined") - before.fetch("mysql_rows_examined")
+        stats(@connection.value).fetch("mysql_rows_examined") - before.fetch("mysql_rows_examined")
       end
 
       assert_equal 1000, find.call
@@ -308,16 +308,16 @@ class MySQLTest < PluginTest
   def test_other_connections
     shared_worker do
       connection = @connection.value
-      before = Duel::MySQL.stats(connection).fetch("mysql_queries")
+      before = stats(connection).fetch("mysql_queries")
       query("SELECT 1")
 
       assert_equal [[0]], alone(connection)
-      assert_equal 2, Duel::MySQL.stats(connection).fetch("mysql_queries") - before, "SELECT 1, and quitting"
-      before = Duel::MySQL.stats(connection).fetch("mysql_queries")
+      assert_equal 2, stats(connection).fetch("mysql_queries") - before, "SELECT 1, and quitting"
+      before = stats(connection).fetch("mysql_queries")
       Duel::MySQL.execute("SELECT 1")
 
       assert_equal [[0]], alone(connection)
-      assert_equal 1, Duel::MySQL.stats(connection).fetch("mysql_queries") - before, "SELECT 1"
+      assert_equal 1, stats(connection).fetch("mysql_queries") - before, "SELECT 1"
     end
   end
 
@@ -330,14 +330,14 @@ class MySQLTest < PluginTest
       sleeping = Thread.new { db.query("SELECT SLEEP(5)") }
       sleep 0.01 until query("SELECT COUNT(*) FROM performance_schema.threads WHERE PROCESSLIST_INFO = 'SELECT SLEEP(5)'") == [[1]]
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      Duel::MySQL.stats(connection)
+      stats(connection)
       waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
       assert_operator waited, :>=, 1.0
       assert_operator waited, :<, 4.0, "not until it's done"
       sleeping.join
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      Duel::MySQL.stats(connection)
+      stats(connection)
 
       assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 1.0, "none running"
     ensure
@@ -355,14 +355,14 @@ class MySQLTest < PluginTest
       Duel::MySQL.execute("CREATE EVENT sleeping ON SCHEDULE EVERY 1 SECOND DO DO SLEEP(3)")
       sleep 0.01 until query("SELECT COUNT(*) FROM performance_schema.threads WHERE NAME = 'thread/sql/event_worker'") != [[0]]
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      Duel::MySQL.stats(connection)
+      stats(connection)
 
       assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 0.5, "the event scheduler, and an event, running"
       db = client
       sleeping = Thread.new { db.query("SELECT SLEEP(2)") }
       sleep 0.01 until query("SELECT COUNT(*) FROM performance_schema.threads WHERE PROCESSLIST_INFO = 'SELECT SLEEP(2)'") == [[1]]
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      Duel::MySQL.stats(connection)
+      stats(connection)
 
       assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :>=, 1.0, "a client's statement"
     ensure
@@ -464,9 +464,13 @@ class MySQLTest < PluginTest
       SQL
       now = Process.clock_gettime(Process::CLOCK_REALTIME, :second)
 
-      assert_equal [digest, *numbers], Duel::MySQL.digests(connection, now - 60, [other]).assoc(digest)
-      assert_nil Duel::MySQL.digests(connection, now + 60, [other]).assoc(digest), "not run since"
-      assert_nil Duel::MySQL.digests(connection, now - 60, [other, digest]).assoc(digest), "left out"
+      # (Its row: the digest's last.)
+      its = ->(since, own) { Duel::MySQL.digests(connection, since, own).find { |row| row.last == digest } }
+
+      assert_instance_of Array, Duel::MySQL.digests(connection, now - 60, [other]), "the rows"
+      assert_equal [*numbers, digest], its.call(now - 60, [other])
+      assert_nil its.call(now + 60, [other]), "not run since"
+      assert_nil its.call(now - 60, [other, digest]), "left out"
       assert_equal({digest => text}, Duel::MySQL.texts(connection, [digest]))
     end
   end
@@ -487,11 +491,11 @@ class MySQLTest < PluginTest
       digest = Duel::MySQL.digests_of(connection, ["SELECT 5"]).fetch(0)
       own = Duel::MySQL.digests_of(connection, [Duel::MySQL::BUSY, Duel::MySQL::STATS, format(Duel::MySQL::DIGESTS, 0, "''")])
 
-      assert_equal [digest, 1, 1, 1], first.rows.fetch(digest).first(4), "all of them, first"
+      assert_equal [1, 1, 1, digest], first.rows.fetch(digest).values_at(0, 1, 2, 4), "all of them, first"
       assert_empty first.rows.keys & own
       assert_equal [digest], ran.changed
       assert_same first.rows, ran.previous
-      assert_equal [digest, 3, 3, 3], ran.rows.fetch(digest).first(4)
+      assert_equal [3, 3, 3, digest], ran.rows.fetch(digest).values_at(0, 1, 2, 4)
       assert_same ran.rows, nothing.rows, "none changed"
       assert_empty nothing.changed
     ensure
@@ -506,17 +510,17 @@ class MySQLTest < PluginTest
     read = []
     statements = Duel::MySQL::Statements.new(Data.define(:value).new(:connection))
     reading = Data.define(:context)
-    rows = {"1" => ["1", 1, 1, 1, 1], "2" => ["2", 2, 2, 2, 2]}
+    rows = {"1" => [1, 1, 1, 1, "1"], "2" => [2, 2, 2, 2, "2"]}
     first = reading.new(Duel::MySQL::Statements::Reading.new(rows, {}, %w[1 2]))
-    after = rows.merge("1" => ["1", 2, 1, 2, 2], "2" => ["2", 2, 1, 2, 2], "3" => ["3", 1, 0, 0, 0])
+    after = rows.merge("1" => [2, 1, 2, 2, "1"], "2" => [2, 1, 2, 2, "2"], "3" => [1, 0, 0, 0, "3"])
     second = reading.new(Duel::MySQL::Statements::Reading.new(after, rows, %w[1 2 3]))
-    third = reading.new(Duel::MySQL::Statements::Reading.new(after.merge("1" => ["1", 3, 1, 2, 4], "9" => ["9", 1, 0, 0, 0]), after, %w[1 9]))
+    third = reading.new(Duel::MySQL::Statements::Reading.new(after.merge("1" => [3, 1, 2, 4, "1"], "9" => [1, 0, 0, 0, "9"]), after, %w[1 9]))
     texts = ->(_connection, digests) { read << digests and digests.grep_v("9").to_h { |digest| [digest, {"1" => "SELECT ?", "3" => "DELETE FROM t"}.fetch(digest)] } }
     replacing(Duel::MySQL, :texts, texts) do
       assert_equal({"mysql_queries" => "an iteration: 1× SELECT ?; 0.5× 9; 0.5× DELETE FROM t", "mysql_rows_examined" => "SELECT ? (100%)",
                     "mysql_time" => "SELECT ? (100%)"}, statements.details([[first, second], [second, third]], 2))
       assert_equal({"mysql_queries" => "an iteration: 1× SELECT ?"}, statements.details([[first, first],
-        [second, reading.new(Duel::MySQL::Statements::Reading.new(after.merge("1" => ["1", 3, 1, 2, 2]), after, %w[1]))]], 1))
+        [second, reading.new(Duel::MySQL::Statements::Reading.new(after.merge("1" => [3, 1, 2, 2, "1"]), after, %w[1]))]], 1))
       assert_same Duel::MySQL::Statements::NONE, statements.details([[first, first], [third, third]], 1), "none ran"
     end
 
@@ -529,12 +533,12 @@ class MySQLTest < PluginTest
   def test_readings_not_one_after_the_other
     statements = Duel::MySQL::Statements.new(Data.define(:value).new(:connection))
     reading = Data.define(:context)
-    rows = {"1" => ["1", 1, 2, 3, 4]}
+    rows = {"1" => [1, 2, 3, 4, "1"]}
     first = reading.new(Duel::MySQL::Statements::Reading.new(rows, {}, %w[1]))
-    between = rows.merge("2" => ["2", 1, 1, 1, 1])
+    between = rows.merge("2" => [1, 1, 1, 1, "2"])
     # (Its rows have a statement it doesn't say changed: to tell which
     # it looks at.)
-    stopped = reading.new(Duel::MySQL::Statements::Reading.new(between.merge("1" => ["1", 2, 4, 6, 8], "3" => ["3", 1, 1, 1, 1]), between, %w[1]))
+    stopped = reading.new(Duel::MySQL::Statements::Reading.new(between.merge("1" => [2, 4, 6, 8, "1"], "3" => [1, 1, 1, 1, "3"]), between, %w[1]))
     texts = ->(_connection, digests) { digests.to_h { |digest| [digest, "S#{digest}"] } }
     replacing(Duel::MySQL, :texts, texts) do
       assert_equal "an iteration: 1× S1", statements.details([[reading.new(Duel::MySQL::Statements::Reading.new(between, rows, %w[2])), stopped]], 1)
@@ -553,8 +557,8 @@ class MySQLTest < PluginTest
   def test_what_ran_since_the_last_reading
     own = []
     asked = []
-    rows = [[["a", 1, 1, 1, 1], ["b", 2, 0, 2, 2]], [["a", 1, 1, 1, 1], ["b", 3, 1, 2, 4], ["c", 1, 0, 0, 1]], [["a", 1, 1, 1, 1]], [],
-      [["c", 2, 0, 0, 2]], [], []]
+    rows = [[[1, 1, 1, 1, "a"], [2, 0, 2, 2, "b"]], [[1, 1, 1, 1, "a"], [3, 1, 2, 4, "b"], [1, 0, 0, 1, "c"]], [[1, 1, 1, 1, "a"]], [],
+      [[2, 0, 0, 2, "c"]], [], []]
     statements = Duel::MySQL::Statements.new(Data.define(:value).new(:connection))
     empty = nil
     readings = replacing(Duel::MySQL, :totals, ->(_connection) { [1, 2, 3, 4_000_000] }) do
@@ -571,10 +575,10 @@ class MySQLTest < PluginTest
 
     assert_equal [[:connection, [Duel::MySQL::BUSY, Duel::MySQL::STATS, format(Duel::MySQL::DIGESTS, 0, "''")]]] * 2, own, "once each"
     assert_equal({"mysql_queries" => 1, "mysql_rows" => 2, "mysql_rows_examined" => 3, "mysql_time" => 4.0}, readings.first.first.first)
-    assert_equal [{"a" => ["a", 1, 1, 1, 1], "b" => ["b", 2, 0, 2, 2]}, {}, %w[a b]], [first.rows, first.previous, first.changed]
-    assert_equal [{"a" => ["a", 1, 1, 1, 1], "b" => ["b", 3, 1, 2, 4], "c" => ["c", 1, 0, 0, 1]}, %w[b c]], [second.rows, second.changed]
+    assert_equal [{"a" => [1, 1, 1, 1, "a"], "b" => [2, 0, 2, 2, "b"]}, {}, %w[a b]], [first.rows, first.previous, first.changed]
+    assert_equal [{"a" => [1, 1, 1, 1, "a"], "b" => [3, 1, 2, 4, "b"], "c" => [1, 0, 0, 1, "c"]}, %w[b c]], [second.rows, second.changed]
     assert_same first.rows, second.previous
-    assert_equal({"a" => ["a", 1, 1, 1, 1], "b" => ["b", 2, 0, 2, 2]}, first.rows, "not changed after")
+    assert_equal({"a" => [1, 1, 1, 1, "a"], "b" => [2, 0, 2, 2, "b"]}, first.rows, "not changed after")
     assert_equal [true, true, [], true], [third.rows.equal?(second.rows), third.previous.equal?(second.rows), third.changed, third.rows.frozen?],
       "none changed: the same rows"
     assert_equal [true, %w[c], true, false, true, [{}, {}, []]], [fourth.equal?(third), fifth.changed, sixth.rows.equal?(fifth.rows),

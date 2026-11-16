@@ -52,6 +52,11 @@ class Canned
     @totals = result([[12_345, 67_890, 234_567, 89_012_345_678]])
     @all = tables.map { |statements| statements(statements) }
     @ran = tables.each_with_index.map { |statements, i| statements(statements.reject { |digest, numbers| tables[i - 1][digest] == numbers }) }
+    # (Both, and both with each row's digest first, as a version before
+    # 0.2.0 reads them: a comparison runs these benchmarks on the baseline
+    # too. Each pair made once, so a query allocates nothing.)
+    @digest_last = [@all, @ran]
+    @digest_first = @digest_last.map { |results| results.map { |each| result(each.rows.map { |row| [row.last, *row[0...-1]] }) } }
     @reading = -1
     @read = false
     @own = result([["0" * 64]])
@@ -62,7 +67,7 @@ class Canned
     case sql
     when Duel::MySQL::BUSY then @idle
     when Duel::MySQL::STATS then @totals
-    when /\ASELECT DIGEST, COUNT_STAR/ then statements_since(sql)
+    when /\ASELECT (DIGEST, )?COUNT_STAR/ then statements_since(sql)
     when /\ASELECT STATEMENT_DIGEST/ then @own
     else @texts
     end
@@ -79,10 +84,11 @@ class Canned
     @reading = (reading + 1) % @all.size
     since = @read && sql.include?("LAST_SEEN")
     @read = true
-    since ? @ran.fetch(reading) : @all.fetch(reading)
+    all, ran = sql.start_with?("SELECT DIGEST") ? @digest_first : @digest_last
+    since ? ran.fetch(reading) : all.fetch(reading)
   end
 
-  def statements(statements) = result(statements.map { |digest, numbers| [digest, *numbers] })
+  def statements(statements) = result(statements.map { |digest, numbers| [*numbers, digest] })
 
   def result(rows) = Result.new(rows)
 

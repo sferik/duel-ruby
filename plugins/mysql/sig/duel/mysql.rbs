@@ -38,7 +38,7 @@ module Duel
     # rows examined, time (ps).
     type numbers = Array[Integer]
 
-    # A statement's row, as MySQL.digests reads it: [digest, *numbers].
+    # A statement's row, as MySQL.digests reads it: [*numbers, digest].
     type row = Array[untyped]
 
     # Configures Duel for the plugin (c.use :mysql): the server (+server+
@@ -68,12 +68,9 @@ module Duel
     # running a statement.
     def self.settle: (Connection connection) -> void
 
-    # The same by measure.
-    def self.stats: (Connection connection) -> Snapshot::totals[Metric::value]
-
     # What the server has done so far, by statement, read over
     # +connection+: those run since +since+, but the +own+ digests, each
-    # one's [digest, *numbers].
+    # one's [*numbers, digest].
     def self.digests: (Connection connection, Integer since, Array[String] own) -> Array[row]
 
     # The digest of each of +statements+, read over +connection+.
@@ -117,9 +114,6 @@ module Duel
       # each one's text.
       SHOWN: Integer
       TEXT: Integer
-
-      # A statement not read yet, as a row of MySQL.digests.
-      UNREAD: row
 
       # A statement that did nothing yet.
       NOTHING: numbers

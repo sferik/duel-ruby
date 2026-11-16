@@ -64,16 +64,8 @@ module Duel
     # blocks and time (ms).
     def self.columns: (::PG::Connection connection) -> [Array[String], Array[Integer], Array[Integer], Array[Integer], Array[Float]]
 
-    # What the worker's server has done so far, by statement (query id),
-    # read over +connection+.
-    def self.statements: (::PG::Connection connection) -> Hash[String, numbers]
-
     # A time in ms, in ns.
     def self.ns: (Float ms) -> Integer
-
-    # What the worker's server has done so far, all told, read over
-    # +connection+.
-    def self.stats: (::PG::Connection connection) -> Snapshot::totals[Metric::value]
 
     # The texts of the statements with these query ids, by query id, read
     # over +connection+.
@@ -122,9 +114,6 @@ module Duel
       @texts: Hash[String, String]
       @numbers: Hash[String, numbers]
       @sums: numbers
-
-      # Statements' numbers, all told, by measure.
-      def self.total: (Array[numbers] statements) -> Snapshot::totals[Metric::value]
 
       # Statements' numbers, added up.
       def self.sum: (Array[numbers] statements) -> numbers

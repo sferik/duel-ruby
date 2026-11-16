@@ -403,11 +403,12 @@ class PostgreSQLTest < PluginTest
     shared_worker do
       pg = PG.connect
       pg.exec("CREATE TABLE items (id int, name text); INSERT INTO items SELECT g, repeat('n', 100) FROM generate_series(1, 5000) g")
+      statements = Duel::PostgreSQL::Statements.new(@connection)
       find = lambda do
         pg.exec("SELECT name FROM items WHERE id = 7") # (planned)
-        before = Duel::PostgreSQL.stats(@connection.value)
+        before = statements.read.first
         pg.exec("SELECT name FROM items WHERE id = 7")
-        Duel::PostgreSQL.stats(@connection.value).fetch("postgres_blocks") - before.fetch("postgres_blocks")
+        statements.read.first.fetch("postgres_blocks") - before.fetch("postgres_blocks")
       end
       scan = find.call
       pg.exec("CREATE INDEX ON items (id)")
@@ -500,13 +501,14 @@ class PostgreSQLTest < PluginTest
     assert_equal [1, 1, [:postgresql]], [config.prepares.fetch(:worker).size, config.metrics.size, config.plugins]
   end
 
-  # Statements' numbers, all told, by measure: time in µs.
-  def test_totals
-    total = Duel::PostgreSQL::Statements.method(:total)
-
+  # Statements' numbers, added up, and by measure: time in µs.
+  def test_sums
+    assert_equal [2, 2, 8, 4500], Duel::PostgreSQL::Statements.sum([[1, 2, 3, 4000], [1, 0, 5, 500]])
+    assert_equal [0, 0, 0, 0], Duel::PostgreSQL::Statements.sum([])
     assert_equal({"postgres_queries" => 2, "postgres_rows" => 2, "postgres_blocks" => 8, "postgres_time" => 4.5},
-      total.call([[1, 2, 3, 4000], [1, 0, 5, 500]]))
-    assert_equal({"postgres_queries" => 0, "postgres_rows" => 0, "postgres_blocks" => 0, "postgres_time" => 0.0}, total.call([]))
+      Duel::PostgreSQL::Statements.by_measure([2, 2, 8, 4500]))
+    assert_equal({"postgres_queries" => 0, "postgres_rows" => 0, "postgres_blocks" => 0, "postgres_time" => 0.0},
+      Duel::PostgreSQL::Statements.by_measure([0, 0, 0, 0]))
   end
 
   # Each statement's numbers, by query id: time in ns (pg_stat_statements
@@ -519,7 +521,7 @@ class PostgreSQLTest < PluginTest
         SELECT queryid, sum(shared_blks_hit + shared_blks_read), sum(total_plan_time + total_exec_time)
         FROM pg_stat_statements WHERE query = 'SELECT pg_sleep($1), generate_series($2, $3)' GROUP BY queryid
       SQL
-      numbers = Duel::PostgreSQL.statements(@connection.value).fetch(id)
+      numbers = Duel::PostgreSQL::Statements.new(@connection).read.last.numbers.fetch(id)
 
       assert_equal [2, 6, Integer(blocks), (Float(ms) * 1_000_000).round], numbers
       assert_instance_of Integer, numbers.last

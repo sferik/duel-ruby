@@ -217,20 +217,8 @@ module Duel
       end
     end
 
-    # What the worker's server has done so far, by statement, read over
-    # +connection+: each one's [queries, rows, blocks, time (ns)], by
-    # query id.
-    def self.statements(connection)
-      ids, calls, rows, blocks, ms = columns(connection)
-      ids.each_with_index.to_h { |id, i| [id, [calls.fetch(i), rows.fetch(i), blocks.fetch(i), ns(ms.fetch(i))]] }
-    end
-
     # A time in ms (pg_stat_statements'), in ns.
     def self.ns(ms) = (ms * 1_000_000).round
-
-    # What the worker's server has done so far, all told, by measure, read
-    # over +connection+.
-    def self.stats(connection) = Statements.total(statements(connection).values)
 
     # The texts of the statements with these query ids, by query id
     # (normalized: $1 for each constant), read over +connection+.
@@ -291,9 +279,6 @@ module Duel
       # Hash it shares with the last reading, if none changed), the last
       # reading's, and the query ids of those that changed since.
       Reading = Data.define(:numbers, :previous, :changed)
-
-      # Statements' numbers, all told, by measure (time in µs).
-      def self.total(statements) = by_measure(sum(statements))
 
       # Statements' numbers, added up.
       def self.sum(statements) = NAMES.each_index.map { |i| statements.sum { |numbers| numbers.fetch(i) } }
@@ -378,7 +363,7 @@ module Duel
             now = after.numbers.fetch(id)
             was = before.fetch(id, NOTHING)
             so_far = grew.fetch(id, NOTHING)
-            grew[id] = Array.new(now.size) { |i| so_far.fetch(i) + now.fetch(i) - was.fetch(i) }
+            grew[id] = Array.new(NAMES.size) { |i| so_far.fetch(i) + now.fetch(i) - was.fetch(i) }
           end
         end
         grew.select { |_, more| more.any?(&:positive?) }

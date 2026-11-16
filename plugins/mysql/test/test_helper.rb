@@ -217,6 +217,10 @@ class PluginTest < Minitest::Test
     db&.close
   end
 
+  # What the worker's server has done so far, all told, by measure, read
+  # over +connection+ (as Statements#read reads it).
+  def stats(connection) = Duel::MySQL::Statements.by_measure(Duel::MySQL.totals(connection))
+
   # Waits until +connection+ (the plugin's, or the test's) is the only
   # client of the worker's server (those that closed are gone, a QUIT
   # they sent read: the server reads it after its client's moved on);
