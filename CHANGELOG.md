@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Perf workflow `duel init --reusable` writes grants
+  `contents: write`. It granted `contents: read` unless it turned on a
+  job that writes (marking a push passed, commenting on one, or the
+  badge), but GitHub checks every job of a workflow it calls against
+  what the caller grants, whether the job runs or not, so the run failed
+  before it started. The Duel job, which runs the branch's code, still
+  only reads. In a Perf workflow it wrote, grant `contents: write` in
+  the job that calls Duel's (`duel init --check --reusable` shows where).
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

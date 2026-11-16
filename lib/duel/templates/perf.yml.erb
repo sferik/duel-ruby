@@ -5,9 +5,12 @@ name: Duel
 # `duel init --reusable` writes it) calls it, with its triggers and its
 # concurrency, and passes on what .duel.rb sets that it needs as its
 # inputs. Its jobs run as the Perf workflow's that `duel init` writes
-# do, and the caller grants what they need (contents: write to mark a
-# push passed, comment on it, or keep the badge, and pull-requests: read
-# for the labels), which each job narrows. See Duel's docs/ci.md.
+# do, and the caller grants contents: write (GitHub checks each job's
+# permissions against the caller's, whether it runs or not, and those
+# that mark a push passed, comment on it, or keep the badge write) and
+# pull-requests: read (for the labels), which each job narrows: the Duel
+# job, which runs the branch's code, to contents: read. See Duel's
+# docs/ci.md.
 on:
   workflow_call:
     inputs:

@@ -753,7 +753,7 @@ jobs:
   duel:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: read
+      contents: write # what its jobs ask for, run or not (see below)
       pull-requests: read # for the pull request's labels (see c.accept_label)
     with:
       ruby-version: "3.4"
@@ -762,7 +762,8 @@ jobs:
 
 Your workflows keep their triggers, their concurrency and their
 permissions, which Duel's jobs can only narrow. The job that runs the
-pull request's code only reads, as it does in the whole workflow.
+pull request's code only reads (`contents: read`), as it does in the
+whole workflow, whatever your Perf workflow grants.
 
 Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 
@@ -799,7 +800,7 @@ jobs:
   yjit:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
     with:
       yjit: true
@@ -807,7 +808,7 @@ jobs:
   interpreter:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
     with:
       report: interpreter
@@ -824,9 +825,12 @@ Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
 takes `accept-label`, `marker`, and `perf-workflow` (the name of your
 Perf workflow, `Perf` by default).
 
-A job that `mark-passed`, `comment-on-pushes` or `badge` turns on writes
-to the repository, so your Perf workflow grants `contents: write` for
-it. With an accept label, your Perf comment workflow grants
+The jobs that `mark-passed`, `comment-on-pushes` and `badge` turn on
+write to the repository, so your Perf workflow grants `contents: write`,
+even where it turns none of them on: GitHub checks every job of a
+workflow it calls against what the caller grants, whether the job runs
+or not, and a run where one asks for more fails before it starts. With
+an accept label, your Perf comment workflow grants
 `actions: write`, to run the Duel job again. The checks are named for
 your job and Duel's, as in `duel / Duel`. To update Duel's workflows,
 change the tag. `duel init --check --reusable` compares the workflows

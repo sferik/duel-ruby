@@ -329,10 +329,6 @@ module Duel
     # mutant:disable -- nil (a mutation's) renders as false does
     def reusable? = false
 
-    # Whether the workflow's jobs write to the repository: to mark a push
-    # passed, comment on one, or keep the badge.
-    def writes? = mark_passed? || comment_on_pushes? || badge?
-
     # What the workflow it writes with --reusable passes on to Duel's
     # Perf workflow, as its inputs (see Reusable): what .duel.rb sets that
     # isn't the input's default, each as YAML has it.

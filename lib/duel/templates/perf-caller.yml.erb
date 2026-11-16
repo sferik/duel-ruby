@@ -27,13 +27,13 @@ permissions: {}
 jobs:
   duel:
     uses: <%= REUSABLE %>/duel.yml@v<%= Duel::VERSION %>
-    # (Its Duel job, which runs the branch's code, only reads.)
+    # (Its Duel job, which runs the branch's code, only reads: the
+    # workflow keeps it to contents: read. GitHub checks what each of its
+    # jobs asks for against what's granted here, run or not, and those
+    # that mark a push passed, comment on it, or keep the badge ask for
+    # contents: write.)
     permissions:
-<% if writes? -%>
-      contents: write # to mark a push passed, comment on it, or keep the badge
-<% else -%>
-      contents: read
-<% end -%>
+      contents: write
       pull-requests: read # for the pull request's labels (see c.accept_label)
     # (And with setup:, shell commands that set up whatever else your
     # tests need: packages, services.)

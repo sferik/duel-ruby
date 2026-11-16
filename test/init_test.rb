@@ -1387,6 +1387,17 @@ class InitTest < DuelTest
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
   end
 
+  # The reusable Perf workflow narrows what its caller grants (the
+  # contents: write its jobs that write ask for) to reading, for every job
+  # that doesn't ask for more: the Duel job, which runs the branch's code.
+  def test_the_reusable_workflows_permissions
+    perf = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml"))
+
+    assert_equal({"contents" => "read", "pull-requests" => "read"}, perf.fetch("permissions"))
+    refute perf.dig("jobs", "duel").key?("permissions"), "the Duel job's, as the workflow's"
+    assert_equal [{"contents" => "write"}] * 3, perf.fetch("jobs").values.drop(1).map { |job| job.fetch("permissions") }
+  end
+
   # The reusable Perf workflow's Duel job runs where the caller says (on
   # a runner, within a limit, with submodules), names its check and its
   # report for a call that's one of several, and says what Duel said, for
@@ -1411,7 +1422,8 @@ class InitTest < DuelTest
 
   # With --reusable, workflows that call Duel's (at this release), with
   # what .duel.rb sets that isn't an input's default, and the
-  # permissions their jobs need.
+  # permissions their jobs need: contents: write, as GitHub checks every
+  # job of Duel's against it, whether it runs or not.
   def test_reusable
     gem
 
@@ -1421,7 +1433,7 @@ class InitTest < DuelTest
     job = perf.dig("jobs", "duel")
 
     assert_equal "sferik/duel-ruby/.github/workflows/duel.yml@v#{Duel::VERSION}", job.fetch("uses")
-    assert_equal({"contents" => "read", "pull-requests" => "read"}, job.fetch("permissions"), "nothing it writes")
+    assert_equal({"contents" => "write", "pull-requests" => "read"}, job.fetch("permissions"), "though nothing it turns on writes")
     assert_equal({"ruby-version" => ruby_version, "accept-label" => "duel: accept"}, job.fetch("with"))
     assert_equal %w[pull_request merge_group push schedule workflow_dispatch], perf.fetch(true).keys
     assert perf.key?("concurrency")

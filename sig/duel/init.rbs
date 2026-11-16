@@ -116,8 +116,6 @@ module Duel
     # Whether the templates are rendered as Duel's reusable workflows.
     def reusable?: () -> bool
 
-    # Whether the workflow's jobs write to the repository.
-    def writes?: () -> bool?
 
     # What a workflow it writes with --reusable passes on to Duel's, as
     # its inputs, each as YAML has it.
