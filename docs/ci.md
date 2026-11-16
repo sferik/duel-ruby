@@ -781,7 +781,7 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | `gemfile` | none | A Gemfile of Duel's own, from the project's directory (`gemfiles/duel.gemfile`, say), which keeps Duel out of the project's other bundles. Duel and both versions' workers run in its bundle, so it needs what the benchmarks load (`eval_gemfile "../Gemfile"`, say). |
 | `submodules` | `false` | Whether to check out the repository's submodules too (`true`, or `recursive`), as [actions/checkout](https://github.com/actions/checkout) takes it. |
 | `setup` | none | Shell commands that set up whatever else your tests need (packages, services), before Ruby is set up. |
-| `setup-after-ruby` | none | Shell commands that set up what needs Ruby first (on Windows, a compiler from Ruby's devkit, say), before the bundle is installed. With them, the bundle isn't cached. |
+| `setup-after-ruby` | none | Shell commands that set up what needs Ruby first (on Windows, a package of Ruby's devkit, from `pacman`, say), before the bundle is installed. See [On Windows](#on-windows). With them, the bundle isn't cached. |
 | `report` | none | A name for the call's report and check (`yjit`, say), where your workflow calls Duel's more than once: see below. |
 | `accept-label` | none | The label that [accepts a regression](#accept-a-regression-with-a-label) (`c.accept_label`). |
 | `release-tags` | `v*` | The glob your release tags match (`c.release_tags`). |
@@ -837,11 +837,13 @@ as each call's jobs run on their own.
 ### On Windows
 
 The Duel job runs its steps, and `setup` and `setup-after-ruby`, in
-bash on every runner: on Windows, Git's. A gem's C extension there is
-built with the compiler of Ruby's devkit (MSYS2's gcc), which is there
-only once Ruby is set up, and which the bundle may need, so install it
-in `setup-after-ruby`, and the job installs the bundle after it. Add a
-call for Windows next to the one for Linux, say:
+bash on every runner, not PowerShell: on Windows, Git's, and once Ruby
+is set up, the bash of Ruby's devkit (MSYS2). setup-ruby sets the devkit
+up, with its gcc, so a gem's C extension builds without help. A C
+library that an extension links can come from the devkit too, with
+`pacman`, which is there only once Ruby is set up, so install it in
+`setup-after-ruby`, and the job installs the bundle after it. Add a call
+for Windows next to the one for Linux, say:
 
 ```yaml
 jobs:
@@ -860,8 +862,17 @@ jobs:
     with:
       runs-on: windows-latest
       report: windows
-      setup-after-ruby: ridk exec pacman --sync --needed --noconfirm "${MINGW_PACKAGE_PREFIX}-gcc"
+      # (libyaml, say, for psych.)
+      setup-after-ruby: pacman --sync --needed --noconfirm "${MINGW_PACKAGE_PREFIX}-libyaml"
 ```
+
+`MINGW_PACKAGE_PREFIX` is the devkit's (setup-ruby sets it), and so is
+`RI_DEVKIT`, its directory. Paths from bash there look like `/c/...`,
+and Ruby reads `C:/...`: `cygpath -m` turns one into the other. To put
+a directory on the `PATH` (with `$GITHUB_PATH`), mind the order: each
+line goes before those written before it, and a DLL ahead of the
+devkit's (a database's client library's, say) can keep its gcc from
+running. Write them on one line, `;` between, the devkit's first.
 
 Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
 takes `accept-label`, `marker`, and `perf-workflow` (the name of your
@@ -1179,9 +1190,9 @@ match. `duel init` adds these steps for a project that has a
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
-          MSYS: winsymlinks:nativestrict # (on Windows, Git's ln links, not copies)
+          MSYS: winsymlinks:nativestrict # (on Windows, bash's ln links, not copies)
         run: |
-          # (On Windows, as Git's /c/..., not C:\..., which it can't run.)
+          # (On Windows, as bash's /c/..., not C:\..., which it can't run.)
           if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"

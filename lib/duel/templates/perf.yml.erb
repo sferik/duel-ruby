@@ -55,7 +55,7 @@ on:
         type: string
         default: ""
       setup-after-ruby:
-        description: Shell commands that set up what needs Ruby first (on Windows, a compiler from Ruby's devkit, say), before the bundle's installed
+        description: Shell commands that set up what needs Ruby first (on Windows, a package of Ruby's devkit, from pacman, say), before the bundle's installed
         type: string
         default: ""
       report:
@@ -159,7 +159,7 @@ jobs:
     defaults:
       run:
 <% if reusable? -%>
-        shell: bash # (on every runner: on Windows, Git's, not PowerShell)
+        shell: bash # (on every runner: on Windows, not PowerShell, but Git's, and once Ruby's set up, its devkit's)
 <% end -%>
 <% if working_directory -%>
         working-directory: <%= working_directory %>
@@ -235,7 +235,7 @@ jobs:
         if: inputs.gemfile != ''
         env:
           GEMFILE: ${{ inputs.gemfile }}
-        # (On Windows, as C:/..., not Git's /c/..., which Ruby can't read.)
+        # (On Windows, as C:/..., not bash's /c/..., which Ruby can't read.)
         run: echo "BUNDLE_GEMFILE=$(pwd -W 2> /dev/null || pwd)/$GEMFILE" >> "$GITHUB_ENV"
       # YJIT, where the caller says to, for every worker of both versions.
       - name: Turn on YJIT
@@ -321,9 +321,9 @@ jobs:
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
-          MSYS: winsymlinks:nativestrict # (on Windows, Git's ln links, not copies)
+          MSYS: winsymlinks:nativestrict # (on Windows, bash's ln links, not copies)
         run: |
-          # (On Windows, as Git's /c/..., not C:\..., which it can't run.)
+          # (On Windows, as bash's /c/..., not C:\..., which it can't run.)
           if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
@@ -340,9 +340,9 @@ jobs:
           # (Or once what needs Ruby is set up: see below.)
           bundler-cache: ${{ inputs.setup-after-ruby == '' }}
       # What needs Ruby to set up, as the caller says (on Windows, a
-      # compiler from Ruby's devkit, for a gem's native extension, say),
-      # and then the bundle, which may need it, and on another Ruby for the
-      # baseline, that one's bundle too.
+      # package of Ruby's devkit, from pacman, that a gem's native
+      # extension links, say), and then the bundle, which may need it, and
+      # on another Ruby for the baseline, that one's bundle too.
       - name: Set up, once Ruby is
         if: inputs.setup-after-ruby != ''
         env:

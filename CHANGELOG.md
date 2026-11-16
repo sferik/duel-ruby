@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Duel's reusable Perf workflow runs on Windows (`runs-on:
   windows-latest`): the Duel job's steps run in bash on every runner (on
-  Windows, Git's, not PowerShell), and paths it hands Ruby are
-  Windows's there. A new input, `setup-after-ruby`, runs shell commands
-  once Ruby is set up, before the bundle is installed, for what needs
-  Ruby first: on Windows, the compiler of Ruby's devkit, which a gem's C
-  extension is built with. And `c.ruby = :version_file` finds a Ruby on
+  Windows, not PowerShell), and paths it hands Ruby are Windows's there.
+  A new input, `setup-after-ruby`, runs shell commands once Ruby is set
+  up, before the bundle is installed, for what needs Ruby first: on
+  Windows, a package of Ruby's devkit, from `pacman`, that a gem's C
+  extension links. And `c.ruby = :version_file` finds a Ruby on
   Windows, whose program is `ruby.exe` (or `jruby.exe`).
 - Duel fails a run where a worker's environment turns on one of CRuby's
   JITs (`RUBY_YJIT_ENABLE` or `RUBY_ZJIT_ENABLE`, as `1`, `true` or
