@@ -5,6 +5,9 @@ module Duel
     # The files that name a Ruby, in the order they're looked at.
     VERSION_FILES: Array[String]
 
+    # What a Ruby's bin/ may name its executable.
+    PROGRAMS: Array[String]
+
     # Where chruby finds Rubies.
     CHRUBY: Array[String]
 

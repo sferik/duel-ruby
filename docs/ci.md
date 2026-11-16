@@ -84,7 +84,9 @@ jobs:
             since=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd "$tag")
             merged=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label "$ACCEPT_LABEL" --search "merged:>=$since" --limit 1000 \
               --json mergeCommit --jq '.[].mergeCommit.oid')
-            accepted=$(git rev-list "$tag..HEAD" | grep -Fx -m 1 -f <(echo "$merged")) || accepted=
+            # (Not git rev-list piped to grep, which stops at the first, so
+            # git dies of SIGPIPE, which fails a pipeline, under pipefail.)
+            accepted=$(grep -Fx -m 1 -f <(echo "$merged") <(git rev-list "$tag..HEAD")) || accepted=
             echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -773,12 +775,13 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | `version-file` | `false` | Whether each version runs on the Ruby its own `.ruby-version` names ([`c.ruby = :version_file`](configuration.md)). |
 | `yjit` | `false` | Whether the benchmarks run with YJIT on (`RUBY_YJIT_ENABLE=1`), as a Rails app runs, say. Duel fails where a version's Ruby doesn't run it (JRuby, say). |
 | `zjit` | `false` | Whether the benchmarks run with ZJIT on (`RUBY_ZJIT_ENABLE=1`), on Ruby 4.0 or later. Not with `yjit`: Ruby runs one JIT at most. Duel fails where a version's Ruby doesn't run it (Ruby 3.4, say). |
-| `runs-on` | `ubuntu-latest` | The runner the Duel job runs on, Linux or macOS: a larger one, say, for steadier timings. |
+| `runs-on` | `ubuntu-latest` | The runner the Duel job runs on, Linux, macOS or Windows: a larger one, say, for steadier timings. See [On Windows](#on-windows). |
 | `timeout-minutes` | `60` | How long the Duel job may take before it's cancelled. |
 | `working-directory` | `.` | The project's directory, from the repository's root. |
 | `gemfile` | none | A Gemfile of Duel's own, from the project's directory (`gemfiles/duel.gemfile`, say), which keeps Duel out of the project's other bundles. Duel and both versions' workers run in its bundle, so it needs what the benchmarks load (`eval_gemfile "../Gemfile"`, say). |
 | `submodules` | `false` | Whether to check out the repository's submodules too (`true`, or `recursive`), as [actions/checkout](https://github.com/actions/checkout) takes it. |
 | `setup` | none | Shell commands that set up whatever else your tests need (packages, services), before Ruby is set up. |
+| `setup-after-ruby` | none | Shell commands that set up what needs Ruby first (on Windows, a compiler from Ruby's devkit, say), before the bundle is installed. With them, the bundle isn't cached. |
 | `report` | none | A name for the call's report and check (`yjit`, say), where your workflow calls Duel's more than once: see below. |
 | `accept-label` | none | The label that [accepts a regression](#accept-a-regression-with-a-label) (`c.accept_label`). |
 | `release-tags` | `v*` | The glob your release tags match (`c.release_tags`). |
@@ -830,6 +833,35 @@ each under its name. The comment's status is the most any call's
 says: failed, if any failed, and passed only if every one passed. Turn
 on `mark-passed`, `comment-on-pushes` or `badge` in one call at most,
 as each call's jobs run on their own.
+
+### On Windows
+
+The Duel job runs its steps, and `setup` and `setup-after-ruby`, in
+bash on every runner: on Windows, Git's. A gem's C extension there is
+built with the compiler of Ruby's devkit (MSYS2's gcc), which is there
+only once Ruby is set up, and which the bundle may need, so install it
+in `setup-after-ruby`, and the job installs the bundle after it. Add a
+call for Windows next to the one for Linux, say:
+
+```yaml
+jobs:
+  linux:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: write
+      pull-requests: read
+    with:
+      report: linux
+  windows:
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    permissions:
+      contents: write
+      pull-requests: read
+    with:
+      runs-on: windows-latest
+      report: windows
+      setup-after-ruby: ridk exec pacman --sync --needed --noconfirm "${MINGW_PACKAGE_PREFIX}-gcc"
+```
 
 Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
 takes `accept-label`, `marker`, and `perf-workflow` (the name of your
@@ -1125,7 +1157,9 @@ match. `duel init` adds these steps for a project that has a
             schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
             *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
           esac
-          ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }'; }
+          # (None where the commit has no .ruby-version: git fails, which
+          # fails the pipeline, under pipefail.)
+          ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }' || true; }
           ruby=
           # (None without a baseline: a branch's first push, or no release yet.)
           if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
@@ -1145,7 +1179,10 @@ match. `duel init` adds these steps for a project that has a
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+          MSYS: winsymlinks:nativestrict # (on Windows, Git's ln links, not copies)
         run: |
+          # (On Windows, as Git's /c/..., not C:\..., which it can't run.)
+          if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
 ```

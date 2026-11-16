@@ -19,6 +19,10 @@ module Duel
     # directory.
     VERSION_FILES = %w[.ruby-version .tool-versions mise.toml .mise.toml].freeze
 
+    # What a Ruby's bin/ may name its executable: CRuby's, or else JRuby's,
+    # each on Windows with .exe.
+    PROGRAMS = %w[ruby ruby.exe jruby jruby.exe].freeze
+
     # Where chruby finds Rubies.
     CHRUBY = ["/opt/rubies", File.join(Dir.home, ".rubies")].freeze
 
@@ -194,8 +198,8 @@ module Duel
 
         MANAGERS.each_value do |manager|
           prefix = manager.call(version)
-          # (JRuby's may have no bin/ruby.)
-          ruby = prefix && %w[ruby jruby].map { |program| File.join(prefix, "bin", program) }.find { |path| File.executable?(path) }
+          # (JRuby's may have no bin/ruby, and on Windows, each is a .exe.)
+          ruby = prefix && PROGRAMS.map { |program| File.join(prefix, "bin", program) }.find { |path| File.executable?(path) }
           return ruby if ruby
         end
         raise Error, "the #{name}'s #{file} asks for Ruby #{version}, which isn't installed with rbenv, chruby, mise or " \

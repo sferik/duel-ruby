@@ -31,7 +31,7 @@ on:
         type: boolean
         default: false
       runs-on:
-        description: The runner the Duel job runs on (a larger one, say, for steadier timings), Linux or macOS
+        description: The runner the Duel job runs on (a larger one, say, for steadier timings), Linux, macOS or Windows
         type: string
         default: ubuntu-latest
       timeout-minutes:
@@ -52,6 +52,10 @@ on:
         default: "false"
       setup:
         description: Shell commands that set up what else the tests need (packages, services), before Ruby's
+        type: string
+        default: ""
+      setup-after-ruby:
+        description: Shell commands that set up what needs Ruby first (on Windows, a compiler from Ruby's devkit, say), before the bundle's installed
         type: string
         default: ""
       report:
@@ -150,9 +154,16 @@ jobs:
 <% if working_directory -%>
     # The project is in a subdirectory of the repository: Duel runs there,
     # and checks out the whole repository for the baseline.
+<% end -%>
+<% if working_directory || reusable? -%>
     defaults:
       run:
+<% if reusable? -%>
+        shell: bash # (on every runner: on Windows, Git's, not PowerShell)
+<% end -%>
+<% if working_directory -%>
         working-directory: <%= working_directory %>
+<% end -%>
 <% end -%>
     steps:
       - uses: actions/checkout@v7
@@ -190,7 +201,9 @@ jobs:
             since=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd "$tag")
             merged=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label "$ACCEPT_LABEL" --search "merged:>=$since" --limit 1000 \
               --json mergeCommit --jq '.[].mergeCommit.oid')
-            accepted=$(git rev-list "$tag..HEAD" | grep -Fx -m 1 -f <(echo "$merged")) || accepted=
+            # (Not git rev-list piped to grep, which stops at the first, so
+            # git dies of SIGPIPE, which fails a pipeline, under pipefail.)
+            accepted=$(grep -Fx -m 1 -f <(echo "$merged") <(git rev-list "$tag..HEAD")) || accepted=
             echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -222,7 +235,8 @@ jobs:
         if: inputs.gemfile != ''
         env:
           GEMFILE: ${{ inputs.gemfile }}
-        run: echo "BUNDLE_GEMFILE=$PWD/$GEMFILE" >> "$GITHUB_ENV"
+        # (On Windows, as C:/..., not Git's /c/..., which Ruby can't read.)
+        run: echo "BUNDLE_GEMFILE=$(pwd -W 2> /dev/null || pwd)/$GEMFILE" >> "$GITHUB_ENV"
       # YJIT, where the caller says to, for every worker of both versions.
       - name: Turn on YJIT
         if: inputs.yjit
@@ -277,7 +291,9 @@ jobs:
             schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
             *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
           esac
-          ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }'; }
+          # (None where the commit has no .ruby-version: git fails, which
+          # fails the pipeline, under pipefail.)
+          ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }' || true; }
           ruby=
           # (None without a baseline: a branch's first push, or no release yet.)
           if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
@@ -295,12 +311,20 @@ jobs:
           ruby-version: ${{ steps.baseline.outputs.ruby }}
           # The bundle for this Ruby too, which the baseline's workers load.
           # (Gems installed for one Ruby version don't load on another.)
+<% if reusable? -%>
+          # (Or once what needs Ruby is set up: see below.)
+          bundler-cache: ${{ inputs.setup-after-ruby == '' }}
+<% else -%>
           bundler-cache: true
+<% end -%>
       - name: Link the baseline's Ruby where Duel finds it
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+          MSYS: winsymlinks:nativestrict # (on Windows, Git's ln links, not copies)
         run: |
+          # (On Windows, as Git's /c/..., not C:\..., which it can't run.)
+          if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
 <% end -%>
@@ -312,7 +336,31 @@ jobs:
 <% if ruby_version -%>
           ruby-version: "<%= ruby_version %>"
 <% end -%>
+<% if reusable? -%>
+          # (Or once what needs Ruby is set up: see below.)
+          bundler-cache: ${{ inputs.setup-after-ruby == '' }}
+      # What needs Ruby to set up, as the caller says (on Windows, a
+      # compiler from Ruby's devkit, for a gem's native extension, say),
+      # and then the bundle, which may need it, and on another Ruby for the
+      # baseline, that one's bundle too.
+      - name: Set up, once Ruby is
+        if: inputs.setup-after-ruby != ''
+        env:
+          SETUP: ${{ inputs.setup-after-ruby }}
+        run: eval "$SETUP"
+      - name: Install the bundle
+        if: inputs.setup-after-ruby != ''
+        env:
+          PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+        run: |
+          bundle install
+          if [ -n "$PREFIX" ]; then
+            if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
+            PATH="$PREFIX/bin:$PATH" bundle install
+          fi
+<% else -%>
           bundler-cache: true
+<% end -%>
       # Against the branch it targets for a pull request, the queue's base
       # for a merge queue, what was there before for a push (or as
       # c.push_base in .duel.rb says, the last commit Duel passed), and the

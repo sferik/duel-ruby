@@ -102,6 +102,15 @@ class RubiesTest < DuelTest
   end
 
   # A manager's Ruby that isn't there (half removed, say) is no Ruby.
+  # A Ruby on Windows, whose program is ruby.exe (JRuby's, jruby.exe).
+  def test_a_windows_rubys_program
+    managers
+    ruby = executable(File.join(@root, "rubies", "ruby-2.7.8", "bin", "ruby.exe"))
+    jruby = executable(File.join(@root, "rubies", "jruby-9.3.15.0", "bin", "jruby.exe"))
+
+    assert_equal [ruby, jruby], [asked("ruby-2.7.8"), asked("jruby-9.3.15.0")]
+  end
+
   def test_a_manager_without_the_program
     managers
     FileUtils.rm_f(File.join(@root, "rbenv", "3.3.6", "bin", "ruby"))

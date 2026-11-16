@@ -19,7 +19,9 @@ class InitTest < DuelTest
   # out with CRLF on Windows, which JRuby reads as it is.
   def repo_file(path) = File.read(File.expand_path(File.join("..", path), __dir__)).gsub("\r\n", "\n")
 
-  # Runs +script+ with +shell+ (and -e), in +env+, as a file of its own
+  # Runs +script+ with +shell+ (and -e, and for bash, -o pipefail, as
+  # GitHub runs a step whose shell is bash, as every step of Duel's
+  # reusable workflow's Duel job is), in +env+, as a file of its own
   # (JRuby on Windows passes an argument's quotes on as they are, not
   # escaped), in +chdir+ and its output to +out+, as the script itself
   # says (JRuby's system on Windows ignores chdir: and out:).
@@ -28,7 +30,7 @@ class InitTest < DuelTest
   def shell(env, script, shell: "bash", chdir: nil, out: nil)
     file = File.join(tmpdir, "script-#{@scripts = (@scripts || 0) + 1}.sh")
     File.binwrite(file, [*("cd #{Shellwords.escape(chdir)}" if chdir), *("exec > #{Shellwords.escape(out)}" if out), script].join("\n"))
-    said, status = Duel::Spawn.open3(:capture2e, env, shell, "-e", file)
+    said, status = Duel::Spawn.open3(:capture2e, env, shell, "-e", *(%w[-o pipefail] if shell == "bash"), file)
     @shell = said
     print said unless out
     status.success?
@@ -736,6 +738,40 @@ class InitTest < DuelTest
     workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
   end
 
+  # The step that finds the baseline's Ruby, run (with pipefail, as the
+  # reusable workflow's bash runs it): none where the baseline names the
+  # same as HEAD, or names none (where git show fails), and the
+  # baseline's where it names another.
+  def test_finding_the_baseline_ruby
+    gem
+    write(".ruby-version", "3.4.1\n")
+    init.run
+    step = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |s| s["id"] == "baseline" }
+    git = ->(*args) { IO.popen(["git", "-C", root, *args], &:read).chomp }
+    commit = lambda do |*unadded|
+      git.call("add", "-A")
+      unadded.each { |path| git.call("reset", "-q", path) }
+      git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "a commit")
+      git.call("rev-parse", "HEAD")
+    end
+    git.call("init", "-q", "-b", "main")
+    none = commit.call(".ruby-version")
+    write(".ruby-version", "3.3.6\n")
+    older = commit.call
+    write(".ruby-version", "3.4.1\n")
+    same = commit.call
+    output = File.join(tmpdir, "output")
+    found = lambda do |base|
+      File.write(output, "")
+      env = step.fetch("env").merge("GITHUB_EVENT_NAME" => "pull_request", "MAIN_BRANCH" => base, "GITHUB_OUTPUT" => output)
+
+      assert shell(env, step.fetch("run"), chdir: root)
+      File.read(output)
+    end
+
+    assert_equal ["ruby=\n", "ruby=3.3.6\n", "ruby=\n"], [none, older, same].map(&found)
+  end
+
   # The guide's steps that set up the baseline's Ruby, in docs/ci.md, are
   # the workflow's.
   def test_the_guides_steps_for_the_baseline_ruby
@@ -1352,6 +1388,27 @@ class InitTest < DuelTest
     assert_equal "duel init: invalid option: --nope\n", err
   end
 
+  # The reusable workflow's Duel job runs its steps in bash on every
+  # runner (on Windows, Git's, not PowerShell), and where the caller sets
+  # up what needs Ruby first (setup-after-ruby: on Windows, the devkit's
+  # compiler), it does that once Ruby is set up, and installs the bundle
+  # after it, not as setup-ruby would, before.
+  def test_the_reusable_workflow_on_windows
+    perf = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml"))
+    steps = perf.dig("jobs", "duel", "steps")
+
+    assert_equal({"run" => {"shell" => "bash", "working-directory" => "${{ inputs.working-directory }}"}}, perf.dig("jobs", "duel", "defaults"))
+    rubies = steps.select { |step| step["uses"]&.start_with?("ruby/setup-ruby") }
+
+    assert_equal ["${{ inputs.setup-after-ruby == '' }}"] * 2, rubies.map { |step| step.dig("with", "bundler-cache") }
+    after, bundle = steps.drop(steps.index(rubies.last) + 1).first(2)
+
+    assert_equal({"name" => "Set up, once Ruby is", "if" => "inputs.setup-after-ruby != ''", "env" => {"SETUP" => "${{ inputs.setup-after-ruby }}"},
+                  "run" => %(eval "$SETUP")}, after)
+    assert_equal ["Install the bundle", "inputs.setup-after-ruby != ''"], bundle.values_at("name", "if")
+    assert_includes perf.dig(true, "workflow_call", "inputs", "runs-on", "description"), "Linux, macOS or Windows"
+  end
+
   # Duel's reusable workflows, in its repository, are what the templates
   # render with each setting an input (see Init::Reusable): `rake
   # workflows` writes them.
@@ -1363,7 +1420,8 @@ class InitTest < DuelTest
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")
-    inputs = %w[ruby-version version-file yjit zjit runs-on timeout-minutes working-directory gemfile submodules setup report accept-label release-tags
+    inputs = %w[ruby-version version-file yjit zjit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report
+      accept-label release-tags
       comment-on-pushes mark-passed badge passed-branch badge-branch marker]
 
     assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
@@ -1376,7 +1434,7 @@ class InitTest < DuelTest
     assert_equal "inputs.version-file", steps.find { |step| step["name"] == "Find the baseline's Ruby" }.fetch("if")
     assert_equal({"name" => "Set up", "if" => "inputs.setup != ''", "env" => {"SETUP" => "${{ inputs.setup }}"}, "run" => %(eval "$SETUP")}, steps.fetch(2))
     gemfile = {"name" => "Use the caller's Gemfile", "if" => "inputs.gemfile != ''", "env" => {"GEMFILE" => "${{ inputs.gemfile }}"},
-               "run" => %(echo "BUNDLE_GEMFILE=$PWD/$GEMFILE" >> "$GITHUB_ENV")}
+               "run" => %(echo "BUNDLE_GEMFILE=$(pwd -W 2> /dev/null || pwd)/$GEMFILE" >> "$GITHUB_ENV")}
     yjit = {"name" => "Turn on YJIT", "if" => "inputs.yjit", "run" => %(echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV")}
 
     assert_equal [gemfile, yjit], steps[3, 2]
