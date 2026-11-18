@@ -211,14 +211,13 @@ module Release
     raise ArgumentError, "#{version.inspect} isn't a version" unless Gem::Version.correct?(version) && !version.to_s.empty?
 
     components = components(root)
-    problems = components.filter_map do |component|
-      current = version(root, component)
-      "#{component.name} is at #{current} already, not below #{version}" unless Gem::Version.new(current) < Gem::Version.new(version)
+    current = components.to_h { |component| [component, version(root, component)] }
+    problems = current.filter_map do |component, at|
+      "#{component.name} is at #{at} already, not below #{version}" unless Gem::Version.new(at) < Gem::Version.new(version)
     end
     raise ArgumentError, "Can't bump to #{version}:\n#{problems.map { |problem| "  - #{problem}" }.join("\n")}" unless problems.empty?
 
-    components.flat_map do |component|
-      previous = version(root, component)
+    current.flat_map do |component, previous|
       [
         rewrite(root, component.version_file) { |text| text.sub(VERSION_LINE) { "#{$1}#{version}#{$3}" } },
         rewrite(root, component.changelog) { |text| bump_changelog(text, component, previous, version, date) },
