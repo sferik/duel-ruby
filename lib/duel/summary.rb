@@ -102,6 +102,7 @@ module Duel
       # LIMIT, asks for them all again.)
       @verdicts = results.to_h { |r| [r, Summary.verdict(r)] }
       @regressed = results.select { |r| @verdicts.fetch(r) == "regressed" }
+      @skipped = results.count(&:skipped)
       @failed = @regressed + results.select(&:error)
     end
 
@@ -125,8 +126,7 @@ module Duel
     # and whether that was accepted, or that every benchmark compared
     # passed, and those skipped.
     def heading
-      skipped = @results.count(&:skipped)
-      compared = @results.size > skipped
+      compared = @results.size > @skipped
       slower = @runner.regressed_across
       said = [("#{Runner.count(@failed.size, "benchmark")} failed" unless @failed.empty?),
         ("slower across the board in #{slower.join(", ")}" unless slower.empty?)].compact
@@ -136,14 +136,13 @@ module Duel
       else NEUTRAL_MARK
       end
       said << (compared ? "100% of benchmarks passed" : "no benchmarks compared") if said.empty?
-      said << "#{skipped} skipped" if skipped.positive?
+      said << "#{@skipped} skipped" if @skipped.positive?
       "### #{mark} Duel: #{said.join(", ")}"
     end
 
     # The two versions, and why any benchmark was skipped.
     def compared
-      skipped = @results.count(&:skipped)
-      why = " The baseline can't run the skipped #{(skipped == 1) ? "benchmark" : "benchmarks"}." if skipped.positive?
+      why = " The baseline can't run the skipped #{(@skipped == 1) ? "benchmark" : "benchmarks"}." if @skipped.positive?
       "Compared #{@candidate} with #{@baseline}.#{why}"
     end
 

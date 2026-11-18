@@ -35,6 +35,7 @@ module Duel
     @candidate: String
     @verdicts: Hash[Result, String]
     @regressed: Array[Result]
+    @skipped: Integer
     @failed: Array[Result]
 
     # +text+ as code, in Markdown.
