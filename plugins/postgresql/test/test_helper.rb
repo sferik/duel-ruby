@@ -175,7 +175,7 @@ end
 class PluginTest < Minitest::Test
   # The directory of the postgres the tests run, found as they load (so a
   # mutation of find_bin fails them, rather than skipping them all).
-  POSTGRES = ENV["DUEL_POSTGRESQL_BIN"] || Duel::PostgreSQL::Cluster.find_bin
+  POSTGRES = Duel::PostgreSQL::Cluster.programs(ENV.fetch("DUEL_POSTGRESQL_SERVER", "postgres"))
 
   # Where prepare blocks' builds (Resource#cached: the clusters initdb'd) are
   # kept, removed when the tests are done: a directory in it for each

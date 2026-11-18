@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `server:` names the server to run, its `postgres` (a path, or a name
+  on the `PATH`), as the other server plugins' `server:` does, in place
+  of `bin:`, its directory, and `DUEL_POSTGRESQL_SERVER` in place of
+  `DUEL_POSTGRESQL_BIN`. Its other programs (`initdb`, `pg_ctl`) are
+  next to it.
+- `tcp: true` starts each worker's server on a port of 127.0.0.1's
+  alone, with no Unix socket, as the other server plugins' does, and is
+  the default on Windows. It was a side effect of `pg_ctl: true`, which
+  only says what starts the server now.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

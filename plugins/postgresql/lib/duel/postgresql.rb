@@ -65,44 +65,44 @@ module Duel
     TCP = {"listen_addresses" => "127.0.0.1", "unix_socket_directories" => ""}.freeze
 
     # Configures Duel for the plugin (c.use :postgresql): the server and
-    # its metrics. +bin+ is the directory of its programs (postgres and
-    # initdb: by default, the real directory of the postgres on the
-    # PATH), +settings+ more of its settings, +setup+ SQL each worker's
-    # database runs when it's started (a schema, say), and +env+ the
-    # variables given its URL besides DUEL_POSTGRESQL_URL. A cluster is
-    # initdb'd once (Resource#cached), and each worker's is a copy.
+    # its metrics. +server+ is its postgres (a name on the PATH, or a
+    # path), whose directory has its other programs (initdb and pg_ctl),
+    # +settings+ more of its settings, +setup+ SQL each worker's database
+    # runs when it's started (a schema, say), and +env+ the variables
+    # given its URL besides DUEL_POSTGRESQL_URL. A cluster is initdb'd
+    # once (Resource#cached), and each worker's is a copy.
     #
-    # With +pg_ctl+ (by default on Windows), the server is started (and
-    # stopped) by pg_ctl, on a port of 127.0.0.1's: on Windows, postgres
-    # won't run with an administrator's rights (CI's runners have them),
-    # which pg_ctl drops, and its Unix sockets are new.
+    # Each worker's server listens on a Unix socket in its directory, or
+    # with +tcp+ (by default where there are no Unix sockets: Windows), on
+    # a port of 127.0.0.1's alone. With +pg_ctl+ (by default on Windows),
+    # it's started (and stopped) by pg_ctl: on Windows, postgres won't run
+    # with an administrator's rights (CI's runners have them), which
+    # pg_ctl drops.
     #
     # Returns the plugin's own connection to it, a worker's (see
     # Config#in_worker, and in tests, Duel::Testing.in_worker).
-    def self.configure(config, bin: ENV.fetch("DUEL_POSTGRESQL_BIN", nil), settings: {}, setup: nil, env: %w[DATABASE_URL],
-      pg_ctl: Duel.windows?)
+    def self.configure(config, server: ENV.fetch("DUEL_POSTGRESQL_SERVER", "postgres"), settings: {}, setup: nil, env: %w[DATABASE_URL],
+      tcp: !Duel.unix_sockets?, pg_ctl: Duel.windows?)
       config.prepare(:worker) do |w|
         require_pg
-        programs = File.expand_path(bin || Cluster.find_bin ||
-          w.failed("no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)"))
+        programs = Cluster.programs(server) ||
+          w.failed("no #{server}#{" on the PATH" if File.basename(server) == server} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)")
         data = w.path("data")
         cluster = Cluster.new(w, programs, pg_ctl: pg_ctl)
         cluster.create(data)
+        host, port, listen = tcp ? ["127.0.0.1", w.port, TCP] : [w.dir, PORT, {"unix_socket_directories" => w.dir}]
+        # (+settings+' last: of a setting given twice, postgres takes the
+        # last.)
+        all = SETTINGS.merge(listen, "port" => port).merge(settings)
         if pg_ctl
-          host = "127.0.0.1"
-          port = w.port
           # (Its settings in its postgresql.conf, as pg_ctl takes no
-          # others whole. +settings+' last, which it takes.)
-          cluster.start(data, SETTINGS.merge(TCP, "port" => port).merge(settings))
+          # others whole.)
+          cluster.start(data, all)
           w.at_stop { cluster.stop(data) }
         else
-          host = w.dir
-          port = PORT
           # (Stopped by INT: its clients are disconnected, not waited for, as
           # TERM would.)
-          # (Of a setting given twice, postgres takes the last: +settings+'.)
-          w.spawn(File.join(programs, "postgres"), "-D", data, "-k", w.dir, "-p", PORT.to_s,
-            *SETTINGS.merge(settings).flat_map { |name, value| ["-c", "#{name}=#{value}"] }, stop_signal: "INT")
+          w.spawn(File.join(programs, "postgres"), "-D", data, *all.flat_map { |name, value| ["-c", "#{name}=#{value}"] }, stop_signal: "INT")
         end
         # (The user in the query, with no authority at all: Ruby's URI, which
         # Rails parses DATABASE_URL with, takes a user without a host for
@@ -396,12 +396,23 @@ module Duel
       # A program's file ends with +EXE+: on Windows, .exe.
       EXE = RbConfig::CONFIG["EXEEXT"]
 
-      # The real directory of the postgres on +path+ (where its initdb is:
-      # the one on the PATH may be another version's, libpq's, say), or of
-      # the newest Debian's; nil if there's none. (Its file is postgres
-      # +exe+: postgres.exe, on Windows.)
-      def self.find_bin(path = ENV.fetch("PATH", ""), debian: "/usr/lib/postgresql/*/bin", exe: EXE)
-        postgres = path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "postgres#{exe}") }.find { |file| File.executable?(file) }
+      # The directory of +server+'s programs (see PostgreSQL.configure): a
+      # path's real directory (the path as it is, or ending with +exe+, as
+      # C:/.../bin/postgres is postgres.exe), or for a name, as postgres
+      # is (see .find_bin), the PATH's. Nil if there's none.
+      def self.programs(server, exe: EXE)
+        return find_bin(name: server, exe:) if File.basename(server) == server
+
+        postgres = [server, "#{server}#{exe}"].map { |path| File.expand_path(path) }.find { |path| File.executable?(path) }
+        File.dirname(File.realpath(postgres)) if postgres
+      end
+
+      # The real directory of the postgres (+name+) on +path+ (where its
+      # initdb is: the one on the PATH may be another version's, libpq's,
+      # say), or of the newest Debian's; nil if there's none. (Its file
+      # ends with +exe+: postgres.exe, on Windows.)
+      def self.find_bin(path = ENV.fetch("PATH", ""), debian: "/usr/lib/postgresql/*/bin", exe: EXE, name: "postgres")
+        postgres = path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "#{name}#{exe}") }.find { |file| File.executable?(file) }
         return File.dirname(File.realpath(postgres)) if postgres
 
         Dir[debian].max_by { |dir| File.basename(File.dirname(dir)).to_i }

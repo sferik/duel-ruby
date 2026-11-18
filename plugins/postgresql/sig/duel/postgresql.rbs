@@ -45,8 +45,8 @@ module Duel
     # its metrics. Returns the plugin's own connection to it, a worker's.
     # +pg_ctl+: started and stopped by pg_ctl, on a port of 127.0.0.1's
     # (by default on Windows).
-    def self.configure: (Config config, ?bin: String?, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
-                         ?env: Array[String], ?pg_ctl: bool) -> InWorker[::PG::Connection]
+    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
+                         ?env: Array[String], ?tcp: bool, ?pg_ctl: bool) -> InWorker[::PG::Connection]
 
     # Runs SQL on a connection of its own to +url+; returns the last
     # statement's result.
@@ -162,7 +162,11 @@ module Duel
       # A program's file ends with +EXE+ (.exe, on Windows).
       EXE: String
 
-      def self.find_bin: (?String path, ?debian: String, ?exe: String) -> String?
+      def self.find_bin: (?String path, ?debian: String, ?exe: String, ?name: String) -> String?
+
+      # The directory of a server's programs: a path's, or a name's on
+      # the PATH.
+      def self.programs: (String server, ?exe: String) -> String?
 
       def initialize: (Resource resource, String bin, ?pg_ctl: bool) -> void
 

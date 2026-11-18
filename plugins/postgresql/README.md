@@ -63,10 +63,11 @@ Duel.configure { |c| c.use :postgresql }
 `c.use` requires the plugin, so `.duel.rb` doesn't need to.
 
 Each worker's server listens only on a Unix socket in the worker's own
-directory (or with `pg_ctl: true`, as by default on Windows, on a port
-of 127.0.0.1's alone, started and stopped by `pg_ctl`: there `postgres`
-won't run with an administrator's rights, which `pg_ctl` drops), with
-nothing written to disk that needn't be, and no
+directory (or with `tcp: true`, as by default on Windows, on a port of
+127.0.0.1's alone). On Windows, `pg_ctl` starts and stops it, as
+`postgres` won't run there with an administrator's rights, which
+`pg_ctl` drops. It runs with nothing written to disk that needn't be,
+and no
 autovacuum (which would change what a query reads, and its plan, while
 it's measured). Its URL is in `DUEL_POSTGRESQL_URL`, and in
 `DATABASE_URL` too, and libpq's `PGHOST`, `PGPORT`, `PGUSER` and
@@ -96,11 +97,12 @@ Options:
 
 ```ruby
 c.use :postgresql,
-  bin: "/usr/lib/postgresql/17/bin",       # its programs (default: DUEL_POSTGRESQL_BIN, or found)
-  settings: {work_mem: "64MB"},             # more of its settings
-  setup: File.read("db/structure.sql"),     # SQL each worker's database runs first
-  env: %w[DATABASE_URL PRIMARY_URL],       # variables given its URL besides DUEL_POSTGRESQL_URL
-  pg_ctl: true                             # started by pg_ctl, on a port of 127.0.0.1's (default: on Windows only)
+  server: "/usr/lib/postgresql/17/bin/postgres", # its postgres, initdb next to it (default: DUEL_POSTGRESQL_SERVER, or the PATH's)
+  settings: {work_mem: "64MB"},                  # more of its settings
+  setup: File.read("db/structure.sql"),          # SQL each worker's database runs first
+  env: %w[DATABASE_URL PRIMARY_URL],             # variables given its URL besides DUEL_POSTGRESQL_URL
+  tcp: true,                                     # on a port of 127.0.0.1's, not a Unix socket (default: on Windows only)
+  pg_ctl: true                                   # started by pg_ctl (default: on Windows only)
 ```
 
 > [!WARNING]

@@ -97,11 +97,12 @@ class PostgreSQLTest < PluginTest
   end
 
   # With pg_ctl (Windows's, by default): started, and stopped with the
-  # worker, by pg_ctl, on a port of 127.0.0.1's alone, with no Unix
-  # socket, its settings (the plugin's, and those it's given) in its
-  # postgresql.conf, and its log in the worker's directory.
+  # worker, by pg_ctl (here on a port of 127.0.0.1's alone, with no Unix
+  # socket, as by default on Windows), its settings (the plugin's, and
+  # those it's given) in its postgresql.conf, and its log in the worker's
+  # directory.
   def test_a_server_pg_ctl_starts
-    url = prepare(config(pg_ctl: true, settings: {work_mem: "5MB", search_path: "it's"})) do |env|
+    url = prepare(config(pg_ctl: true, tcp: true, settings: {work_mem: "5MB", search_path: "it's"})) do |env|
       url = env.fetch("DUEL_POSTGRESQL_URL")
       port = env.fetch("PGPORT")
       settings = query("SELECT current_setting('fsync'), current_setting('work_mem'), current_setting('search_path'), " \
@@ -167,11 +168,11 @@ class PostgreSQLTest < PluginTest
   end
 
   def test_its_options
-    config = config(bin: POSTGRES, settings: {work_mem: "5MB", jit: "on"}, env: %w[PRIMARY_URL],
+    config = config(server: File.join(POSTGRES, "postgres"), settings: {work_mem: "5MB", jit: "on"}, env: %w[PRIMARY_URL],
       setup: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_POSTGRESQL_URL PGDATABASE PGHOST PGPORT PGUSER PRIMARY_URL], env.keys.sort
-      assert_equal !Duel.windows?, File.directory?(env.fetch("PGHOST")), "by default, on a Unix socket, but on Windows (by pg_ctl)"
+      assert_equal !Duel.windows?, File.directory?(env.fetch("PGHOST")), "by default, on a Unix socket, but on Windows on a port"
       assert_equal env.fetch("DUEL_POSTGRESQL_URL"), env.fetch("PRIMARY_URL")
       assert_equal [["5MB", "on", "2"]], query("SELECT current_setting('work_mem'), current_setting('jit'), (SELECT count(*) FROM items)"),
         "the settings given, over the plugin's"
@@ -187,13 +188,28 @@ class PostgreSQLTest < PluginTest
     assert_match(/\Ahead-1's resource: postgres exited before it was ready\n.*no_such_setting/m, error.message)
   end
 
+  # No postgres on the PATH, or at the path given.
   def test_no_postgres
-    error = replacing(Duel::PostgreSQL::Cluster, :find_bin, -> {}) do
-      assert_raises(Duel::Failed) { prepare(config(bin: nil)) { flunk "started" } }
+    error = replacing(Duel::PostgreSQL::Cluster, :find_bin, ->(**) {}) do
+      assert_raises(Duel::Failed) { prepare(config) { flunk "started" } }
     end
 
-    assert_equal "head-1's resource: no postgres on the PATH (give its directory as bin:, or DUEL_POSTGRESQL_BIN)",
-      error.message
+    assert_equal "head-1's resource: no postgres on the PATH (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)", error.message
+    nowhere = File.join(@dir, "nowhere", "postgres")
+    error = assert_raises(Duel::Failed) { prepare(config(server: nowhere)) { flunk "started" } }
+
+    assert_equal "head-1's resource: no #{nowhere} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)", error.message
+  end
+
+  # A server listens on a port of 127.0.0.1's alone, with tcp: (by
+  # default where there are no Unix sockets: Windows), whoever starts it.
+  def test_a_server_on_a_port
+    unix!
+    prepare(config(tcp: true, pg_ctl: false)) do |env|
+      assert_equal "127.0.0.1", env.fetch("PGHOST")
+      assert_equal [["127.0.0.1", "", env.fetch("PGPORT")]],
+        query("SELECT current_setting('listen_addresses'), current_setting('unix_socket_directories'), current_setting('port')")
+    end
   end
 
   def test_finding_postgres
@@ -226,6 +242,61 @@ class PostgreSQLTest < PluginTest
     exe(".exe") { assert_equal File.realpath(windows), find.call(windows, debian: nothing), "EXE's, by default" }
   end
 
+  # A server's programs: a name's, on the PATH, or a path's real
+  # directory.
+  def test_a_servers_programs
+    unix!
+    linked = linked_bin
+    bin = File.realpath(POSTGRES)
+
+    with_env("PATH" => linked) do
+      assert_equal bin, Duel::PostgreSQL::Cluster.programs("postgres")
+      assert_nil Duel::PostgreSQL::Cluster.find_bin(debian: File.join(@dir, "nothing", "*"), name: "postgres17"), "by its name"
+    end
+    assert_equal bin, Duel::PostgreSQL::Cluster.programs(File.join(linked, "postgres"))
+    assert_nil Duel::PostgreSQL::Cluster.programs(File.join(linked, "initdb.sql")), "nothing there"
+  end
+
+  # A name's programs are find_bin's, by that name, and a path's are
+  # where it is, with EXE (as C:/.../bin/postgres is postgres.exe on
+  # Windows) or without.
+  def test_a_servers_programs_by_name_or_exe
+    found = replacing(Duel::PostgreSQL::Cluster, :find_bin, ->(**options) { options }) do
+      [Duel::PostgreSQL::Cluster.programs("postgres17"), Duel::PostgreSQL::Cluster.programs("pg", exe: ".exe")]
+    end
+
+    assert_equal [{name: "postgres17", exe: Duel::PostgreSQL::Cluster::EXE}, {name: "pg", exe: ".exe"}], found
+    bin = FileUtils.mkdir_p(File.join(@dir, "windows", "bin")).first
+    File.write(File.join(bin, "postgres.exe"), "")
+    FileUtils.chmod(0o755, File.join(bin, "postgres.exe"))
+    server = File.join(bin, "postgres")
+
+    assert_equal [File.realpath(bin)] * 3, [Duel::PostgreSQL::Cluster.programs(server, exe: ".exe"), Duel::PostgreSQL::Cluster.programs("#{server}.exe"),
+      exe(".exe") { Duel::PostgreSQL::Cluster.programs(server) }]
+    assert_nil Duel::PostgreSQL::Cluster.programs(server, exe: ".bat"), "nothing there"
+    File.write(File.join(bin, "postgres16.bat"), "")
+    FileUtils.chmod(0o755, File.join(bin, "postgres16.bat"))
+
+    assert_equal File.realpath(bin), Duel::PostgreSQL::Cluster.programs(File.join(bin, "postgres16.bat"), exe: ".exe"), "the path as it is"
+  end
+
+  # pg_ctl starts the servers by default on Windows (where postgres won't
+  # run with an administrator's rights), and nowhere else.
+  def test_pg_ctl_by_default_on_windows
+    windows = Duel.method(:windows?)
+    made = [true, false].map do |here|
+      Duel.define_singleton_method(:windows?) { here }
+      given = nil
+      config = config(tcp: true)
+      replacing(Duel::PostgreSQL::Cluster, :new, ->(*, pg_ctl:) { throw(:made, given = pg_ctl) }) { catch(:made) { prepare(config) { flunk "started" } } }
+      given
+    end
+
+    assert_equal [true, false], made
+  ensure
+    Duel.define_singleton_method(:windows?, windows)
+  end
+
   # A cluster's made for postgres by EXE's name (postgres.exe, on
   # Windows), and by a cache key of its own without pg_ctl.
   def test_a_cluster_for_postgres_by_its_exe
@@ -241,11 +312,11 @@ class PostgreSQLTest < PluginTest
 
   # The first worker's cluster is initdb'd (Resource#cached); the others
   # copy it. It's made for the real postgres (by its path and time), of
-  # bin: (~ expanded), wherever the PATH's is.
+  # server: (~ expanded), wherever the PATH's is.
   def test_a_cluster_made_once
     unix!
     linked_bin
-    config = config(bin: "~/linked", pg_ctl: false)
+    config = config(server: "~/linked/postgres", pg_ctl: false)
     cache = own_cache
     made = with_env("HOME" => @dir, "PATH" => "/usr/bin:/bin", "LC_ALL" => "en_US.UTF-8") do
       prepare(config, cache:, name: "base-1") do |env|
@@ -307,16 +378,17 @@ class PostgreSQLTest < PluginTest
     assert_equal "data /grant someone:(OI)(CI)F /T /Q\n", File.read(args)
   end
 
-  # (bin:, or DUEL_POSTGRESQL_BIN.)
+  # (server:, or DUEL_POSTGRESQL_SERVER.)
   def test_a_program_that_fails
     unix!
     cache = own_cache # (this postgres's cluster would be copied)
     bin = File.join(@dir, "bin")
     FileUtils.mkdir_p(bin)
-    File.symlink(File.join(POSTGRES, "postgres"), File.join(bin, "postgres"))
+    File.write(File.join(bin, "postgres"), "#!/bin/sh\nexec #{File.join(POSTGRES, "postgres")} \"$@\"\n")
     File.write(File.join(bin, "initdb"), "#!/bin/sh\necho \"initdb: can't\"\nexit 1\n")
-    File.chmod(0o755, File.join(bin, "initdb"))
-    [config(bin:), with_env("DUEL_POSTGRESQL_BIN" => bin) { config }].each do |config|
+    %w[postgres initdb].each { |program| File.chmod(0o755, File.join(bin, program)) }
+    server = File.join(bin, "postgres")
+    [config(server:), with_env("DUEL_POSTGRESQL_SERVER" => server) { config }].each do |config|
       error = assert_raises(Duel::Failed) { prepare(config, cache:) { flunk "started" } }
 
       assert_equal "head-1's resource: initdb exited with 1\ninitdb: can't\n", error.message
