@@ -181,8 +181,11 @@ module Duel
     # The +index+th pair: [baseline's reply, candidate's].
     def pair: (String name, Integer n, Integer index, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
 
+    # Round +round+ of pairs by process: yields each pair's workers' indexes and replies.
+    def in_round: (String name, Integer n, Integer round, ?runs: Integer, ?count: bool) { (Integer, Integer, WorkerProcess::reply, WorkerProcess::reply) -> void } -> void
+
     # A sample from a baseline worker and from a candidate worker: [baseline's reply, candidate's].
-    def sampled: (String name, Integer n, WorkerProcess base, WorkerProcess candidate, base_first: bool, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
+    def sampled: (String name, Integer n, WorkerProcess base, WorkerProcess candidate, base_first: bool, runs: Integer, count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
 
     def count: (String name, Integer n, Result result) -> void
 

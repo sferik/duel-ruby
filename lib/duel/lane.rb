@@ -495,9 +495,7 @@ module Duel
       rounds(k).times do |round|
         break if pending.empty?
 
-        k.times do |i|
-          j = (i + round) % k
-          base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?)
+        in_round(name, n, round) do |i, j, base, candidate|
           result.note(base, candidate)
           values.each do |metric, sides|
             sides.fetch("baseline").fetch(i) << base.fetch("timed").fetch(metric)
@@ -614,10 +612,24 @@ module Duel
       sampled(name, n, @bases.fetch(index % k), @candidates.fetch((index + (index / k)) % k), base_first: index.even?, runs:, count:)
     end
 
+    # Round +round+ of pairs taken by process (see #judge_processes and
+    # #count_by_process): a sample from every baseline worker, the +i+th,
+    # paired with the candidate's +j+th in turn (each round pairs each with
+    # another), baseline first alternating by worker and by round. Yields
+    # each pair's workers' indexes and samples.
+    def in_round(name, n, round, runs: RUNS, count: false)
+      k = @bases.size
+      k.times do |i|
+        j = (i + round) % k
+        base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?, runs:, count:)
+        yield i, j, base, candidate
+      end
+    end
+
     # A sample (of +n+ iterations) from +base+, a baseline worker, and
     # from +candidate+, a candidate worker, the baseline's first if
     # +base_first+ (see #pair).
-    def sampled(name, n, base, candidate, base_first:, runs: RUNS, count: false)
+    def sampled(name, n, base, candidate, base_first:, runs:, count:)
       order = base_first ? [base, candidate] : [candidate, base]
       process = benchmarks.fetch(name).fetch("process")
       replies = if process
@@ -669,16 +681,13 @@ module Duel
     # and another's doesn't, it's as little as the workers can tell.
     # Each version's own is the median of its workers'.
     def count_by_process(name, n, result)
-      k = @bases.size
       # @type var fewest: Hash[String, Hash[String, Hash[Integer, Metric::value]]]
       fewest = Hash.new do |h, metric|
         none = {} #: Hash[Integer, Metric::value]
         h[metric] = {"baseline" => none, "candidate" => none.dup}
       end
       COUNT_ROUNDS.times do |round|
-        k.times do |i|
-          j = (i + round) % k
-          base, candidate = sampled(name, n, @bases.fetch(i), @candidates.fetch(j), base_first: i.even? == round.even?, runs: 1, count: true)
+        in_round(name, n, round, runs: 1, count: true) do |i, j, base, candidate|
           fewest!(fewest, "baseline", i, base)
           fewest!(fewest, "candidate", j, candidate)
           # (What metrics said of its counts alone: a timing's is the timed
