@@ -231,6 +231,8 @@ module Duel
       # where one does.
       def check_workflows: () -> void
 
+      @repository: String?
+
       private
 
       def checking?: () -> bool
@@ -273,6 +275,7 @@ module Duel
       def version_file?: () -> bool
       def ruby_version: () -> String?
       def repository: () -> String
+      def find_repository: () -> String
       def working_directory: () -> String?
 
       # What marks the workflow's comment on a pull request.

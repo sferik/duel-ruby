@@ -90,8 +90,8 @@ module Duel
       def workflows
         dir = working_directory
         name = dir ? "perf-#{dir.tr("/", "-")}" : "perf"
-        {"perf.yml.tt" => File.join(repository, ".github", "workflows", "#{name}.yml"),
-         "perf-comment.yml.tt" => File.join(repository, ".github", "workflows", "#{name}-comment.yml")}
+        github = File.join(repository, ".github", "workflows")
+        {"perf.yml.tt" => File.join(github, "#{name}.yml"), "perf-comment.yml.tt" => File.join(github, "#{name}-comment.yml")}
       end
 
       # Whether the workflow at +path+ is what the template +source+ makes,
@@ -193,8 +193,11 @@ module Duel
       def ruby_version = (RUBY_VERSION.rpartition(".").first unless version_file?)
 
       # The root of the app's git repository: the app's own directory,
-      # outside one (or without git).
-      def repository
+      # outside one (or without git). Found once, as every template asks
+      # (see #marker).
+      def repository = @repository ||= find_repository
+
+      def find_repository
         top, _, status = Open3.capture3("git", "-C", destination_root, "rev-parse", "--show-toplevel")
         status.success? ? top.chomp : destination_root
       rescue SystemCallError
