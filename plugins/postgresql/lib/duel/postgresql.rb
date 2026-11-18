@@ -67,7 +67,7 @@ module Duel
     # Configures Duel for the plugin (c.use :postgresql): the server and
     # its metrics. +server+ is its postgres (a name on the PATH, or a
     # path), whose directory has its other programs (initdb and pg_ctl),
-    # +settings+ more of its settings, +setup+ SQL each worker's database
+    # +settings+ more of its settings, +sql+ what each worker's database
     # runs when it's started (a schema, say), and +env+ the variables
     # given its URL besides DUEL_POSTGRESQL_URL. A cluster is initdb'd
     # once (Resource#cached), and each worker's is a copy.
@@ -81,7 +81,7 @@ module Duel
     #
     # Returns the plugin's own connection to it, a worker's (see
     # Config#in_worker, and in tests, Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_POSTGRESQL_SERVER", "postgres"), settings: {}, setup: nil, env: %w[DATABASE_URL],
+    def self.configure(config, server: ENV.fetch("DUEL_POSTGRESQL_SERVER", "postgres"), settings: {}, sql: nil, env: %w[DATABASE_URL],
       tcp: !Duel.unix_sockets?, pg_ctl: Duel.windows?)
       config.prepare(:worker) do |w|
         require_pg
@@ -109,7 +109,7 @@ module Duel
         # a malformed host.)
         url = "postgres:///#{DATABASE}?host=#{host}&port=#{port}&user=#{USER}"
         w.wait_until { PG::Connection.ping(url) == PG::PQPING_OK }
-        run(url, setup) if setup
+        run(url, sql) if sql
         {URL => url, "PGHOST" => host, "PGPORT" => port.to_s, "PGUSER" => USER, "PGDATABASE" => DATABASE}
           .merge(env.to_h { |name| [name, url] })
       end

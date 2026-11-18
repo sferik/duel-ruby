@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `sql:` is what each worker's database runs once its server starts
+  (a schema, say), in place of `setup:`, which is a hook's name
+  everywhere else in Duel.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

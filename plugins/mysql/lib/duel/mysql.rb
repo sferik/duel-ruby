@@ -65,14 +65,14 @@ module Duel
 
     # Configures Duel for the plugin (c.use :mysql): the server and its
     # metrics. +server+ is the program, +args+ more of its options,
-    # +setup+ SQL each worker's database runs when it's started (a
+    # +sql+ what each worker's database runs when it's started (a
     # schema, say), +env+ the variables given its URL besides
     # DUEL_MYSQL_URL, and +scheme+ the URL's (Rails takes it for the
     # adapter). A data directory is initialized once (Resource#cached),
     # and each worker's is a copy. Returns the plugin's own connection
     # to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], setup: nil, env: %w[DATABASE_URL],
+    def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], sql: nil, env: %w[DATABASE_URL],
       scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         program = DataDir.find_server(server) || w.failed("no #{server} on the PATH (give it as server:, or DUEL_MYSQL_SERVER)")
@@ -100,7 +100,7 @@ module Duel
         # running.)
         w.at_stop { shutdown(address) }
         w.wait_until { Connection.ping(address) }
-        run(address, setup) if setup
+        run(address, sql) if sql
         vars.merge(env.to_h { |name| [name, url] })
       end
       connection = config.in_worker { |w| Connection.new(address).tap { |mysql| w.at_stop { mysql.close } } }

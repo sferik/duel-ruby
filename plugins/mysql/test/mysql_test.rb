@@ -92,7 +92,7 @@ class MySQLTest < PluginTest
   def test_its_options
     unix!
     config = config(server: MYSQLD, args: ["--max-connections=17"], env: %w[PRIMARY_URL], tcp: false,
-      scheme: "trilogy", setup: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
+      scheme: "trilogy", sql: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_MYSQL_SOCKET DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort
       assert_equal "trilogy://root@localhost/duel?socket=#{Duel::MySQL.socket}", env.fetch("PRIMARY_URL")

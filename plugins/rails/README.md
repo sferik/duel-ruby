@@ -416,7 +416,7 @@ queries that a request's jobs make count as the request's.
 | `query_time:` | `true` to also judge how long queries took. See [duel-activerecord](https://github.com/sferik/duel-ruby/tree/main/plugins/activerecord). |
 
 Any other option goes to the database server's plugin, for example
-`args:` or `setup:` for duel-mysql.
+`args:` or `sql:` for duel-mysql.
 
 duel-rails uses duel-activerecord, and the database server's plugin,
 with `c.use`. To give one of them options of its own, use it yourself,

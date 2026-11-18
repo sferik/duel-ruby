@@ -40,12 +40,12 @@ module Duel
 
     # Configures Duel for the plugin (c.use :postgresql): the server
     # (+bin+ the directory of its programs, +settings+ more of its
-    # settings, +setup+ SQL each worker's database runs when it's started,
+    # settings, +sql+ what each worker's database runs when it's started,
     # +env+ the variables besides DUEL_POSTGRESQL_URL given its URL) and
     # its metrics. Returns the plugin's own connection to it, a worker's.
     # +pg_ctl+: started and stopped by pg_ctl, on a port of 127.0.0.1's
     # (by default on Windows).
-    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?setup: String?,
+    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?sql: String?,
                          ?env: Array[String], ?tcp: bool, ?pg_ctl: bool) -> InWorker[::PG::Connection]
 
     # Runs SQL on a connection of its own to +url+; returns the last

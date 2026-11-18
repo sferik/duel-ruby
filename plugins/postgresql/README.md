@@ -99,7 +99,7 @@ Options:
 c.use :postgresql,
   server: "/usr/lib/postgresql/17/bin/postgres", # its postgres, initdb next to it (default: DUEL_POSTGRESQL_SERVER, or the PATH's)
   settings: {work_mem: "64MB"},                  # more of its settings
-  setup: File.read("db/structure.sql"),          # SQL each worker's database runs first
+  sql: File.read("db/structure.sql"),            # SQL each worker's database runs first
   env: %w[DATABASE_URL PRIMARY_URL],             # variables given its URL besides DUEL_POSTGRESQL_URL
   tcp: true,                                     # on a port of 127.0.0.1's, not a Unix socket (default: on Windows only)
   pg_ctl: true                                   # started by pg_ctl (default: on Windows only)

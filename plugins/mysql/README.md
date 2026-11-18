@@ -97,7 +97,7 @@ Options:
 c.use :mysql,
   server: "/usr/local/mysql/bin/mysqld",    # the program (default: DUEL_MYSQL_SERVER, or mysqld)
   args: ["--sort-buffer-size=4M"],          # more of its options
-  setup: File.read("db/structure.sql"),     # SQL each worker's database runs first
+  sql: File.read("db/structure.sql"),       # SQL each worker's database runs first
   env: %w[DATABASE_URL PRIMARY_URL],        # variables given its URL besides DUEL_MYSQL_URL
   scheme: "trilogy",                        # the URL's (Rails takes it for the adapter, mysql2 by default)
   tcp: true                                 # on a port of 127.0.0.1's, its URL mysql2://root@127.0.0.1:PORT/duel (default: on Windows only)

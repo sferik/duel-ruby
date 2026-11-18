@@ -252,7 +252,7 @@ class PluginTest < Minitest::Test
       ".duel.rb" => <<~RUBY)
         Duel.configure do |c|
           c.library = ->(root) { $LOAD_PATH.unshift(File.join(root, "lib")) }
-          c.use :mysql, setup: "CREATE TABLE items (id int PRIMARY KEY); INSERT INTO items VALUES (0), (1)"
+          c.use :mysql, sql: "CREATE TABLE items (id int PRIMARY KEY); INSERT INTO items VALUES (0), (1)"
         end
       RUBY
   end

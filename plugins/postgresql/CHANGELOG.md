@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `sql:` is what each worker's database runs once its server starts
+  (a schema, say), in place of `setup:`, which is a hook's name
+  everywhere else in Duel.
 - `server:` names the server to run, its `postgres` (a path, or a name
   on the `PATH`), as the other server plugins' `server:` does, in place
   of `bin:`, its directory, and `DUEL_POSTGRESQL_SERVER` in place of

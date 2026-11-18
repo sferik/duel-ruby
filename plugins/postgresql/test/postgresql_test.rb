@@ -169,7 +169,7 @@ class PostgreSQLTest < PluginTest
 
   def test_its_options
     config = config(server: File.join(POSTGRES, "postgres"), settings: {work_mem: "5MB", jit: "on"}, env: %w[PRIMARY_URL],
-      setup: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
+      sql: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_POSTGRESQL_URL PGDATABASE PGHOST PGPORT PGUSER PRIMARY_URL], env.keys.sort
       assert_equal !Duel.windows?, File.directory?(env.fetch("PGHOST")), "by default, on a Unix socket, but on Windows on a port"
