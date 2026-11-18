@@ -111,15 +111,16 @@ module Duel
 
       sha = git("rev-parse", "#{ref}^{commit}")
       dir = checkout
+      tree = within(dir)
       unless git("-C", dir, "rev-parse", "HEAD", allow_failure: true) == sha
         FileUtils.rm_rf(dir)
         git("worktree", "prune") # (git's record of it)
         git("worktree", "add", dir, sha)
-        build(within(dir), "the baseline") if Dir.exist?(within(dir))
+        build(tree, "the baseline") if Dir.exist?(tree)
       end
-      raise Error, "the baseline (#{ref}) has no #{prefix}: compare with --base REF, a commit that has it" unless Dir.exist?(within(dir))
+      raise Error, "the baseline (#{ref}) has no #{prefix}: compare with --base REF, a commit that has it" unless Dir.exist?(tree)
 
-      within(dir)
+      tree
     end
 
     # Where the project is in a checkout of its repository at +dir+: as far
