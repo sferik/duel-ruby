@@ -191,8 +191,10 @@ module Duel
 
     private
 
+    def monotonic: () -> Float
+
     # What #run does.
-    def compare_all: (Float started) -> Array[Result]
+    def compare_all: () -> Array[Result]
 
     # Each version, prepared once for the run.
     def prepare: () -> Hash[String, Side]

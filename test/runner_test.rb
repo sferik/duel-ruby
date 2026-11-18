@@ -648,6 +648,21 @@ class RunnerTest < DuelTest
     end
   end
 
+  # A run's time is from when it runs, not from when its Runner was made.
+  def test_timed_from_when_it_runs
+    with_fake_workers do |workers|
+      workers.benchmark("a")
+      long_ago = ->(*) { -7200.0 }
+      runner = stub(Process, :clock_gettime, long_ago) do
+        Duel::Runner.new(Duel::Config.new(candidate), settings(time_limit: 3600.0), File.join(tmpdir, "base"), out: StringIO.new)
+      end
+      elsewhere { runner.run }
+
+      assert_nil runner.cut_short
+      assert_operator runner.seconds, :<, 3600
+    end
+  end
+
   # Within its time limit, a run does everything (and says nothing of it).
   def test_a_run_within_its_time_limit
     with_fake_workers do |workers|

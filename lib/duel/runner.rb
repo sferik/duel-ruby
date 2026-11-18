@@ -157,7 +157,7 @@ module Duel
       @base_root = base_root
       @out = out
       @prepared = []
-      @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @started = monotonic
       @lock = Mutex.new
       @unmeasured = [] #: Array[String]
       @unconfirmed = [] #: Array[String]
@@ -167,10 +167,10 @@ module Duel
     # Returns the Results.
     def run
       CycleClock.prepare
-      started = @started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @started = monotonic
       @dir = Lane.tmpdir
       begin
-        compare_all(started)
+        compare_all
       ensure
         @prepared.reverse_each(&:stop)
         FileUtils.rm_rf(@dir)
@@ -203,7 +203,7 @@ module Duel
     # fails what still looks worse in all of them, so a run cut short
     # never passes a regression it would have failed. Each measurement it
     # started runs to its end.
-    def out_of_time? = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @started > @settings.time_limit
+    def out_of_time? = monotonic - @started > @settings.time_limit
 
     # The plugins the configuration used (Config#plugins), by name.
     def plugins = @config.plugins
@@ -215,8 +215,10 @@ module Duel
 
     private
 
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
     # What #run does, with its versions prepared in its directory.
-    def compare_all(started)
+    def compare_all
       @sides = prepare
       fit
       names, results = with_lanes do |lanes|
@@ -233,7 +235,7 @@ module Duel
       confirm(results.select { |r| r.worse.any? })
       @across = judge_across(results, names)
       profile(results.select { |r| (r.regressed & r.timed.keys).any? && !@benchmarks.fetch(r.name).fetch("process") })
-      report(results, @seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
+      report(results, @seconds = monotonic - @started)
       results
     end
 
