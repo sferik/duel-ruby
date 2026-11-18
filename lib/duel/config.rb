@@ -54,8 +54,14 @@ module Duel
     # version files at the root), there's nothing to compare.
     attr_accessor :watch
 
-    # The library to require from each version, as `require` takes it,
-    # or nil for none (benchmarks require what they need).
+    # How each version loads: the library to require from it, as
+    # `require` takes it (with its lib/ first on the load path), nil for
+    # none (benchmarks require what they need), or a lambda that loads the
+    # version from the root of its tree, which it's given, instead (see
+    # #load_into):
+    #
+    #   c.library = "my_gem"
+    #   c.library = ->(root) { require File.join(root, "config", "boot") }
     attr_writer :library
 
     # A shell command that builds a checked-out tree, run in it, or nil
@@ -352,12 +358,19 @@ module Duel
     # @api private
     SCOPES = %i[version worker].freeze
 
-    # The library: the gem the project's only .gemspec names (its name's
-    # dashes are directories: my-gem is my/gem), unless set.
+    # The library: the gem the project's only .gemspec names (see
+    # #gem_library), unless set.
     def library
-      given = @library
-      return given unless given == :conventional
+      case (given = @library)
+      when :conventional then gem_library
+      else given
+      end
+    end
 
+    # The gem the project's only .gemspec names (its name's dashes are
+    # directories: my-gem is my/gem), or nil.
+    # @api private
+    def gem_library
       specs = Dir[File.join(root, "*.gemspec")]
       return unless specs.size == 1
 
@@ -374,32 +387,24 @@ module Duel
       "bundle exec rake compile" if Dir.exist?(File.join(root, "ext")) && File.exist?(File.join(root, "Rakefile"))
     end
 
-    # How a worker loads one version of the code, from the tree at the
-    # root it's given, instead of the convention (see #load_into).
-    #
-    #   c.load { |root| require File.join(root, "config", "boot") }
-    #
-    # (It hides Kernel#load from the configuration's own methods, which
-    # never call it: a file is loaded by Duel.load_config.)
-    def load(&block) = @loader = block
-
-    # Loads the version at +root+: its lib/ goes first on the load path,
+    # Loads the version at +version_root+: with a lambda for the library,
+    # as that does, and otherwise, its lib/ goes first on the load path,
     # and the library is required from it. Under `bundle exec`, Bundler
     # has already loaded the candidate's gemspec, which may have required
     # files of the candidate's (its version, say): for another version
     # they're forgotten, and constants they defined are redefined quietly.
     # @api private
     def load_into(version_root)
-      loader = @loader
-      return loader.call(version_root) if loader
+      loaded = library
+      return loaded.call(version_root) if loaded.is_a?(Proc)
 
       $LOAD_PATH.unshift(File.join(version_root, "lib"))
-      return unless library
-      return require(library) if File.expand_path(version_root) == File.expand_path(root)
+      return unless loaded
+      return require(loaded) if File.expand_path(version_root) == File.expand_path(root)
 
       candidate_lib = File.join(File.expand_path(root), "lib", "")
       $LOADED_FEATURES.reject! { |feature| feature.start_with?(candidate_lib) }
-      QuietRedefinition.during { require library }
+      QuietRedefinition.during { require loaded }
     end
 
     # Uses a plugin, by its name: requires it (duel/+name+, the plugin's

@@ -23,8 +23,9 @@ Duel.configure do |c|
   c.limit = 1.05                         # a run's settings, as their options (see Set a run's settings)
   c.use :redis                           # a plugin (see Use plugins)
 
-  # How a worker loads one version of your code, instead of the library.
-  c.load { |root| require File.join(root, "config", "boot") }
+  # Or, instead of a library to require, how a worker loads one version
+  # of your code, from the root of its tree:
+  #   c.library = ->(root) { require File.join(root, "config", "boot") }
 end
 ```
 

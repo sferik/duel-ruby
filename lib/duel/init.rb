@@ -416,8 +416,8 @@ module Duel
     # for pushes, that writes to the repository.
     def badge? = @badge
 
-    # The library the gemspec names (see Config#library), or nil.
-    def library = config.library
+    # The library the gemspec names (see Config#gem_library), or nil.
+    def library = config.gem_library
 
     # The glob release tags match (Config#release_tags), for the workflow
     # to find the last release as Duel does.

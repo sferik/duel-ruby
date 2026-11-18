@@ -10,6 +10,10 @@ module Duel
     # version file's, a path, or what a block makes of the version's tree.
     type ruby = :version_file | String | ^(String root) -> String | nil
 
+    # How each version loads: a library to require, none, or a lambda
+    # given the root of its tree.
+    type library = String | ^(String root) -> void | nil
+
     # When the workflow comments on a pull request (see #comment).
     type comment = :always | :results | :failures | :never
 
@@ -22,7 +26,7 @@ module Duel
     @root: String
     @benchmarks: String
     @watch: Array[String]
-    @library: String | :conventional | nil
+    @library: library | :conventional
     @build: String | :conventional | nil
     @main_branch: String?
     @release_tags: String
@@ -45,7 +49,6 @@ module Duel
     @used: Hash[Symbol, Used]
     @worker_memory: Integer
     @measures: Hash[String, Hash[Symbol, untyped]]
-    @loader: (^(String version_root) -> void)?
 
     # Where the project is (and its config file).
     attr_reader root: String
@@ -64,8 +67,9 @@ module Duel
     # about (with what decides how it's measured).
     attr_accessor watch: Array[String]
 
-    # The library to require from each version, or nil for none.
-    attr_writer library (): String?
+    # How each version loads: the library to require from it, nil for
+    # none, or a lambda given the root of its tree.
+    attr_writer library (): library
 
     # A shell command that builds a checked-out tree, or nil for none.
     attr_writer build (): String?
@@ -203,15 +207,14 @@ module Duel
     SCOPES: Array[Symbol]
 
     # The library: the gem the project's only .gemspec names, unless set.
-    %a{pure} def library: () -> String?
+    %a{pure} def library: () -> library
+
+    # The gem the project's only .gemspec names, or nil.
+    def gem_library: () -> String?
 
     # The build command: `bundle exec rake compile` for a project with
     # ext/ and a Rakefile, unless set.
     %a{pure} def build: () -> String?
-
-    # How a worker loads one version of the code, from the tree at the
-    # root it's given, instead of the convention.
-    def load: () { (String version_root) -> void } -> void
 
     # Loads the version at +version_root+.
     # @api private

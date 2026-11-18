@@ -29,7 +29,7 @@ class EndToEndHooksTest < DuelTest
 
       Duel.configure do |c|
         c.benchmarks = "bench/*.rb"
-        c.load { |root| $LOAD_PATH.unshift(File.join(root, "lib")) && require("sample") }
+        c.library = ->(root) { $LOAD_PATH.unshift(File.join(root, "lib")) && require("sample") }
         c.metric("calls") { Sample.calls }
         c.prepare(:worker) do |r|
           ready = r.path("ready")

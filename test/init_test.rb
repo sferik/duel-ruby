@@ -794,7 +794,7 @@ class InitTest < DuelTest
     write("lib/other.rb")
     init("--force").run
 
-    assert_includes read(".duel.rb"), %(  #   c.load { |root| require File.join(root, "config", "boot") }\n  # c.library = "my_library"\n#{ENDING})
+    assert_includes read(".duel.rb"), %(  #   c.library = ->(root) { require File.join(root, "config", "boot") }\n  # c.library = "my_library"\n#{ENDING})
     assert_includes @out.string, "  create    duel/example_duel.rb\n"
     assert_includes read("duel/example_duel.rb"), "# load every duel/**/*_duel.rb file. See\n"
     assert_includes @out.string, "\n  2. Set c.library in .duel.rb to what each version's workers require.\n  3. Replace the example in duel/example_duel.rb"

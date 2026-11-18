@@ -17,7 +17,7 @@ Duel.configure do |c|
 <% else -%>
   # The library each version's workers require, from its lib/ (there's no
   # gemspec to name it). Or, to load each version some other way:
-  #   c.load { |root| require File.join(root, "config", "boot") }
+  #   c.library = ->(root) { require File.join(root, "config", "boot") }
   # c.library = "my_library"
 <% end -%>
 <% if ext -%>

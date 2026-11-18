@@ -159,7 +159,7 @@ class PluginTest < Minitest::Test
       RUBY
       ".duel.rb" => <<~RUBY)
         Duel.configure do |c|
-          c.load { |root| $LOAD_PATH.unshift(File.join(root, "lib")) }
+          c.library = ->(root) { $LOAD_PATH.unshift(File.join(root, "lib")) }
           c.use :memcached
         end
       RUBY

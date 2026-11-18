@@ -307,7 +307,7 @@ class WorkerTest < DuelTest
 
       Duel.configure do |c|
         c.benchmarks = "perf/*.rb"
-        c.load { |r| ConfigProbe.loaded = r }
+        c.library = ->(r) { ConfigProbe.loaded = r }
         c.metric ProbeMetric
         c.in_worker do |w|
           ConfigProbe.worker = Duel.benchmarks.keys

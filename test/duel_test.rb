@@ -116,13 +116,16 @@ class ConfigTest < DuelTest
     $LOAD_PATH.delete("/version/lib")
   end
 
-  def test_load_replaces_how
+  # A lambda for the library loads each version, from its root, instead.
+  def test_a_library_that_loads_the_version
     config = Duel::Config.new(tmpdir)
     loaded = []
-    config.load { |root| loaded << root }
+    config.library = ->(root) { loaded << root }
     config.load_into("/version")
+    config.library = Class.new(Proc).new { |root| loaded << [:a_kind_of_proc, root] }
+    config.load_into("/other")
 
-    assert_equal ["/version"], loaded
+    assert_equal ["/version", [:a_kind_of_proc, "/other"]], loaded
     refute_includes $LOAD_PATH, "/version/lib"
   end
 

@@ -69,7 +69,7 @@ module Duel
       raise ArgumentError, "reset: needs a database to reset" if reset && !database
 
       config.watch = WATCH
-      config.load { |root| boot(root, environment) }
+      config.library = ->(root) { boot(root, environment) }
       Bundle.configure(config) if bundle
       config.prepare(:version) { |_version| {"RAILS_ENV" => environment} }
       # (What .reset_data loads again.)
