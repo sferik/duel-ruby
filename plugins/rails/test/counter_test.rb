@@ -43,7 +43,7 @@ class CounterTest < PluginTest
   # iteration, by their path in app/views.
   def test_details
     Post.create!([{title: "a"}, {title: "b"}])
-    details = Duel::Testing.measure(@config, n: 2) { 2.times(&sent("/posts")) }.details.fetch("rails_views")
+    details = Duel::Testing.measure(@config, n: 2, &sent("/posts")).details.fetch("rails_views")
 
     assert_match(%r{\Aan iteration: 2× posts/_post\.html\.erb; 1× (layouts/application|posts/index)\.html\.erb; 1× }, details)
     assert_nil measure { nil }.details["rails_views"], "nothing, where none were"

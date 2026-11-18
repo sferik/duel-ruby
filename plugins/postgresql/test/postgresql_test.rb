@@ -373,12 +373,16 @@ class PostgreSQLTest < PluginTest
     shared_worker(config) do
       Duel::PostgreSQL.execute("CREATE TABLE items (id int, name text); INSERT INTO items SELECT g, 'n' FROM generate_series(1, 5000) g")
       pg = PG.connect
+      iterations = 0
       details = Duel::Testing.measure(config, n: 2) do |sample|
-        pg.exec("SELECT 2")
+        first = (iterations += 1) == 1
+        pg.exec("SELECT 2") if first
         sample.untimed { Duel::PostgreSQL.execute("SELECT 1") }
-        2.times { pg.exec("SELECT name FROM items WHERE id = 7") }
-        pg.exec("SELECT 1 AS #{"a" * 40}, 2 AS #{"b" * 40}") # (shortened)
-        pg.exec("SELECT 1 WHERE false")
+        pg.exec("SELECT name FROM items WHERE id = 7")
+        unless first
+          pg.exec("SELECT 1 AS #{"a" * 40}, 2 AS #{"b" * 40}") # (shortened)
+          pg.exec("SELECT 1 WHERE false")
+        end
       end.details
 
       assert_equal %w[postgres_queries postgres_rows postgres_blocks postgres_time], details.keys

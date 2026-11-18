@@ -206,15 +206,13 @@ class ActiveRecordTest < PluginTest
   # how many times an iteration (the most first, and by their SQL).
   def test_details
     config, = use
-    measured = measure(config, n: 2) { 2.times { Post.first.comments.to_a } }
+    measured = measure(config, n: 2) { Post.first.comments.to_a }
 
     assert_match(/\Aan iteration: 1× SELECT "comments"\.\* FROM "comments" WHERE "comments"\."post_id" = \? ?.*; 1× SELECT "posts"\.\* FROM "posts" .*LIMIT.*\z/,
       measured.details.fetch("active_record_queries"))
     assert_equal ["active_record_queries"], measured.details.keys
-    measured = measure(config, n: 4) do
-      3.times { Post.count }
-      Post.first
-    end
+    iterations = 0
+    measured = measure(config, n: 4) { ((iterations += 1) == 4) ? Post.first : Post.count }
 
     assert_match(/\Aan iteration: 0.75× SELECT COUNT\(\*\) FROM "posts"; 0.25× SELECT "posts".*\z/, measured.details.fetch("active_record_queries"))
   end
@@ -282,7 +280,7 @@ class ActiveRecordTest < PluginTest
       Post.transaction { Post.cache { 2.times { Post.where(title: "x").to_a } } }
     end
 
-    assert_match(/\Aan iteration: 0.5× SELECT "posts"\.\* FROM "posts" WHERE "posts"\."title" = \?; 0.5× SELECT 1\z/,
+    assert_match(/\Aan iteration: 1× SELECT "posts"\.\* FROM "posts" WHERE "posts"\."title" = \?; 1× SELECT 1\z/,
       measured.details.fetch("active_record_queries"))
     assert_empty measure(config) {}.details
   end

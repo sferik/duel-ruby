@@ -112,10 +112,10 @@ class RetainedTest < PluginTest
     config = self.config
     line = __LINE__ + 2
     retained, said = measure(config, n: 100) do
-      300.times { KEPT << +"kept" << [] }
-      200.times { KEPT << Kept.new }
-      100.times { KEPT << {} }
-      1000.times { +"garbage" }
+      3.times { KEPT << +"kept" << [] }
+      2.times { KEPT << Kept.new }
+      KEPT << {}
+      10.times { +"garbage" }
     end
     here = "test/retained_test.rb"
 
@@ -193,7 +193,7 @@ class RetainedTest < PluginTest
     cruby!
     config = self.config
     anonymous = Class.new
-    _, said = measure(config, n: 10) { 100.times { KEPT << anonymous.new } }
+    _, said = measure(config, n: 10) { 10.times { KEPT << anonymous.new } }
 
     assert_match(/\Aan iteration: 10 #<Class:0x\h+> \(test\/retained_test.rb:\d+\)\z/, said)
   end
@@ -205,14 +205,14 @@ class RetainedTest < PluginTest
     cruby!
     config = self.config
 
-    assert_nil measure(config, n: 10) { 21.times { KEPT << Object.new } }.last
-    refute_nil measure(config, n: 10) { 30.times { KEPT << Object.new } }.last
+    assert_nil measure(config, n: 10) { 2.times { KEPT << Object.new } }.last
+    refute_nil measure(config, n: 10) { 3.times { KEPT << Object.new } }.last
     allowing = self.config.tap { |c| c.measure("retained_objects", allowance: 100) }
 
-    assert_nil measure(allowing, n: 10) { 50.times { KEPT << Object.new } }.last
+    assert_nil measure(allowing, n: 10) { 5.times { KEPT << Object.new } }.last
     strict = self.config.tap { |c| c.measure("retained_objects", allowance: 0, tolerance: 0) }
 
-    refute_nil measure(strict, n: 10) { 10.times { KEPT << Object.new } }.last
+    refute_nil measure(strict, n: 10) { KEPT << Object.new }.last
   end
 
   # What it can't see (internal objects; or what the benchmark's own use

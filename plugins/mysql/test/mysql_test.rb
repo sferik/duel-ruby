@@ -257,12 +257,16 @@ class MySQLTest < PluginTest
       db = client
       db.query("CREATE TABLE items (id int, name text)")
       db.query("INSERT INTO items VALUES #{(1..1000).map { |i| "(#{i}, 'n')" }.join(", ")}")
+      iterations = 0
       details = Duel::Testing.measure(config, n: 2) do |sample|
-        db.query("SELECT 2")
+        first = (iterations += 1) == 1
+        db.query("SELECT 2") if first
         sample.untimed { db.query("SELECT 1") }
-        2.times { db.query("SELECT name FROM items WHERE id = 7") }
-        db.query("SELECT 1 AS #{"a" * 40}, 2 AS #{"b" * 40}") # (shortened)
-        db.query("SELECT 1 FROM items WHERE false")
+        db.query("SELECT name FROM items WHERE id = 7")
+        unless first
+          db.query("SELECT 1 AS #{"a" * 40}, 2 AS #{"b" * 40}") # (shortened)
+          db.query("SELECT 1 FROM items WHERE false")
+        end
       end.details
       long = "SELECT ? AS `#{"a" * 40}` , ? AS `#{"b" * 16}…"
 

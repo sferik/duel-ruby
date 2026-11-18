@@ -339,16 +339,17 @@ Duel::Testing.compare(base, candidate).passed? # whole comparisons, in workers
   way that a worker does, and which ends after the sample. It runs the
   configuration's hooks as a worker runs a benchmark's. Its block
   receives the benchmark's context, with `untimed`, as a benchmark's
-  does: `measure(config) { |s| s.untimed { ... } }`. `n:` is the
-  sample's number of iterations, and `only:` makes the sample a
+  does: `measure(config) { |s| s.untimed { ... } }`. The block is one
+  iteration, and `measure` runs it `n:` times (once by default), as a
+  worker runs a benchmark's block that takes no `n`. With an
+  `around_iteration` hook, the configuration's or its own, each
+  iteration runs inside the hook, the way that a worker runs a
+  benchmark with one, including what it learns first to subtract the
+  hook's work from a costly metric. `only:` makes the sample a
   benchmark's that has, for example, `only: :timing`. It also takes the
   benchmark's own hooks, as `duel` does, such as `before_sample:`. It
   returns a Hash of what was measured, by name, whose `details` are
-  what the metrics said of the sample, by measure. With an
-  `around_iteration` hook, the configuration's or its own, the block is
-  one iteration: `measure` runs it `n` times, each inside the hook, the
-  way that a worker runs a benchmark with one, including what it learns
-  first to subtract the hook's work from a costly metric.
+  what the metrics said of the sample, by measure.
 - `in_worker(config) { ... }`: runs the block as a worker, and ends it
   the way that a worker ends, so what its `c.in_worker` blocks gave
   `at_stop` runs after the block. Every `measure` in the block is that

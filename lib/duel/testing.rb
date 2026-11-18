@@ -105,11 +105,12 @@ module Duel
     # it), then its teardown hooks. The block gets the benchmark's
     # Context (with its #untimed), and keeps its own self.
     #
-    # The block runs once, but with around_iteration hooks (the
-    # configuration's, or its own), it's one iteration, run +n+ times,
-    # each inside the hooks, as a worker runs a benchmark with them: what
-    # they do isn't measured, and what they add to metrics costly to read
-    # (Metric.costly?) is learned first, and taken away.
+    # The block is one iteration, run +n+ times, as a benchmark's block
+    # that takes no +n+ is: with around_iteration hooks (the
+    # configuration's, or its own), each inside them, as a worker runs a
+    # benchmark with them: what they do isn't measured, and what they add
+    # to metrics costly to read (Metric.costly?) is learned first, and
+    # taken away.
     #
     # Inside #in_worker, it's that worker's. Outside, it's a worker of its
     # own, ended after (its metrics closed, and what its blocks gave
@@ -117,12 +118,7 @@ module Duel
     def measure(config, n: 1, only: nil, **hooks, &block)
       return in_worker(config) { measure(config, n: n, only: only, **hooks, &block) } unless STOPS.key?(config)
 
-      # @type var body: Duel::body
-      body = if hooks.key?(:around_iteration) || config.hooks.fetch(:around_iteration).any?
-        -> { block.call(self) } #: ^() [self: Context] -> void
-      else
-        ->(_n) { block.call(self) } #: ^(Integer) [self: Context] -> void
-      end
+      body = -> { block.call(self) } #: ^() [self: Context] -> void
       benchmark = Definition.new("test", only, false, __FILE__, body, DSL.hooks("test", hooks, body))
       harness = Harness.new(benchmark, config.hooks)
       metrics = metrics(config)

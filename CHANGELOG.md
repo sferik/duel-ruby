@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pull request adds a project to the list, and AGENT_PROMPT.md's last
   step has the agent open one for the project it set Duel up in, if
   that's public.
+- `Duel::Testing.measure`'s block is one iteration, which it runs `n:`
+  times, as a worker runs a benchmark's block that takes no `n`. It ran
+  the block once, and only told the metrics `n`, unless there was an
+  `around_iteration` hook (the configuration's, or its own), so a
+  plugin that added one changed how many times every test's block ran.
+  A test that did its `n` iterations in the block does one.
 
 ### Fixed
 

@@ -179,7 +179,7 @@ class TestingTest < DuelTest
     runs = 0
     Duel::Testing.measure(config, n: 3) { runs += 1 }
 
-    assert_equal 1, runs, "once, without an around_iteration hook: n is for the metrics"
+    assert_equal 3, runs, "an iteration, run n times, with or without around_iteration hooks"
   end
 
   # As a worker makes them: with the config's changes to measures, and
