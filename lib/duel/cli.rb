@@ -262,7 +262,7 @@ module Duel
     end
 
     # Whether this is a run on GitLab CI.
-    def gitlab? = variables.key?("GITLAB_CI")
+    def gitlab? = !variable("GITLAB_CI").nil?
 
     # Whether this is a run on CI for something other than a pull request
     # (PULL_REQUESTS): a push, say.
@@ -283,11 +283,7 @@ module Duel
     def pushed? = event == "push"
 
     # The first of the variables +names+ that's set, or nil.
-    def variable(*names)
-      set = variables
-      name = names.find { |n| set.key?(n) }
-      set.fetch(name) if name
-    end
+    def variable(*names) = names.map { |name| @env[name] }.find { |value| value && !value.empty? }
 
     # Says there's nothing to compare (+title+, in Markdown), and +why+,
     # and passes.
