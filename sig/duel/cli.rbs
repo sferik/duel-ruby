@@ -86,6 +86,9 @@ module Duel
 
     private
 
+    # duel base: prints the commit a run compares with, or nothing.
+    def show_base: (Array[String] argv) -> Integer
+
     # duel clean: removes what Duel keeps, and the baseline's worktree.
     def clean: (Array[String] argv) -> Integer
 
@@ -131,7 +134,14 @@ module Duel
     def pull_request?: () -> bool
 
     # Whether the baseline is a merge queue's base.
-    def queued?: (Settings settings) -> bool
+    # Whether the baseline is the one the run's event says.
+    def from_event?: (Settings settings) -> bool
+
+    # The baseline a run on CI is for, as its event says, or nil.
+    def event_base: () -> String?
+
+    # The event a run on GitHub Actions is for, as its file describes it.
+    def event_payload: () -> Hash[String, untyped]
 
     # Whether this is a run on GitHub Actions for a push.
     def pushed?: () -> bool

@@ -390,6 +390,14 @@ class CLISummaryTest < DuelTest
 
   # On GitHub Actions, a push's baseline (DUEL_BASE) is the commit before
   # it, or where c.push_base says, the last commit Duel passed.
+  # A file of a GitHub Actions event: a push's (the commit +before+ it),
+  # or a merge queue's (its +base+).
+  def event(before: nil, base: nil)
+    File.join(tmpdir, "event-#{before || base}.json").tap do |path|
+      File.write(path, JSON.generate(before ? {"before" => before} : {"merge_group" => {"base_sha" => base}}))
+    end
+  end
+
   def test_the_baseline_of_a_push
     repo = git_repo
     first = short(repo)
@@ -400,23 +408,53 @@ class CLISummaryTest < DuelTest
       s = Dir.chdir(repo) { cli(*argv, env: env).parse }
       cli(env: env).send(:described_baseline, config, s, Duel::Baseline.new(config, s))
     end
-    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha, "GITHUB_REF_NAME" => "main"}
+    push = {"GITHUB_EVENT_NAME" => "push", "GITHUB_EVENT_PATH" => event(before: sha), "GITHUB_REF_NAME" => "main"}
 
     assert_equal "#{first} (the commit before the push)", described.call(push)
-    assert_equal "#{first} (from --base)", described.call(push.merge("GITHUB_EVENT_NAME" => "pull_request")), "not a push"
-    assert_equal "#{first} (from --base)", described.call(push.slice("GITHUB_EVENT_NAME"), "--base", sha), "no DUEL_BASE"
-    assert_equal "#{first} (from --base)", described.call(push.slice("DUEL_BASE")), "no event"
-    assert_equal "#{first} (from --base)", described.call(push.merge("DUEL_BASE" => "HEAD"), "--base", sha), "--base, not DUEL_BASE"
+    assert_equal "#{first} (from --base)", described.call(push.merge("GITHUB_EVENT_NAME" => "pull_request"), "--base", sha), "not a push"
+    assert_equal "#{first} (from --base)", described.call(push.merge("DUEL_BASE" => sha[0, 9])), "DUEL_BASE, not the event's"
+    assert_equal "#{first} (from --base)", described.call(push.except("GITHUB_EVENT_NAME"), "--base", sha), "no event"
     assert_equal "#{first} (`HEAD^`)", described.call(push.slice("GITHUB_EVENT_NAME"), "--base", "HEAD^"), "a ref, named"
     @git.call("update-ref", "refs/remotes/origin/duel/passed/main", sha)
 
     assert_equal "#{first} (the commit before the push)", described.call(push), "by default, not the last passed"
     config.push_base = :last_passed
 
-    assert_equal "#{first} (the last commit Duel passed)", described.call(push.merge("DUEL_BASE" => short(repo, "HEAD")))
+    assert_equal "#{first} (the last commit Duel passed)", described.call(push.merge("GITHUB_EVENT_PATH" => event(before: short(repo, "HEAD"))))
   end
 
-  # On GitHub Actions, a merge queue's baseline (DUEL_BASE) is its base.
+  # duel base: the commit a run compares with, as a run finds it (the
+  # push's, here the last commit Duel passed), or nothing where there's
+  # none, or it's a directory.
+  def test_duel_base
+    repo = git_repo
+    sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    @git.call("commit", "-q", "--allow-empty", "-m", "two")
+    head = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
+    File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.push_base = :last_passed }\n")
+    @git.call("update-ref", "refs/remotes/origin/duel/passed/main", sha)
+    based = lambda do |*argv, env: {}|
+      status = Dir.chdir(repo) { cli("base", *argv, env: env).run }
+      [status, @out.string]
+    end
+    push = {"GITHUB_EVENT_NAME" => "push", "GITHUB_EVENT_PATH" => event(before: head), "GITHUB_REF_NAME" => "main"}
+
+    assert_equal [0, "#{sha}\n"], based.call(env: push), "the last commit Duel passed"
+    assert_equal [0, "#{head}\n"], based.call("--base", "HEAD")
+    assert_equal [0, "\n"], based.call("--base", "last-release"), "no release yet"
+    assert_equal [0, "\n"], based.call("--base", tmpdir), "a directory"
+    assert_equal [0, "duel #{Duel::VERSION}\n"], based.call("--version")
+    assert_equal 2, based.call("--base", "nope").first
+    assert_equal "duel base: nope isn't a commit here\n", @err.string
+    assert_equal 2, based.call("--limit", "x").first
+    assert_equal "duel base: invalid argument: --limit x\n", @err.string
+    File.delete(File.join(repo, ".duel.rb"))
+
+    assert_equal [0, "#{head}\n"], based.call(env: push), "the commit before the push, by default, with no .duel.rb"
+  end
+
+  # On GitHub Actions, a merge queue's baseline is its base, as its event
+  # says.
   def test_the_baseline_of_a_merge_queue
     repo = git_repo
     first = short(repo)
@@ -427,12 +465,12 @@ class CLISummaryTest < DuelTest
       s = Dir.chdir(repo) { cli(*argv, env: env).parse }
       cli(env: env).send(:described_baseline, config, s, Duel::Baseline.new(config, s))
     end
-    queue = {"GITHUB_EVENT_NAME" => "merge_group", "DUEL_BASE" => sha}
+    queue = {"GITHUB_EVENT_NAME" => "merge_group", "GITHUB_EVENT_PATH" => event(base: sha)}
 
     assert_equal "#{first} (the merge queue's base)", described.call(queue)
-    assert_equal "#{first} (from --base)", described.call(queue.merge("GITHUB_EVENT_NAME" => "pull_request")), "not a merge queue"
-    assert_equal "#{first} (from --base)", described.call(queue.slice("GITHUB_EVENT_NAME"), "--base", sha), "no DUEL_BASE"
-    assert_equal "#{first} (from --base)", described.call(queue, "--base", sha[0, 9]), "--base, not DUEL_BASE"
+    assert_equal "#{first} (the merge queue's base)", described.call(queue.merge("DUEL_BASE" => sha)), "DUEL_BASE that's the event's"
+    assert_equal "#{first} (from --base)", described.call(queue.merge("GITHUB_EVENT_NAME" => "pull_request"), "--base", sha), "not a merge queue"
+    assert_equal "#{first} (from --base)", described.call(queue, "--base", sha[0, 9]), "--base, not the event's"
   end
 
   # A push whose commit before it isn't here (a branch's first push, or
@@ -442,7 +480,7 @@ class CLISummaryTest < DuelTest
     repo = git_repo
     output = File.join(tmpdir, "output")
     File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.push_base = :last_passed }\n")
-    env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "0" * 40, "GITHUB_REF_NAME" => "main"}
+    env = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "GITHUB_EVENT_PATH" => event(before: "0" * 40), "GITHUB_REF_NAME" => "main"}
 
     assert_equal 0, Dir.chdir(repo) { cli("--markdown", markdown, env: env).run }
     assert_equal "duel: no commit before this push to compare against\n", @out.string
@@ -463,7 +501,8 @@ class CLISummaryTest < DuelTest
       runner.define_singleton_method(:run) { [] }
       runner.define_singleton_method(:passed?) { |_| passed }
       stub(Duel::Runner, :new, ->(*) { runner }) do
-        Dir.chdir(repo) { cli(*argv, env: {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => sha, "GITHUB_REF_NAME" => "main"}.merge(env)).run }
+        pushed = {"GITHUB_OUTPUT" => output, "GITHUB_EVENT_NAME" => "push", "GITHUB_EVENT_PATH" => event(before: sha), "GITHUB_REF_NAME" => "main"}
+        Dir.chdir(repo) { cli(*argv, env: pushed.merge(env)).run }
       end
       File.read(output)
     end
@@ -480,9 +519,9 @@ class CLISummaryTest < DuelTest
 
     assert_equal "comment=none\nstatus=failed\npassed=true\n", outputs.call(passed: false, env: {"DUEL_LABELS" => %(["ok"])}),
       "accepted: marked passed"
-    assert_equal "comment=none\nstatus=neutral\npassed=true\n", outputs.call(env: {"DUEL_BASE" => short(repo, "HEAD")}),
+    assert_equal "comment=none\nstatus=neutral\npassed=true\n", outputs.call(env: {"GITHUB_EVENT_PATH" => event(before: short(repo, "HEAD"))}),
       "nothing to compare"
-    assert_equal "comment=change\nstatus=passed\n", outputs.call(env: {"GITHUB_EVENT_NAME" => "pull_request"}), "not a push"
+    assert_equal "comment=change\nstatus=passed\n", outputs.call("--base", sha, env: {"GITHUB_EVENT_NAME" => "pull_request"}), "not a push"
   end
 
   # The baseline, for JSON: a directory, or the ref that named it and its

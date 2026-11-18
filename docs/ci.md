@@ -104,20 +104,21 @@ jobs:
           echo "labels=$labels" >> "$GITHUB_OUTPUT"
       # (And whatever else your tests need set up: packages, services.)
       - uses: ruby/setup-ruby@v1
+        id: ruby
         with:
           ruby-version: "3.4" # (or none, with a .ruby-version)
           bundler-cache: true
       # Against the branch it targets for a pull request, the queue's base
       # for a merge queue, what was there before for a push (or as
       # c.push_base in .duel.rb says, the last commit Duel passed), and the
-      # last release on a schedule (slow creep). Duel adds its report to
+      # last release on a schedule (slow creep), as Duel finds them, from
+      # the run's event. Duel adds its report to
       # the job's summary, writes it to duel.md for the comment, and sets
       # the step's outputs to say whether to comment, as c.comment in
       # .duel.rb says, whatever the outcome.
       - name: Compare
         id: compare
         env:
-          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
@@ -981,12 +982,10 @@ duel:
     DUEL_OUTPUT: duel.env # whether to comment, and mark a push passed
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # (Duel compares a push with the commit before it, and a schedule's
+    # run with the last release, as CI_PIPELINE_SOURCE says.)
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      variables:
-        DUEL_BASE: $CI_COMMIT_BEFORE_SHA
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        DUEL_BASE: last-release
     # (Run by hand, it compares anyway: with nothing changed, the code
     # with itself, which checks the setup.)
     - if: $CI_PIPELINE_SOURCE == "web"
@@ -1119,61 +1118,44 @@ runs `duel` where no version manager looks. That's enough while both
 versions ask for that Ruby. A branch that upgrades Ruby needs the
 baseline's Ruby installed too, where Duel finds it. For example, for a
 project with a `.ruby-version`, in the
-[GitHub Actions workflow](#catch-slow-creep), find the baseline that the
-Compare step compares with, for each event: where `HEAD` left the main
-branch for a pull request and a manual run, the commit before a push,
-and the last release on a schedule. When its `.ruby-version` names
+[GitHub Actions workflow](#catch-slow-creep), once your Ruby and its
+bundle are set up, ask Duel which commit the Compare step compares
+with: `bundle exec duel base` prints it, as the run will find it, for
+whatever event the run is for (where `HEAD` left the main branch for a
+pull request, the commit before a push, or the last commit Duel passed,
+and the last release on a schedule), with `.duel.rb`'s settings, or
+nothing, without a baseline, such as for a branch's first push, or
+before your first release. When that commit's `.ruby-version` names
 another Ruby than yours, install that Ruby with a second
 `ruby/setup-ruby` step, with the bundle for it (`bundler-cache: true`),
-and link it into `~/.rubies`, where Duel looks for Rubies the way that
-chruby does. The baseline's workers load the same bundle as the
-candidate's, and gems installed for one Ruby version don't load on
-another, so without that bundle they can't load the code to compare. Without a baseline, such as for a
-branch's first push, or before your first release, there's no Ruby to
-install. The step finds the main branch and the last release the way
-Duel does by default: if `.duel.rb` sets `c.main_branch` or
-`c.release_tags`, set the step's `MAIN_BRANCH` or `RELEASE_TAGS` to
-match. `duel init` adds these steps for a project that has a
+link it into `~/.rubies`, where Duel looks for Rubies the way that
+chruby does, and put your own Ruby first on the `PATH` again, which the
+second step took the place of. The baseline's workers load the same
+bundle as the candidate's, and gems installed for one Ruby version don't
+load on another, so without that bundle they can't load the code to
+compare. `duel init` adds these steps for a project that has a
 `.ruby-version`:
 
 ```yaml
-      # (Before the step that sets up the candidate's Ruby.)
+      # (After the step that sets up the candidate's Ruby, id: ruby.)
       # Each version runs on the Ruby its own .ruby-version names (see
       # .duel.rb). When the baseline's names another Ruby than this code's,
-      # that one is installed too, and linked where Duel finds it (as
-      # chruby would), before the project's own Ruby, which runs Duel. The
-      # baseline is the Compare step's: where HEAD left the branch a pull
-      # request targets (or run by hand, the main branch), a merge queue's
-      # base, the commit before a push (or the last commit Duel passed, PASSED, if there is
-      # one: see the Mark the commit passed job), or on a schedule the last
-      # release, the newest tag before HEAD that RELEASE_TAGS matches
-      # (or ACCEPTED, the last change accepted since then). (If
-      # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
-      # RELEASE_TAGS to match.)
+      # that one is installed too, with its bundle, and linked where Duel
+      # finds it (as chruby would), and the project's own Ruby, which runs
+      # Duel, comes first again. The baseline is the one the Compare step
+      # compares with, as Duel finds it (duel base).
       - name: Find the baseline's Ruby
         id: baseline
         env:
-          BEFORE: ${{ github.event.before }}
-          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          PASSED: origin/duel/passed/${{ github.ref_name }}
-          MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
-          RELEASE_TAGS: "v*"
-          ACCEPTED: ${{ steps.labels.outputs.accepted }}
+          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
         run: |
-          case "$GITHUB_EVENT_NAME" in
-            push)
-              base=$BEFORE
-              if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
-            merge_group) base=$QUEUE_BASE ;;
-            schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
-            *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
-          esac
+          base=$(bundle exec duel base)
           # (None where the commit has no .ruby-version: git fails, which
           # fails the pipeline, under pipefail.)
           ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }' || true; }
           ruby=
           # (None without a baseline: a branch's first push, or no release yet.)
-          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+          if [ -n "$base" ]; then
             ruby=$(ruby_of "$base")
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
@@ -1190,8 +1172,12 @@ match. `duel init` adds these steps for a project that has a
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+          RUBY_PREFIX: ${{ steps.ruby.outputs.ruby-prefix }}
           MSYS: winsymlinks:nativestrict # (on Windows, bash's ln links, not copies)
         run: |
+          # (The project's own Ruby first again, for the steps after: it
+          # runs Duel.)
+          echo "$RUBY_PREFIX/bin" >> "$GITHUB_PATH"
           # (On Windows, as bash's /c/..., not C:\..., which it can't run.)
           if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies

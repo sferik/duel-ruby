@@ -84,6 +84,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `unsettled` (a benchmark's `verdict` says so), `errors` (each
     benchmark's `error` says so) and `comment` (the workflow's step
     output says so) are gone.
+- On CI, Duel finds the baseline itself, from the run's event: for a
+  push, the commit before it (on GitHub Actions, the event's `before`,
+  and on GitLab CI, `CI_COMMIT_BEFORE_SHA`), for a merge queue, its
+  base, and on a schedule, the last release. The workflows `duel init`
+  writes gave it as `DUEL_BASE`, which now only names another, as
+  `--base` does. (A `DUEL_BASE` that's the event's own is still taken
+  for it, as the workflows earlier versions wrote give it.) And `duel
+  base` prints the commit a run compares with, which the workflow's
+  step that installs the baseline's Ruby reads, once the project's Ruby
+  and bundle are set up, so it no longer finds the main branch and the
+  last release in shell of its own, which `c.main_branch` and
+  `c.release_tags` had to be copied into.
+- `duel` fails on an argument that isn't an option (`duel v1.2.0`, say,
+  for `duel --base v1.2.0`), which it ignored.
 - `duel clean` removes `tmp/duel` and the baseline's git worktree, as
   `duel --clean` did, which took (and ignored) every other option, and
   is gone. It takes `--config`.

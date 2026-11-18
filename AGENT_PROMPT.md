@@ -214,8 +214,8 @@ at the API.
    a `.ruby-version`. With `c.ruby = :version_file` and another version
    file than `.ruby-version`, add the steps in Duel's `docs/ci.md` that
    install the baseline's Ruby, reading that file instead. If
-   `.duel.rb` sets `c.main_branch` or `c.release_tags`, set those
-   steps' `MAIN_BRANCH` or `RELEASE_TAGS` to match. Add the project's
+   `.duel.rb` sets `c.release_tags`, set the labels step's
+   `RELEASE_TAGS` to match. Add the project's
    other CI setup that its tests need (system packages, services) to
    the Duel job as well. Keep the scheduled `last-release` run only if
    the project tags its releases (`v*` by default, or else set

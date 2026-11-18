@@ -397,10 +397,8 @@ class InitTest < DuelTest
     labels = steps.find { |step| step["id"] == "labels" }.fetch("run")
 
     assert workflow.fetch(true).key?("merge_group"), "on: a merge queue's too"
-    assert_includes steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_BASE"),
-      "github.event_name == 'merge_group' && github.event.merge_group.base_sha"
-    assert_includes steps.find { |step| step["id"] == "baseline" }.fetch("run"), "merge_group) base=$QUEUE_BASE ;;\n"
-    assert_equal "${{ github.event.merge_group.base_sha }}", steps.find { |step| step["id"] == "baseline" }.dig("env", "QUEUE_BASE")
+    assert_nil steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_BASE"), "Duel finds the queue's base, from the event"
+    assert_includes steps.find { |step| step["id"] == "baseline" }.fetch("run"), "base=$(bundle exec duel base)\n", "and the baseline's Ruby's"
     script = "QUEUED=refs/heads/gh-readonly-queue/main/pr-123-0123abcd\n#{labels[/if \[ -n "\$QUEUED" \].*?\nfi\n/m]}echo $PR"
 
     assert_equal "123\n", IO.popen(["bash", "-c", script], &:read), "the pull request, from the queue's branch"
@@ -740,9 +738,10 @@ class InitTest < DuelTest
   end
 
   # The step that finds the baseline's Ruby, run (with pipefail, as the
-  # reusable workflow's bash runs it): none where the baseline names the
-  # same as HEAD, or names none (where git show fails), and the
-  # baseline's where it names another.
+  # reusable workflow's bash runs it), with the baseline that duel base
+  # says (here, a stand-in's): none where the baseline names the same as
+  # HEAD, or names none (where git show fails), or there's no baseline,
+  # and the baseline's where it names another.
   def test_finding_the_baseline_ruby
     gem
     write(".ruby-version", "3.4.1\n")
@@ -762,24 +761,27 @@ class InitTest < DuelTest
     write(".ruby-version", "3.4.1\n")
     same = commit.call
     output = File.join(tmpdir, "output")
+    bin = File.join(tmpdir, "bin")
+    fake_command(File.join(bin, "bundle"), %([ "$*" = "exec duel base" ] && echo "$BASE"))
     found = lambda do |base|
       File.write(output, "")
-      env = step.fetch("env").merge("GITHUB_EVENT_NAME" => "pull_request", "MAIN_BRANCH" => base, "GITHUB_OUTPUT" => output)
+      env = step.fetch("env").merge("BASE" => base, "GITHUB_OUTPUT" => output, "PATH" => path_with(bin))
 
       assert shell(env, step.fetch("run"), chdir: root)
       File.read(output)
     end
 
-    assert_equal ["ruby=\n", "ruby=3.3.6\n", "ruby=\n"], [none, older, same].map(&found)
+    assert_equal ["ruby=\n", "ruby=3.3.6\n", "ruby=\n", "ruby=\n"], [none, older, same, ""].map(&found)
   end
 
   # The guide's steps that set up the baseline's Ruby, in docs/ci.md, are
   # the workflow's.
   def test_the_guides_steps_for_the_baseline_ruby
     write(".ruby-version", "3.4.1\n")
-    steps = repo_file("docs/ci.md")[/^```yaml\n      # \(Before the step that sets up the candidate's Ruby\.\)\n(.*?)^```$/m, 1]
+    steps = repo_file("docs/ci.md")[/^```yaml\n      # \(After the step that sets up the candidate's Ruby, id: ruby\.\)\n(.*?)^```$/m, 1]
 
-    assert_includes init.files.fetch(".github/workflows/perf.yml"), "      # (And whatever else your tests need set up: packages, services.)\n#{steps}      - uses: ruby/setup-ruby@v1\n"
+    assert_includes init.files.fetch(".github/workflows/perf.yml"),
+      "      - uses: ruby/setup-ruby@v1\n        id: ruby\n        with:\n          bundler-cache: true\n#{steps}      # Against the branch it targets"
   end
 
   # Without a gemspec: lib/'s only file is the library, or there's none
@@ -959,7 +961,6 @@ class InitTest < DuelTest
 
     assert_equal({"working-directory" => "gems/parser", "ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true},
       baseline.fetch("with"))
-    assert_equal "origin/duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline" }.dig("env", "PASSED")
   end
 
   # A project in a subdirectory of its repository: the workflow is at the
@@ -1061,8 +1062,7 @@ class InitTest < DuelTest
     assert_equal ["ruby:3.4.1", {"exit_codes" => [3]}, ["bundle exec duel --markdown duel.md"]], duel.values_at("image", "allow_failure", "script")
     assert_equal({"GIT_DEPTH" => 0, "DUEL_OUTPUT" => "duel.env"}, duel.fetch("variables"))
     assert_equal({"when" => "always", "paths" => ["duel.md"], "reports" => {"dotenv" => "duel.env"}, "expire_in" => "1 day"}, duel.fetch("artifacts"))
-    assert_equal [{"DUEL_BASE" => "$CI_COMMIT_BEFORE_SHA"}, {"DUEL_BASE" => "last-release"}, {"DUEL_FORCE" => "1"}],
-      duel.fetch("rules").filter_map { |rule| rule["variables"] }
+    assert_equal [{"DUEL_FORCE" => "1"}], duel.fetch("rules").filter_map { |rule| rule["variables"] }, "Duel finds the baseline, from the pipeline"
     %w[duel:comment duel:commit-comment duel:passed].each do |name|
       assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
     end
@@ -1402,7 +1402,7 @@ class InitTest < DuelTest
     rubies = steps.select { |step| step["uses"]&.start_with?("ruby/setup-ruby") }
 
     assert_equal ["${{ inputs.setup-after-ruby == '' }}"] * 2, rubies.map { |step| step.dig("with", "bundler-cache") }
-    after, bundle = steps.drop(steps.index(rubies.last) + 1).first(2)
+    after, bundle = steps.drop(steps.index(rubies.first) + 1).first(2)
 
     assert_equal({"name" => "Set up, once Ruby is", "if" => "inputs.setup-after-ruby != ''", "env" => {"SETUP" => "${{ inputs.setup-after-ruby }}"},
                   "run" => %(eval "$SETUP")}, after)

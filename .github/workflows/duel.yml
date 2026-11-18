@@ -209,43 +209,43 @@ jobs:
             exit 1
           fi
           echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV"
+      - uses: ruby/setup-ruby@v1
+        id: ruby
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          ruby-version: "${{ inputs.ruby-version }}"
+          # (Or once what needs Ruby is set up: see below.)
+          bundler-cache: ${{ inputs.setup-after-ruby == '' }}
+      # What needs Ruby to set up, as the caller says (on Windows, a
+      # package of Ruby's devkit, from pacman, that a gem's native
+      # extension links, say), and then the bundle, which may need it.
+      - name: Set up, once Ruby is
+        if: inputs.setup-after-ruby != ''
+        env:
+          SETUP: ${{ inputs.setup-after-ruby }}
+        run: eval "$SETUP"
+      - name: Install the bundle
+        if: inputs.setup-after-ruby != ''
+        run: bundle install
       # Each version runs on the Ruby its own .ruby-version names (see
       # .duel.rb). When the baseline's names another Ruby than this code's,
-      # that one is installed too, and linked where Duel finds it (as
-      # chruby would), before the project's own Ruby, which runs Duel. The
-      # baseline is the Compare step's: where HEAD left the branch a pull
-      # request targets (or run by hand, the main branch), a merge queue's
-      # base, the commit before a push (or the last commit Duel passed, PASSED, if there is
-      # one: see the Mark the commit passed job), or on a schedule the last
-      # release, the newest tag before HEAD that RELEASE_TAGS matches
-      # (or ACCEPTED, the last change accepted since then). (If
-      # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
-      # RELEASE_TAGS to match.)
+      # that one is installed too, with its bundle, and linked where Duel
+      # finds it (as chruby would), and the project's own Ruby, which runs
+      # Duel, comes first again. The baseline is the one the Compare step
+      # compares with, as Duel finds it (duel base).
       - name: Find the baseline's Ruby
         id: baseline
         if: inputs.version-file
         env:
-          BEFORE: ${{ github.event.before }}
-          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          PASSED: origin/${{ inputs.passed-branch }}/${{ github.ref_name }}
-          MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
-          RELEASE_TAGS: "${{ inputs.release-tags }}"
-          ACCEPTED: ${{ steps.labels.outputs.accepted }}
+          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
         run: |
-          case "$GITHUB_EVENT_NAME" in
-            push)
-              base=$BEFORE
-              if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
-            merge_group) base=$QUEUE_BASE ;;
-            schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
-            *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
-          esac
+          base=$(bundle exec duel base)
           # (None where the commit has no .ruby-version: git fails, which
           # fails the pipeline, under pipefail.)
           ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }' || true; }
           ruby=
           # (None without a baseline: a branch's first push, or no release yet.)
-          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+          if [ -n "$base" ]; then
             ruby=$(ruby_of "$base")
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
@@ -264,48 +264,30 @@ jobs:
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+          RUBY_PREFIX: ${{ steps.ruby.outputs.ruby-prefix }}
+          SETUP: ${{ inputs.setup-after-ruby }}
           MSYS: winsymlinks:nativestrict # (on Windows, bash's ln links, not copies)
         run: |
+          # (Its bundle, once what needs Ruby is set up: see above.)
+          if [ -n "$SETUP" ]; then bundle install; fi
+          # (The project's own Ruby first again, for the steps after: it
+          # runs Duel.)
+          echo "$RUBY_PREFIX/bin" >> "$GITHUB_PATH"
           # (On Windows, as bash's /c/..., not C:\..., which it can't run.)
           if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
-      - uses: ruby/setup-ruby@v1
-        with:
-          working-directory: ${{ inputs.working-directory }}
-          ruby-version: "${{ inputs.ruby-version }}"
-          # (Or once what needs Ruby is set up: see below.)
-          bundler-cache: ${{ inputs.setup-after-ruby == '' }}
-      # What needs Ruby to set up, as the caller says (on Windows, a
-      # package of Ruby's devkit, from pacman, that a gem's native
-      # extension links, say), and then the bundle, which may need it, and
-      # on another Ruby for the baseline, that one's bundle too.
-      - name: Set up, once Ruby is
-        if: inputs.setup-after-ruby != ''
-        env:
-          SETUP: ${{ inputs.setup-after-ruby }}
-        run: eval "$SETUP"
-      - name: Install the bundle
-        if: inputs.setup-after-ruby != ''
-        env:
-          PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
-        run: |
-          bundle install
-          if [ -n "$PREFIX" ]; then
-            if command -v cygpath > /dev/null; then PREFIX=$(cygpath -u "$PREFIX"); fi
-            PATH="$PREFIX/bin:$PATH" bundle install
-          fi
       # Against the branch it targets for a pull request, the queue's base
       # for a merge queue, what was there before for a push (or as
       # c.push_base in .duel.rb says, the last commit Duel passed), and the
-      # last release on a schedule (slow creep). Duel adds its report to
+      # last release on a schedule (slow creep), as Duel finds them, from
+      # the run's event. Duel adds its report to
       # the job's summary, writes it to duel.md for the comment, and sets
       # the step's outputs to say whether to comment, as c.comment in
       # .duel.rb says, whatever the outcome.
       - name: Compare
         id: compare
         env:
-          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}

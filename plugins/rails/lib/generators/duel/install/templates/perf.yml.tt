@@ -105,43 +105,35 @@ jobs:
             sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
           fi
 <% end -%>
+      - uses: ruby/setup-ruby@v1
+        id: ruby
+        with:
+<% if working_directory -%>
+          working-directory: <%= working_directory %>
+<% end -%>
+<% if ruby_version -%>
+          ruby-version: "<%= ruby_version %>"
+<% end -%>
+          bundler-cache: true
 <% if version_file? -%>
       # Each version runs on the Ruby its own .ruby-version names (see
       # .duel.rb). When the baseline's names another Ruby than this code's,
-      # that one is installed too, and linked where Duel finds it (as
-      # chruby would), before the app's own Ruby, which runs Duel. The
-      # baseline is the Compare step's: where HEAD left the branch a pull
-      # request targets (or run by hand, the main branch), a merge queue's
-      # base, the commit before a push (or the last commit Duel passed, PASSED, if there is
-      # one: see the Mark the commit passed job), or on a schedule the last
-      # release, the newest tag before HEAD that RELEASE_TAGS matches<% if accept_label %>
-      # (or ACCEPTED, the last change accepted since then)<% end %>. (If
-      # .duel.rb sets c.main_branch or c.release_tags, set MAIN_BRANCH or
-      # RELEASE_TAGS to match.)
+      # that one is installed too, with its bundle, and linked where Duel
+      # finds it (as chruby would), and the app's own Ruby, which runs
+      # Duel, comes first again. The baseline is the one the Compare step
+      # compares with, as Duel finds it (duel base).
       - name: Find the baseline's Ruby
         id: baseline
-        env:
-          BEFORE: ${{ github.event.before }}
-          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          PASSED: origin/duel/passed<%= "-#{working_directory.tr("/", "-")}" if working_directory %>/${{ github.ref_name }}
-          MAIN_BRANCH: origin/${{ github.base_ref || github.event.repository.default_branch }}
-          RELEASE_TAGS: "v*"
 <% if accept_label -%>
-          ACCEPTED: ${{ steps.labels.outputs.accepted }}
+        env:
+          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
 <% end -%>
         run: |
-          case "$GITHUB_EVENT_NAME" in
-            push)
-              base=$BEFORE
-              if git merge-base --is-ancestor "$PASSED" HEAD 2>/dev/null; then base=$PASSED; fi ;;
-            merge_group) base=$QUEUE_BASE ;;
-            schedule) base=${ACCEPTED:-$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null)} || base= ;;
-            *) base=$(git merge-base HEAD "$MAIN_BRANCH" 2>/dev/null) || base= ;;
-          esac
+          base=$(bundle exec duel base)
           ruby_of() { git show "$1:./.ruby-version" 2>/dev/null | awk 'NF { print $1; exit }'; }
           ruby=
           # (None without a baseline: a branch's first push, or no release yet.)
-          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+          if [ -n "$base" ]; then
             ruby=$(ruby_of "$base")
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
@@ -161,30 +153,25 @@ jobs:
         if: steps.baseline.outputs.ruby != ''
         env:
           PREFIX: ${{ steps.baseline-ruby.outputs.ruby-prefix }}
+          RUBY_PREFIX: ${{ steps.ruby.outputs.ruby-prefix }}
         run: |
+          # (The app's own Ruby first again, for the steps after: it runs
+          # Duel.)
+          echo "$RUBY_PREFIX/bin" >> "$GITHUB_PATH"
           mkdir -p ~/.rubies
           ln -sfn "$PREFIX" ~/.rubies/ruby-"$("$PREFIX/bin/ruby" -e 'print RUBY_VERSION')"
 <% end -%>
-      - uses: ruby/setup-ruby@v1
-        with:
-<% if working_directory -%>
-          working-directory: <%= working_directory %>
-<% end -%>
-<% if ruby_version -%>
-          ruby-version: "<%= ruby_version %>"
-<% end -%>
-          bundler-cache: true
       # Against the branch it targets for a pull request, the queue's base
       # for a merge queue, what was there before for a push (or as
       # c.push_base in .duel.rb says, the last commit Duel passed), and the
-      # last release on a schedule (slow creep). Duel adds its report to
+      # last release on a schedule (slow creep), as Duel finds them, from
+      # the run's event. Duel adds its report to
       # the job's summary, writes it to duel.md for the comment, and sets
       # the step's outputs to say whether to comment, as c.comment in
       # .duel.rb says, whatever the outcome.
       - name: Compare
         id: compare
         env:
-          DUEL_BASE: ${{ github.event_name == 'schedule' && 'last-release' || github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           # (Run by hand, it compares anyway: with nothing changed, the code
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}

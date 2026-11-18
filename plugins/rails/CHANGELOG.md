@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `.duel.rb` that `bin/rails generate duel:install` writes shows
   `c.accept_label = "duel: accept"` commented out, now that it's Duel's
   default.
+- The Perf workflow that `bin/rails generate duel:install` writes gives
+  Duel no `DUEL_BASE`, as Duel finds the baseline from the run's event
+  now, and finds the baseline's Ruby from `bundle exec duel base`, once
+  the app's Ruby is set up.
 - `duel_request` takes `judge:`, as `duel` does now, in place of `only:`
   and `peak_memory:`.
 - The database server's plugin's options are `database_options:`, a

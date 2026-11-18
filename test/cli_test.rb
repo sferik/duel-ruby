@@ -71,13 +71,14 @@ class CLITest < DuelTest
   def test_help
     assert_equal <<~HELP, cli.send(:parser, Duel::Settings.defaults).help
       Usage: duel [options]
+             duel base [options]
              duel init [options]
              duel clean [--config PATH]
              duel comment [options]
 
-      Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project,
-      `duel clean` removes tmp/duel and the baseline's git worktree, and `duel comment` is what its Perf comment
-      workflow runs.
+      Fails if this tree is slower than a baseline at any benchmark. `duel base` prints the commit it would compare
+      with, `duel init` sets Duel up in a project, `duel clean` removes tmp/duel and the baseline's git worktree,
+      and `duel comment` is what its Perf comment workflow runs.
 
               --base REF|DIR               Baseline: a commit (default: where HEAD left the main branch), last-release (the newest
                                            release tag), or a directory, already built
@@ -145,6 +146,12 @@ class CLITest < DuelTest
     end
   end
 
+  # An argument that isn't an option is a mistake, not ignored.
+  def test_a_needless_argument
+    assert_equal 2, cli("--base", "v1", "v2", "v3").run
+    assert_equal "duel: needless argument: v2\n", @err.string
+  end
+
   # Each version's Ruby: its version file's (version-file, or
   # version_file), or a path.
   def test_ruby
@@ -169,18 +176,39 @@ class CLITest < DuelTest
     assert_equal "duel: invalid argument: --fail-on pushes (give every_run, pull_requests)\n", @err.string
   end
 
-  # The branch pushed, where the baseline is the push's: on GitHub
-  # Actions for a push, as DUEL_BASE gives it.
-  def test_pushed
-    push = {"GITHUB_EVENT_NAME" => "push", "DUEL_BASE" => "abc123", "GITHUB_REF_NAME" => "2-x-stable"}
+  # A file of a GitHub Actions event, +payload+ (as JSON).
+  def event(payload) = File.join(tmpdir, "event.json").tap { |path| File.write(path, payload) }
 
-    assert_equal "2-x-stable", cli(env: push).parse.pushed
+  # On GitHub Actions for a push, the baseline is the commit before it,
+  # as its event says (GITHUB_EVENT_PATH), and the branch pushed is the
+  # push's, unless --base or DUEL_BASE names another baseline.
+  def test_pushed
+    push = {"GITHUB_EVENT_NAME" => "push", "GITHUB_EVENT_PATH" => event(%({"before": "abc123"})), "GITHUB_REF_NAME" => "2-x-stable"}
+
+    assert_equal ["abc123", "2-x-stable"], cli(env: push).parse.then { |s| [s.base, s.pushed] }
+    assert_equal "2-x-stable", cli(env: push.merge("DUEL_BASE" => "abc123")).parse.pushed,
+      "DUEL_BASE that's the event's, as the workflows duel init wrote before give it"
+    assert_equal ["def456", nil], cli("--base", "def456", env: push).parse.then { |s| [s.base, s.pushed] }, "--base"
+    assert_equal ["def456", nil], cli(env: push.merge("DUEL_BASE" => "def456")).parse.then { |s| [s.base, s.pushed] }, "DUEL_BASE"
+    assert_equal [nil, nil], cli("--base", tmpdir, env: push).parse.then { |s| [s.base, s.pushed] }, "a directory"
     assert_nil cli(env: push.merge("GITHUB_EVENT_NAME" => "pull_request")).parse.pushed, "not a push"
-    assert_nil cli(env: push.except("DUEL_BASE")).parse.pushed, "no DUEL_BASE"
-    assert_nil cli("--base", "abc123", env: push.except("DUEL_BASE")).parse.pushed, "--base"
-    assert_nil cli("--base", "def456", env: push).parse.pushed, "--base over DUEL_BASE"
-    assert_nil cli(env: push.except("GITHUB_EVENT_NAME")).parse.pushed, "no event"
+    assert_equal [nil, nil], cli(env: push.except("GITHUB_EVENT_PATH")).parse.then { |s| [s.base, s.pushed] }, "no event"
     assert_nil cli(env: push.except("GITHUB_REF_NAME")).parse.pushed, "no branch"
+    %w[[] { "nothing"].each { |payload| assert_nil cli(env: push.merge("GITHUB_EVENT_PATH" => event(payload))).parse.base, payload }
+  end
+
+  # The baseline other events say: a merge queue's base, and on a
+  # schedule, the last release. A pull request's is where HEAD left the
+  # branch it targets.
+  def test_the_baseline_an_event_says
+    queued = {"GITHUB_EVENT_NAME" => "merge_group", "GITHUB_EVENT_PATH" => event(%({"merge_group": {"base_sha": "fed987"}}))}
+
+    assert_equal ["fed987", nil], cli(env: queued.merge("GITHUB_REF_NAME" => "main")).parse.then { |s| [s.base, s.pushed] }
+    assert_nil cli(env: queued.merge("GITHUB_EVENT_PATH" => event("{}"))).parse.base, "no merge_group"
+    assert_equal "last-release", cli(env: {"GITHUB_EVENT_NAME" => "schedule"}).parse.base
+    assert_equal "v1", cli(env: {"GITHUB_EVENT_NAME" => "schedule", "DUEL_BASE" => "v1"}).parse.base
+    assert_nil cli(env: queued.merge("GITHUB_EVENT_NAME" => "pull_request")).parse.base
+    assert_nil cli(env: queued.merge("GITHUB_EVENT_NAME" => "workflow_dispatch")).parse.base
   end
 
   # The branch a pull request targets, on GitHub Actions: on origin, for
@@ -204,15 +232,18 @@ class CLITest < DuelTest
     assert_nil cli.parse.accepted, "unset"
   end
 
-  # On GitLab CI: a push's branch (CI_COMMIT_BRANCH), and a merge
-  # request's target (CI_MERGE_REQUEST_TARGET_BRANCH_NAME).
+  # On GitLab CI: a push's baseline (CI_COMMIT_BEFORE_SHA) and branch
+  # (CI_COMMIT_BRANCH), a schedule's, and a merge request's target
+  # (CI_MERGE_REQUEST_TARGET_BRANCH_NAME).
   def test_on_gitlab
-    gitlab = {"GITLAB_CI" => "true", "DUEL_BASE" => "abc123", "CI_COMMIT_BRANCH" => "main", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME" => "trunk"}
+    gitlab = {"GITLAB_CI" => "true", "CI_COMMIT_BEFORE_SHA" => "abc123", "CI_COMMIT_BRANCH" => "main",
+              "CI_MERGE_REQUEST_TARGET_BRANCH_NAME" => "trunk"}
     push = cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "push")).parse
     merge_request = cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "merge_request_event")).parse
 
-    assert_equal ["main", nil], [push.pushed, push.target]
-    assert_equal [nil, "origin/trunk"], [merge_request.pushed, merge_request.target]
+    assert_equal ["abc123", "main", nil], [push.base, push.pushed, push.target]
+    assert_equal [nil, nil, "origin/trunk"], [merge_request.base, merge_request.pushed, merge_request.target]
+    assert_equal "last-release", cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "schedule")).parse.base
     assert_nil cli(env: gitlab.merge("CI_PIPELINE_SOURCE" => "push", "GITLAB_CI" => "")).parse.pushed, "not GitLab CI"
   end
 

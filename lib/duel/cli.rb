@@ -17,7 +17,9 @@ module Duel
   # The `duel` command (and `duel init` and `duel comment`: see Init and
   # Comment). What a run behind a rake task or a CI expression can't pass
   # as an option can be set in the environment (DUEL_BASE, DUEL_FILTER,
-  # DUEL_FORCE), and options win.
+  # DUEL_FORCE...: see ENV_OPTIONS), and options win. On CI, the baseline
+  # is what the run's event says (see #event_base), unless one of them
+  # names one.
   # On GitHub Actions (GITHUB_STEP_SUMMARY), it adds its report to the
   # job's summary, in Markdown (see Summary), and tells the step's
   # outputs (GITHUB_OUTPUT) what to do about the comment on a pull
@@ -27,10 +29,11 @@ module Duel
   # outcome, but not for a command line that isn't valid.
   # @api private
   class CLI
-    USAGE = "Usage: duel [options]\n       duel init [options]\n       duel clean [--config PATH]\n       duel comment [options]\n\n" \
-      "Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project,\n" \
-      "`duel clean` removes tmp/duel and the baseline's git worktree, and `duel comment` is what its Perf comment\n" \
-      "workflow runs.\n\n"
+    USAGE = "Usage: duel [options]\n       duel base [options]\n       duel init [options]\n       duel clean [--config PATH]\n" \
+      "       duel comment [options]\n\n" \
+      "Fails if this tree is slower than a baseline at any benchmark. `duel base` prints the commit it would compare\n" \
+      "with, `duel init` sets Duel up in a project, `duel clean` removes tmp/duel and the baseline's git worktree,\n" \
+      "and `duel comment` is what its Perf comment workflow runs.\n\n"
 
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY = "GITHUB_STEP_SUMMARY"
@@ -86,6 +89,7 @@ module Duel
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
       return Comment.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "comment"
       return clean(@argv.drop(1)) if @argv.first == "clean"
+      return show_base(@argv.drop(1)) if @argv.first == "base"
 
       settings = @settings = catch(:version) { parse } or return 0
       config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
@@ -133,10 +137,13 @@ module Duel
       settings = Settings.defaults
       settings.jobs = [Etc.nprocessors / CPUS_PER_LANE, 1].max
       settings.fit = %i[jobs processes]
-      parser(settings).parse!(env_options + @argv)
-      branch = variable("GITHUB_REF_NAME", "CI_COMMIT_BRANCH")
-      base = variable("DUEL_BASE")
-      settings.pushed = branch if pushed? && !base.nil? && settings.base == base
+      rest = parser(settings).parse(env_options + @argv)
+      raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
+
+      # (A base given that's the event's is the event's too: the workflows
+      # duel init wrote before give DUEL_BASE as the event says.)
+      settings.base = event_base unless settings.base || settings.base_dir
+      settings.pushed = variable("GITHUB_REF_NAME", "CI_COMMIT_BRANCH") if pushed? && from_event?(settings)
       target = variable("GITHUB_BASE_REF", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
       settings.target = "origin/#{target}" if target && pull_request?
       settings.accepted = variable("DUEL_ACCEPTED")
@@ -146,6 +153,25 @@ module Duel
     end
 
     private
+
+    # `duel base`: prints the commit a run given +argv+ (a run's options:
+    # --base, say) compares with, or nothing, where it has none (no release
+    # yet, say, or a directory): for what needs it before the run, as the
+    # workflow's step that installs the baseline's Ruby does.
+    def show_base(argv)
+      @argv = argv
+      settings = @settings = catch(:version) { parse } or return 0
+      config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
+      ref = Baseline.new(config, settings).ref unless settings.base_dir
+      commit, found = git(config.root, "rev-parse", "#{ref}^{commit}") if ref
+      raise Error, "#{ref} isn't a commit here" if found && !found.success?
+
+      @out.puts commit
+      0
+    rescue Error, OptionParser::ParseError => e
+      @err.puts "duel base: #{e}"
+      2
+    end
 
     # `duel clean`: removes what Duel keeps (tmp/duel), and the baseline's
     # git worktree (see Baseline#clean), holding the project's lock, for
@@ -297,9 +323,28 @@ module Duel
     # see PULL_REQUESTS).
     def pull_request? = PULL_REQUESTS.include?(event)
 
-    # Whether the baseline is a merge queue's base: on GitHub Actions for
-    # a merge queue, as DUEL_BASE gives it.
-    def queued?(settings) = event == "merge_group" && settings.base == variable("DUEL_BASE")
+    # Whether +settings+' baseline is the one the run's event says (see
+    # #event_base): the event's, or a base given that's the event's (as
+    # the workflows duel init wrote before give DUEL_BASE).
+    def from_event?(settings)
+      found = event_base
+      !found.nil? && settings.base == found
+    end
+
+    # The baseline a run on CI is for, as its event says, where neither
+    # --base nor DUEL_BASE names one: for a push, the commit before it
+    # (on GitHub Actions, the event's before, and on GitLab CI,
+    # CI_COMMIT_BEFORE_SHA), for a merge queue, its base, and on a
+    # schedule, the last release (Baseline::LAST_RELEASE). Nil for the
+    # rest: a pull request, whose baseline is where HEAD left the branch
+    # it targets, as outside CI.
+    def event_base
+      case event
+      when "push" then gitlab? ? variable("CI_COMMIT_BEFORE_SHA") : event_payload["before"]
+      when "merge_group" then event_payload.dig("merge_group", "base_sha")
+      when "schedule" then Baseline::LAST_RELEASE
+      end
+    end
 
     # Whether this is a run on CI for a push.
     def pushed? = event == "push"
@@ -377,10 +422,9 @@ module Duel
 
     # The baseline, in Markdown: its directory, or its commit, bare (so
     # GitHub links it) and followed by a space, never punctuation, and
-    # what chose it: the main branch, the push (on GitHub Actions, the
-    # commit before it, from DUEL_BASE, or the last commit Duel passed),
-    # the merge queue (its base, from DUEL_BASE), the last release, or
-    # --base.
+    # what chose it: the main branch, the push (the commit before it, or
+    # the last commit Duel passed), the merge queue (its base), the last
+    # release, or --base.
     def described_baseline(config, settings, baseline)
       dir = settings.base_dir
       return Summary.code(dir) if dir
@@ -392,8 +436,9 @@ module Duel
       when nil then "where HEAD left #{Summary.code(baseline.main_branch)}"
       when Baseline::LAST_RELEASE then last_release(config, baseline)
       else
-        if settings.pushed then (ref == baseline.passed) ? "the last commit Duel passed" : "the commit before the push"
-        elsif queued?(settings) then "the merge queue's base"
+        if ref == baseline.passed then "the last commit Duel passed"
+        # (The event's: a push's, or a merge queue's, as a schedule's is the last release.)
+        elsif from_event?(settings) then pushed? ? "the commit before the push" : "the merge queue's base"
         elsif !ref.match?(/\A\h+\z/) then Summary.code(ref)
         else "from --base"
         end
@@ -444,16 +489,21 @@ module Duel
                          "base" => {"ref" => variable("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")}}
 
     # The pull request a pull_request event's run is for, as GitHub
-    # Actions describes it (GITHUB_EVENT_PATH), or nil.
+    # Actions describes it (see #event_payload), or nil.
     def pull_request
-      path = variable("GITHUB_EVENT_PATH") if event == "pull_request"
-      return unless path && File.file?(path)
-
-      payload = JSON.parse(File.read(path))
-      pull = payload["pull_request"] if payload.instance_of?(Hash)
+      pull = event_payload["pull_request"] if event == "pull_request"
       pull if pull.instance_of?(Hash)
+    end
+
+    # The event a run on GitHub Actions is for, as its file
+    # (GITHUB_EVENT_PATH) describes it, or nothing ({}), where there's
+    # none, or it isn't a JSON object.
+    def event_payload
+      path = variable("GITHUB_EVENT_PATH")
+      payload = JSON.parse(File.read(path)) if path && File.file?(path)
+      payload.instance_of?(Hash) ? payload : {}
     rescue JSON::ParserError
-      nil
+      {}
     end
 
     # The baseline, for JSON: the ref that named it (the main branch,

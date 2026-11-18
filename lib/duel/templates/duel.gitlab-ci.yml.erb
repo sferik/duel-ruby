@@ -27,12 +27,10 @@
     DUEL_OUTPUT: duel.env # whether to comment, and mark a push passed
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # (Duel compares a push with the commit before it, and a schedule's
+    # run with the last release, as CI_PIPELINE_SOURCE says.)
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      variables:
-        DUEL_BASE: $CI_COMMIT_BEFORE_SHA
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        DUEL_BASE: last-release
     # (Run by hand, it compares anyway: with nothing changed, the code
     # with itself, which checks the setup.)
     - if: $CI_PIPELINE_SOURCE == "web"
