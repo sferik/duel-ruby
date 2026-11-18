@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JITs (`RUBY_YJIT_ENABLE` or `RUBY_ZJIT_ENABLE`, as `1`, `true` or
   `yes`) that the worker doesn't run, saying which version's workers,
   which JIT, and on what Ruby. A Ruby without the JIT ignores its
-  variable, so `zjit: true` on Ruby 3.4, or `yjit: true` on JRuby,
+  variable, so `jit: zjit` on Ruby 3.4, or `jit: yjit` on JRuby,
   measured without it, and nothing said so.
 - ZJIT, the JIT compiler that's experimental in Ruby 4.0 and is due to
   ship in Ruby 4.1, is taken for a JIT as YJIT is: where a worker has
@@ -29,8 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs each benchmark until it's steady before it measures it, for up
   to ten seconds (or as `--warm` says). It measured from the first
   sample before, while ZJIT was still compiling. Duel's reusable Perf
-  workflow takes `zjit: true` too, as it takes `yjit: true`, and fails
-  at once where both are on, as Ruby runs one JIT at most.
+  workflow takes the JIT to turn on as one input, `jit:` (`none`,
+  `yjit` or `zjit`, as Ruby runs one at most), in place of its `yjit:
+  true`.
 
 ### Changed
 

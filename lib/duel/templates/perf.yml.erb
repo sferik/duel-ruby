@@ -22,14 +22,10 @@ on:
         description: Whether each version runs on the Ruby its .ruby-version names (c.ruby = :version_file)
         type: boolean
         default: false
-      yjit:
-        description: Whether the benchmarks run with YJIT on (RUBY_YJIT_ENABLE=1)
-        type: boolean
-        default: false
-      zjit:
-        description: Whether the benchmarks run with ZJIT on (RUBY_ZJIT_ENABLE=1), on Ruby 4.0 or later, not with yjit
-        type: boolean
-        default: false
+      jit:
+        description: The JIT the benchmarks run with on (Ruby runs one at most), none, yjit (RUBY_YJIT_ENABLE=1), or zjit (RUBY_ZJIT_ENABLE=1, on Ruby 4.0 or later)
+        type: string
+        default: none
       runs-on:
         description: The runner the Duel job runs on (a larger one, say, for steadier timings), Linux, macOS or Windows
         type: string
@@ -237,21 +233,18 @@ jobs:
           GEMFILE: ${{ inputs.gemfile }}
         # (On Windows, as C:/..., not bash's /c/..., which Ruby can't read.)
         run: echo "BUNDLE_GEMFILE=$(pwd -W 2> /dev/null || pwd)/$GEMFILE" >> "$GITHUB_ENV"
-      # YJIT, where the caller says to, for every worker of both versions.
-      - name: Turn on YJIT
-        if: inputs.yjit
-        run: echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV"
-      # Or ZJIT: Ruby runs one JIT at most, and exits where both are on.
-      - name: Turn on ZJIT
-        if: inputs.zjit
+      # The JIT the caller says to turn on, YJIT or ZJIT, for every worker
+      # of both versions.
+      - name: Turn on the JIT
+        if: inputs.jit != 'none'
         env:
-          YJIT: ${{ inputs.yjit }}
+          JIT: ${{ inputs.jit }}
         run: |
-          if [ "$YJIT" = true ]; then
-            echo "::error::yjit and zjit are both on: Ruby runs one JIT at most"
-            exit 1
-          fi
-          echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV"
+          case "$JIT" in
+            yjit) echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV" ;;
+            zjit) echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV" ;;
+            *) echo "::error::jit: $JIT: give none, yjit or zjit" && exit 1 ;;
+          esac
 <% else -%>
       # (And whatever else your tests need set up: packages, services.)
 <% end -%>

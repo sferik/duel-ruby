@@ -451,7 +451,7 @@ and the bundle, in the app's directory (`working-directory`).
 
 Rails 7.2 and later turn YJIT on as the app boots. To measure your app
 on ZJIT instead, on Ruby 4.0 or later, set `RUBY_ZJIT_ENABLE=1` (or
-`zjit: true` in Duel's reusable workflow): Rails's call to turn YJIT on
+`jit: zjit` in Duel's reusable workflow): Rails's call to turn YJIT on
 then warns that only one JIT can be on, and ZJIT stays on. When either
 is on, Duel warms each benchmark up until it's steady, for up to ten
 seconds, before it measures it, so that the JIT has compiled your app's

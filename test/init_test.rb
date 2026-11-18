@@ -1421,7 +1421,7 @@ class InitTest < DuelTest
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")
-    inputs = %w[ruby-version version-file yjit zjit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report
+    inputs = %w[ruby-version version-file jit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report
       accept-label release-tags
       comment-on-pushes mark-passed badge passed-branch badge-branch marker]
 
@@ -1436,26 +1436,33 @@ class InitTest < DuelTest
     assert_equal({"name" => "Set up", "if" => "inputs.setup != ''", "env" => {"SETUP" => "${{ inputs.setup }}"}, "run" => %(eval "$SETUP")}, steps.fetch(2))
     gemfile = {"name" => "Use the caller's Gemfile", "if" => "inputs.gemfile != ''", "env" => {"GEMFILE" => "${{ inputs.gemfile }}"},
                "run" => %(echo "BUNDLE_GEMFILE=$(pwd -W 2> /dev/null || pwd)/$GEMFILE" >> "$GITHUB_ENV")}
-    yjit = {"name" => "Turn on YJIT", "if" => "inputs.yjit", "run" => %(echo "RUBY_YJIT_ENABLE=1" >> "$GITHUB_ENV")}
+    jit = {"name" => "Turn on the JIT", "if" => "inputs.jit != 'none'", "env" => {"JIT" => "${{ inputs.jit }}"}}
 
-    assert_equal [gemfile, yjit], steps[3, 2]
-    assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 5
+    assert_equal [gemfile, jit], [steps[3], steps[4].except("run")]
+    assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 4
     assert_equal "${{ inputs.accept-label }}", steps.fetch(1).dig("env", "ACCEPT_LABEL")
     assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
     assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
   end
 
-  # YJIT or ZJIT, where the caller says, for every worker of both
-  # versions: not both, which Ruby won't run, as the job says, and fails.
-  def test_the_reusable_workflows_jits
-    steps = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml")).dig("jobs", "duel", "steps")
-    zjit = steps.find { |step| step["name"] == "Turn on ZJIT" }
+  # The JIT the caller says (jit:, one of them, as Ruby runs one at
+  # most), for every worker of both versions, run: YJIT or ZJIT, and
+  # anything else fails.
+  def test_the_reusable_workflows_jit
+    workflow = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml"))
+    step = workflow.dig("jobs", "duel", "steps").find { |s| s["name"] == "Turn on the JIT" }
+    env = File.join(tmpdir, "env")
+    turned = lambda do |jit|
+      File.write(env, "")
+      [shell({"JIT" => jit, "GITHUB_ENV" => env}, step.fetch("run")), File.read(env)]
+    end
 
-    assert_equal ["inputs.zjit", {"YJIT" => "${{ inputs.yjit }}"}], zjit.values_at("if", "env")
-    assert_equal steps.index { |step| step["name"] == "Turn on YJIT" } + 1, steps.index(zjit)
-    assert_includes zjit.fetch("run"), %(echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV")
-    assert_includes zjit.fetch("run"), %(if [ "$YJIT" = true ]; then\n  echo "::error::yjit and zjit are both on: Ruby runs one JIT at most"\n  exit 1\n)
+    assert_equal({"type" => "string", "default" => "none"}, workflow.dig(true, "workflow_call", "inputs", "jit").except("description"))
+    assert_equal [true, "RUBY_YJIT_ENABLE=1\n"], turned.call("yjit")
+    assert_equal [true, "RUBY_ZJIT_ENABLE=1\n"], turned.call("zjit")
+    assert_equal [false, ""], turned.call("both")
+    assert_includes @shell, "::error::jit: both: give none, yjit or zjit"
   end
 
   # The reusable Perf workflow narrows what its caller grants (the
