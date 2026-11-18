@@ -134,17 +134,17 @@ module Duel
       # What a confidence +interval+ for the median ratio (or nil, for too
       # few) says against +limit+: :slower when it lies above the limit,
       # :faster when it lies below 1 / limit, :same when it lies below the
-      # limit (it isn't slower: nothing more needs proving), and :undecided
+      # limit (it isn't slower: nothing more needs proving), and :unsettled
       # while it straddles the limit.
       def decide(interval, limit)
-        return :undecided unless interval
+        return :unsettled unless interval
 
         low, high = interval
         return :slower if low > limit
         return :faster if high < 1 / limit
         return :same if high < limit
 
-        :undecided
+        :unsettled
       end
     end
   end

@@ -45,7 +45,7 @@ module Duel
 
     # The measurements again that were too close to call (see #confirm).
     # @api private
-    attr_reader :undecided
+    attr_reader :close_calls
 
     # @api private
     attr_writer :n, :seconds, :skipped, :error, :memory, :profile
@@ -62,7 +62,7 @@ module Duel
       @counted = {}
       @details = {}
       @confirmations = []
-      @undecided = []
+      @close_calls = []
       @processes = {}
     end
 
@@ -113,16 +113,16 @@ module Duel
     # Keeps +again+, a measurement of it again from scratch (see
     # Runner#confirm), as a confirmation, or sets it aside where it's too
     # close to call, up to Runner::CONFIRM times: every timing is still
-    # undecided there (none slower, none the same or faster), and each
+    # unsettled there (none slower, none the same or faster), and each
     # measure it regressed on so far is one of them. One that can't tell
     # neither confirms it nor clears it, so it's measured again instead.
     # Returns whether +again+ was set aside.
     # @api private
     def confirm(again)
       timed = again.timed
-      close = timed.all? { |_, t| t.fetch("verdict") == "undecided" } && regressed.all? { |metric| timed.key?(metric) } &&
-        @undecided.size < Runner::CONFIRM
-      (close ? @undecided : @confirmations) << again
+      close = timed.all? { |_, t| t.fetch("verdict") == "unsettled" } && regressed.all? { |metric| timed.key?(metric) } &&
+        @close_calls.size < Runner::CONFIRM
+      (close ? @close_calls : @confirmations) << again
       close
     end
 
@@ -160,7 +160,7 @@ module Duel
 
     # Whether a timed measure's verdict was too close to the limit to settle.
     # @api private
-    def unsettled? = @timed.any? { |_, t| t.fetch("verdict") == "undecided" }
+    def unsettled? = @timed.any? { |_, t| t.fetch("verdict") == "unsettled" }
 
     private
 

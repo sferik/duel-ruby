@@ -71,6 +71,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sample.benchmark.judge`, with `timed?`, `counted?` and
   `peak_memory?`, in place of `only` and `peak_memory`, and
   `Duel::Testing.measure` and `Duel::Testing.sample` take `judge:` too.
+- The JSON report's schema is 2:
+  - `status` is what the comparison found, and `exit` is `duel`'s exit
+    status, with `passed_anyway` saying why a run that failed passed
+    anyway (`"accept_label"`, or `"fail_on"`), which nothing said
+    before: a regression a label accepted was `"passed"`.
+  - A timing too close to its limit to settle is `"unsettled"`, as its
+    benchmark's verdict is, not `"undecided"`, in the JSON report, the
+    Markdown report and the terminal's.
+  - A count, and peak memory, has a `verdict` (`"more"`, `"fewer"` or
+    `"same"`) in place of `worse`.
+  - `unsettled` (a benchmark's `verdict` says so), `errors` (each
+    benchmark's `error` says so) and `comment` (the workflow's step
+    output says so) are gone.
 - `--candidate-dir` is `--candidate`, as `--base` names the baseline,
   and `DUEL_CANDIDATE` sets it.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and

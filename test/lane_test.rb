@@ -315,7 +315,7 @@ class LaneTest < DuelTest
       end
       timed = compare(workers, limit: 1.02).first.timed
 
-      assert_equal %w[undecided 60], timed.fetch("cpu").values_at("verdict", "pairs").map(&:to_s)
+      assert_equal %w[unsettled 60], timed.fetch("cpu").values_at("verdict", "pairs").map(&:to_s)
       assert_equal %w[same 60], timed.fetch("other").values_at("verdict", "pairs").map(&:to_s), "its own limit"
       assert_equal [1.02, 1.05], timed.values.map { |t| t.fetch("limit") }
       pairs = (0...60).map do |i|
@@ -379,7 +379,7 @@ class LaneTest < DuelTest
       result, = compare(workers, processes: 5)
       cpu = result.timed.fetch("cpu")
 
-      assert_equal ["undecided", 120], cpu.values_at("verdict", "pairs")
+      assert_equal ["unsettled", 120], cpu.values_at("verdict", "pairs")
       low, high = cpu.fetch("interval")
 
       assert_operator low, :<, 0.95

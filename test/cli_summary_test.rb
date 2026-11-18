@@ -194,15 +194,14 @@ class CLISummaryTest < DuelTest
   end
 
   # On GitHub Actions, the step's outputs say whether the workflow
-  # comments, and the run's status, as --comment says, or c.comment, and
-  # the JSON report says whether too.
+  # comments, and the run's status, as --comment says, or c.comment.
   def test_the_step_outputs
     output = File.join(tmpdir, "output")
     File.write(output, "before=1\n")
     run_faked("--json", json, env: {"GITHUB_OUTPUT" => output})
 
     assert_equal "before=1\ncomment=change\nstatus=passed\n", File.read(output), "added to"
-    assert_equal "change", @reported.first.last.fetch(:comment)
+    assert_equal [true, 0, nil], @reported.first.last.values_at(:passed, :exit, :passed_anyway), "the JSON report's"
     File.write(output, "")
     run_faked("--comment", "always", env: {"GITHUB_OUTPUT" => output})
     run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
@@ -245,6 +244,7 @@ class CLISummaryTest < DuelTest
     outcome.call("--fail-on", "pull_requests", "--markdown", markdown)
 
     assert_equal "Only a pull request fails (`c.fail_on`), so this push passes.", @summarized.first.last.fetch(:note)
+    assert_equal [false, "fail_on"], @reported.first.last.values_at(:passed, :passed_anyway), "the JSON report's, of why"
     File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.fail_on = :pull_requests }\n")
 
     assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call, "c.fail_on"
@@ -272,7 +272,8 @@ class CLISummaryTest < DuelTest
 
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[null]"}), "no label isn't one"
 
-    assert_equal 0, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug", "duel: accept"])})
+    assert_equal 0, run_faked("--json", json, passed: false, env: {"DUEL_LABELS" => %(["bug", "duel: accept"])})
+    assert_equal [false, 0, "accept_label"], @reported.first.last.values_at(:passed, :exit, :passed_anyway), "the JSON report's"
     assert_equal accepted, outcome.call(%(["bug", "duel: accept"]))
     assert_equal accepted, outcome.call(%(["duel: accept"]), env: {"GITHUB_EVENT_NAME" => "push"}), "a push, by its pull request's"
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug"])}), "not the label"
@@ -338,12 +339,12 @@ class CLISummaryTest < DuelTest
     env = {"GITHUB_OUTPUT" => output}
     Dir.chdir(repo) { cli("--base", "last-release", "--json", json, env: env).run }
 
-    assert_equal ["comment=change\nstatus=neutral\n", "change"], [File.read(output), written.fetch("comment")]
+    assert_equal ["comment=change\nstatus=neutral\n", "nothing_to_compare"], [File.read(output), written.fetch("status")]
     File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.comment = :results }\n")
     File.write(output, "")
     Dir.chdir(repo) { cli("--base", "nope", "--force", "--json", json, env: env).run }
 
-    assert_equal ["comment=post\nstatus=failed\n", "post"], [File.read(output), written.fetch("comment")]
+    assert_equal ["comment=post\nstatus=failed\n", "error"], [File.read(output), written.fetch("status")]
     File.write(output, "")
     Dir.chdir(repo) { cli("--base", "last-release", "--comment", "always", env: env).run }
 

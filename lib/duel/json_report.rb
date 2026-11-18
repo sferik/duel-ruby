@@ -13,48 +13,50 @@ module Duel
   # isn't a new key.
   # @api private
   class JSONReport
-    SCHEMA = 1
+    SCHEMA = 2
 
     # A run that didn't compare: +status+ ("nothing_to_compare", or
-    # "error"), its +exit+ status, +message+, what it said, and what the
-    # workflow does about its +comment+ (see CLI.comment).
-    def self.note(status, exit, message, settings, comment)
+    # "error"), its +exit+ status, and +message+, what it said.
+    def self.note(status, exit, message, settings)
       none = [] #: Array[value]
       nothing = {} #: report
-      head(status, exit, message, settings, comment).merge("seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => none,
-        "benchmarks" => none, "across" => nothing, "errors" => none, "cut_short" => nil)
+      head(status, exit, nil, message, settings).merge("seconds" => nil, "baseline" => nil, "candidate" => nil, "plugins" => none,
+        "benchmarks" => none, "across" => nothing, "cut_short" => nil)
     end
 
     # What every report starts with.
-    def self.head(status, exit, message, settings, comment)
-      {"schema" => SCHEMA, "duel_version" => VERSION, "status" => status, "exit" => exit, "message" => message, "comment" => comment,
-       "settings" => {"confidence" => settings.confidence, "limit" => settings.limit, "filter" => settings.filter.source,
-                      "jobs" => settings.jobs, "processes" => settings.processes, "timeout" => settings.timeout,
-                      "time_limit" => settings.time_limit, "warm" => settings.warm, "force" => settings.force}}
+    def self.head(status, exit, passed_anyway, message, settings)
+      {"schema" => SCHEMA, "duel_version" => VERSION, "status" => status, "exit" => exit, "passed_anyway" => passed_anyway,
+       "message" => message, "settings" => {"confidence" => settings.confidence, "limit" => settings.limit, "filter" => settings.filter.source,
+                                            "jobs" => settings.jobs, "processes" => settings.processes, "timeout" => settings.timeout,
+                                            "time_limit" => settings.time_limit, "warm" => settings.warm, "force" => settings.force}}
     end
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
     # +candidate+ (each {"ref", "commit", "root"} or {"commit",
-    # "uncommitted_changes", "root"}) as +settings+ say, exits with
-    # +exit+, and has the workflow do +comment+ (see CLI.comment).
-    def initialize(runner, results, settings:, exit:, comment:, baseline:, candidate:)
+    # "uncommitted_changes", "root"}) as +settings+ say, and whether they
+    # +passed+, exits with +exit+, and if they failed, passed anyway as
+    # +passed_anyway+ says (see CLI#slower): "accept_label" (a pull
+    # request's label accepted it), "fail_on" (only a pull request
+    # fails), or nil.
+    def initialize(runner, results, settings:, passed:, exit:, passed_anyway:, baseline:, candidate:)
       @runner = runner
       @results = results
       @settings = settings
+      @passed = passed
       @exit = exit
-      @comment = comment
+      @passed_anyway = passed_anyway
       @versions = {"baseline" => baseline, "candidate" => candidate}
     end
 
     def to_h
       rubies = @runner.rubies
-      JSONReport.head(@exit.zero? ? "passed" : "failed", @exit, nil, @settings, @comment).merge(
+      JSONReport.head(@passed ? "passed" : "failed", @exit, @passed_anyway, nil, @settings).merge(
         "seconds" => @runner.seconds,
         **@versions.to_h { |side, version| [side, version.merge("ruby" => rubies.fetch(side))] },
         "plugins" => @runner.plugins.map(&:to_s),
         "benchmarks" => @results.map { |result| benchmark(result) },
         "across" => across,
-        "errors" => @results.select(&:error).map { |result| {"benchmark" => result.name, "message" => result.error} },
         "cut_short" => @runner.cut_short
       )
     end
@@ -64,7 +66,7 @@ module Duel
     # (Runner#explained says nothing of a benchmark that didn't regress.)
     def benchmark(result)
       {"name" => result.name, "verdict" => Summary.verdict(result), "passed" => result.passed?, "regressed" => result.regressed,
-       "unsettled" => result.unsettled?, "iterations" => result.n, "seconds" => result.seconds,
+       "iterations" => result.n, "seconds" => result.seconds,
        "confirmations" => result.confirmations.size, "timed" => timed(result), "counted" => counted(result),
        "peak_memory" => peak_memory(result), "details" => result.details,
        "explanation" => @runner.explained(result), "error" => result.error, "skipped" => result.skipped}
@@ -83,20 +85,27 @@ module Duel
       end
     end
 
-    # Each counted measure: each version's fewest an iteration, and
-    # whether that's worse.
+    # Each counted measure: each version's fewest an iteration, and its
+    # verdict: "more" (worse: more than the metric tolerates), "fewer",
+    # or "same" (or more, within what it tolerates).
     def counted(result)
       worse = result.worse
       result.counted.to_h do |metric, c|
         base, candidate = Result.per_iteration(c)
-        [metric, {"baseline" => base, "candidate" => candidate, "unit" => c.fetch("unit"),
-                  "plural" => c.fetch("plural"), "worse" => worse.include?(metric)}]
+        verdict = if worse.include?(metric) then "more"
+        elsif candidate < base then "fewer"
+        else "same"
+        end
+        [metric, {"baseline" => base, "candidate" => candidate, "unit" => c.fetch("unit"), "plural" => c.fetch("plural"), "verdict" => verdict}]
       end
     end
 
+    # Each version's peak memory, and its verdict: "more" (than Duel
+    # tolerates), or "same".
     def peak_memory(result)
       result.memory&.then do |memory|
-        {"baseline" => memory.fetch("baseline"), "candidate" => memory.fetch("candidate"), "unit" => "B", "worse" => result.more_memory?}
+        {"baseline" => memory.fetch("baseline"), "candidate" => memory.fetch("candidate"), "unit" => "B",
+         "verdict" => result.more_memory? ? "more" : "same"}
       end
     end
 

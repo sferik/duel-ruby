@@ -41,7 +41,7 @@ module Duel
     @counted: Hash[String, counted]
     @details: Hash[String, Hash[String, String]]
     @confirmations: Array[Result]
-    @undecided: Array[Result]
+    @close_calls: Array[Result]
     @processes: Hash[String, processes]
     @n: Integer?
     @seconds: Float?
@@ -68,7 +68,7 @@ module Duel
 
     # The measurements again that were too close to call.
     # @api private
-    attr_reader undecided: Array[Result]
+    attr_reader close_calls: Array[Result]
 
     # Each worker's median of each measure judged by process, by metric.
     # @api private

@@ -128,7 +128,7 @@ class SummaryTest < DuelTest
         |---|---|---|---|
         | `slow: work` | **regressed** | cpu 1.100 [1.100, 1.100] slower | allocations 2 → 3 |
         | `broken` | **error** |  |  |
-        | `close: call` | unsettled | cpu 1.020 [1.020, 1.020] undecided |  |
+        | `close: call` | unsettled | cpu 1.020 [1.020, 1.020] unsettled |  |
         | `fast: work` | faster | cpu 0.900 [0.900, 0.900] faster |  |
         | `fewer: allocations` | changed | cpu 1.000 [1.000, 1.000] | allocations 3 → 2 |
         | `new` | skipped | not on the baseline (base-1: NameError: no) |  |
@@ -198,7 +198,7 @@ class SummaryTest < DuelTest
   # A timing too close to call doesn't fail the run: it's only in the
   # details, which say what it means.
   def test_a_run_that_passed_unsettled
-    markdown = summary([result("close", timed: {"cpu" => "undecided"}, median: 1.02), result("a")])
+    markdown = summary([result("close", timed: {"cpu" => "unsettled"}, median: 1.02), result("a")])
 
     assert_equal <<~MARKDOWN, markdown
       ### 🟢 Duel: 100% of benchmarks passed
@@ -210,7 +210,7 @@ class SummaryTest < DuelTest
 
       | Benchmark | Verdict | Timings (ratio [interval]) |
       |---|---|---|
-      | `close` | unsettled | cpu 1.020 [0.990, 1.010] undecided |
+      | `close` | unsettled | cpu 1.020 [0.990, 1.010] unsettled |
       | `a` | same | cpu 1.000 [0.990, 1.010] |
 
       An unsettled timing was too close to the limit to settle. It doesn't fail the run, but one that's unsettled in run after run is noisy.
@@ -305,7 +305,7 @@ class SummaryTest < DuelTest
   # those not confirmed slower in the details.
   def test_across_the_board
     across = {"cpu" => {"median" => 1.0, "interval" => [0.998, 1.002], "limit" => 1.005, "benchmarks" => 8, "verdict" => "same"},
-              "few" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "undecided"},
+              "few" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "unsettled"},
               "wait" => {"median" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 1, "verdict" => "slower",
                          "confirmed" => false},
               "gc" => {"median" => 1.01, "interval" => [1.006, 1.02], "limit" => 1.005, "benchmarks" => 9, "verdict" => "slower",
@@ -354,8 +354,8 @@ class SummaryTest < DuelTest
     counted.counted.fetch("allocations")["n"] = 2
     memory = result("memory", timed: {})
     memory.memory = {"baseline" => 1 << 20, "candidate" => 3 << 20}
-    mixed = result("mixed", timed: {"cpu" => "slower", "instructions" => "undecided"}, median: 1.031)
-    mixed.confirmations << result("again", timed: {"cpu" => "undecided", "instructions" => "slower"})
+    mixed = result("mixed", timed: {"cpu" => "slower", "instructions" => "unsettled"}, median: 1.031)
+    mixed.confirmations << result("again", timed: {"cpu" => "unsettled", "instructions" => "slower"})
     markdown = summary([counted, memory, mixed])
 
     assert_includes markdown, "| Benchmark | Failure |\n|---|---|\n| `counted` | allocations 2 → 2.5 |\n| `memory` | peak_memory 1.0MB → 3.0MB |\n" \
@@ -382,13 +382,13 @@ class SummaryTest < DuelTest
   # rest; one with nothing to explain; and those past what fits
   # (LIMIT), named.
   def test_regressions
-    mixed = result("mixed", timed: {"cpu" => "slower", "instructions" => "undecided"})
-    mixed.confirmations << result("again", timed: {"cpu" => "undecided", "instructions" => "slower"})
+    mixed = result("mixed", timed: {"cpu" => "slower", "instructions" => "unsettled"})
+    mixed.confirmations << result("again", timed: {"cpu" => "unsettled", "instructions" => "slower"})
     memory = result("memory", timed: {})
     memory.memory = {"baseline" => 1 << 20, "candidate" => 3 << 20}
     markdown = summary([mixed, memory])
 
-    assert_includes markdown, "| `mixed` | **regressed** | cpu 1.000 [0.990, 1.010] slower<br>instructions 1.000 [0.990, 1.010] undecided |  |\n"
+    assert_includes markdown, "| `mixed` | **regressed** | cpu 1.000 [0.990, 1.010] slower<br>instructions 1.000 [0.990, 1.010] unsettled |  |\n"
     assert_includes markdown, "| `memory` | **regressed** |  | peak_memory 1.0MB → 3.0MB |\n"
     assert_includes markdown, "</summary>\n\n**`mixed`**: slower in every measurement, by one of cpu, instructions\n\n```text\n" \
       "cpu: 1µs → 1µs an iteration (1.00x)\ninstructions: 1µs → 1µs an iteration (1.00x)\n```\n\n" \

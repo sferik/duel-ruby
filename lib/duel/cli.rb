@@ -179,8 +179,8 @@ module Duel
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
             candidate: described_candidate(config, settings, baseline), note: @note, accepted: @accepted).markdown
         },
-        ->(comment) {
-          JSONReport.new(runner, results, settings: settings, exit: status, comment: comment,
+        -> {
+          JSONReport.new(runner, results, settings: settings, passed: passed, exit: status, passed_anyway: @passed_anyway,
             baseline: baseline_json(config, settings, baseline, base_root), candidate: candidate_json(config, settings, baseline)).to_h
         }
       )
@@ -197,12 +197,14 @@ module Duel
         # (Set: see #accepted?.)
         label = config.accept_label #: String
         @accepted = true
+        @passed_anyway = "accept_label"
         return passing("accepted with the #{label} label", "Accepted with the #{Summary.code(label)} label.")
       end
       return 1 unless pull_requests_only?(config, settings) && outside_pull_request?
 
       # (Outside a pull request on CI, so there's one: see #event.)
       run = event #: String
+      @passed_anyway = "fail_on"
       passing("only a pull request fails (c.fail_on), so this #{run} passes",
         "Only a pull request fails (#{Summary.code("c.fail_on")}), so this #{run} passes.", gitlab? ? WARNED : 0)
     end
@@ -295,7 +297,7 @@ module Duel
     def unfinished(mark, title, status, why, exit)
       # (Parsed, so set: see #run.)
       settings = @settings #: Settings
-      publish(status, -> { Summary.note(mark, title, why) }, ->(comment) { JSONReport.note(status, exit, "duel: #{why}", settings, comment) })
+      publish(status, -> { Summary.note(mark, title, why) }, -> { JSONReport.note(status, exit, "duel: #{why}", settings) })
       exit
     end
 
@@ -318,10 +320,9 @@ module Duel
     end
 
     # Writes the reports of a run whose +status+ is the JSON report's
-    # where they're asked for: the JSON +json+ makes, given what the
-    # workflow does about its comment (see #commenting), to the file
-    # --json names, and the Markdown +markdown+ makes to the file
-    # --markdown names, and added to the job's summary on GitHub Actions
+    # where they're asked for: the JSON +json+ makes to the file --json
+    # names, and the Markdown +markdown+ makes to the file --markdown
+    # names, and added to the job's summary on GitHub Actions
     # (STEP_SUMMARY). Each is only made if it's written. On GitHub
     # Actions, it also sets the step's outputs (STEP_OUTPUT) for the jobs
     # that comment: +comment+, and +status+ as the comment's marker has
@@ -336,7 +337,7 @@ module Duel
       output = variable(OUTPUT)
       File.write(output, outputs.gsub(/^\w+=/) { |name| "DUEL_#{name.upcase}" }, mode: "a") if output
       path = @json
-      write(path, "#{JSON.pretty_generate(json.call(comment))}\n") if path
+      write(path, "#{JSON.pretty_generate(json.call)}\n") if path
       path = @markdown
       summary = variable(STEP_SUMMARY)
       return unless path || summary

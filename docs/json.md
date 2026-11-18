@@ -24,7 +24,7 @@ comparing, or crashed.
 
 ## Versions of the schema
 
-The report's `schema` key is the version of its schema, now `1`. A new
+The report's `schema` key is the version of its schema, now `2`. A new
 key can appear in any release without a new version, so ignore the keys
 that you don't know. Any other change, such as a key removed or renamed,
 or a value that means something else, comes with a new version. Check
@@ -42,12 +42,12 @@ A run that found one regression, abridged to two benchmarks:
 
 ```json
 {
-  "schema": 1,
-  "duel_version": "0.1.0",
+  "schema": 2,
+  "duel_version": "0.2.1",
   "status": "failed",
   "exit": 1,
+  "passed_anyway": null,
   "message": null,
-  "comment": "post",
   "settings": {
     "confidence": 0.99,
     "limit": 1.02,
@@ -78,7 +78,6 @@ A run that found one regression, abridged to two benchmarks:
       "verdict": "regressed",
       "passed": false,
       "regressed": ["instructions", "cpu", "allocations"],
-      "unsettled": false,
       "iterations": 9,
       "seconds": 3.1,
       "confirmations": 3,
@@ -116,7 +115,7 @@ A run that found one regression, abridged to two benchmarks:
           "candidate": 5791.0,
           "unit": null,
           "plural": null,
-          "worse": true
+          "verdict": "more"
         }
       },
       "peak_memory": null,
@@ -136,7 +135,6 @@ A run that found one regression, abridged to two benchmarks:
       "verdict": "same",
       "passed": true,
       "regressed": [],
-      "unsettled": false,
       "iterations": 2400,
       "seconds": 0.8,
       "confirmations": 0,
@@ -161,7 +159,7 @@ A run that found one regression, abridged to two benchmarks:
           "candidate": 3.0,
           "unit": null,
           "plural": null,
-          "worse": false
+          "verdict": "same"
         }
       },
       "peak_memory": null,
@@ -178,11 +176,11 @@ A run that found one regression, abridged to two benchmarks:
       "limit": 1.005,
       "benchmarks": 12,
       "processes": 8,
-      "verdict": "undecided",
+      "verdict": "unsettled",
       "confirmed": false
     }
   },
-  "errors": []
+  "cut_short": null
 }
 ```
 
@@ -190,12 +188,12 @@ A run with nothing to compare has the same keys, with nothing compared:
 
 ```json
 {
-  "schema": 1,
-  "duel_version": "0.1.0",
+  "schema": 2,
+  "duel_version": "0.2.1",
   "status": "nothing_to_compare",
   "exit": 0,
+  "passed_anyway": null,
   "message": "duel: lib, ext, duel, .duel.rb unchanged since the baseline, so there's nothing to compare (--force to anyway)",
-  "comment": "change",
   "settings": {"confidence": 0.99, "limit": 1.02, "filter": "", "jobs": 4, "processes": 8, "timeout": 60.0, "warm": null, "force": false},
   "seconds": null,
   "baseline": null,
@@ -203,7 +201,7 @@ A run with nothing to compare has the same keys, with nothing compared:
   "plugins": [],
   "benchmarks": [],
   "across": {},
-  "errors": []
+  "cut_short": null
 }
 ```
 
@@ -218,19 +216,18 @@ jq -r '.benchmarks[] | select(.verdict == "regressed") | .name' tmp/duel.json
 
 | Key | What it is |
 |---|---|
-| `schema` | The schema's version: `1`. |
+| `schema` | The schema's version: `2`. |
 | `duel_version` | The version of Duel that wrote the report. |
-| `status` | `"passed"`, `"failed"`, `"nothing_to_compare"`, or `"error"` (Duel couldn't compare). |
-| `exit` | The exit status of `duel`: `0` for passed or nothing to compare, `1` for failed, `2` for an error. |
+| `status` | What the comparison found: `"passed"`, `"failed"`, `"nothing_to_compare"`, or `"error"` (Duel couldn't compare). |
+| `exit` | The exit status of `duel`: `0` for passed, nothing to compare, or failed but passed anyway (see `passed_anyway`), `1` for failed, `2` for an error, and `3` for failed but only warned (on GitLab CI, where only a merge request fails). |
+| `passed_anyway` | Why a run that failed passed anyway: `"accept_label"`, where the pull request's label accepted the regression (see [`c.accept_label`](configuration.md#accept-a-regression-with-a-label)), or `"fail_on"`, where only a pull request fails (see `c.fail_on`). Otherwise `null`. |
 | `message` | What Duel said, for nothing to compare or an error, such as `"duel: no release tag (v*) before HEAD to compare against"`. Otherwise `null`. |
-| `comment` | Whether the workflow that `duel init` writes comments on a pull request with the report, as [`c.comment`](configuration.md#choose-when-to-comment-on-a-pull-request) (or `--comment`) decides for this run: `"post"` a new comment, `"change"`, which posts one only if the workflow commented on the pull request before and its last comment's status differs from this run's, or `"none"`. See [Comment on a pull request](ci.md#comment-on-a-pull-request). |
 | `settings` | The settings that the run used (see below). |
 | `seconds` | How long the comparison took. `null` without a comparison. |
 | `baseline`, `candidate` | The two versions (see below). `null` without a comparison. |
 | `plugins` | The names of the plugins in use, such as `["rails", "activerecord"]`. |
 | `benchmarks` | Every benchmark compared, in the order Duel found them (see below). |
 | `across` | The verdicts across the board, by metric (see below). |
-| `errors` | The benchmarks that failed, each as `{"benchmark": name, "message": error}`. |
 | `cut_short` | What the run left undone when it reached its time limit (`--time-limit`): `{"unmeasured": [names], "unconfirmed": [names], "across": true or false}`. `unmeasured` are the benchmarks that it didn't measure, which are errors. `unconfirmed` are those that it judged without measuring them again as often as it usually does, and `across` is whether it judged across the board without measuring every benchmark again. `null` for a run that finished within its limit. |
 
 A run fails when a benchmark regressed, a benchmark failed, or a metric
@@ -268,13 +265,12 @@ was slower across the board and confirmed (`"confirmed": true`).
 | `verdict` | `"regressed"`, `"error"`, `"unsettled"` (a timing too close to its limit to settle), `"faster"`, `"changed"` (a count changed), `"skipped"`, or `"same"`, as in the Markdown report's table. |
 | `passed` | Whether it regressed on nothing and didn't fail. |
 | `regressed` | The metrics that it regressed on, in every measurement, such as `["cpu", "allocations"]`. Peak memory is `"peak_memory"`. |
-| `unsettled` | Whether a timing was too close to its limit to settle. |
 | `iterations` | The iterations in each sample. `null` for a benchmark that failed or was skipped. |
 | `seconds` | How long its first measurement took. `null` for a benchmark that failed or was skipped. |
 | `confirmations` | How many times it was measured again, from scratch, because it looked worse. |
 | `timed` | Its timings, by metric (see below). |
 | `counted` | Its counts, by metric (see below). |
-| `peak_memory` | Each version's peak memory, as `{"baseline": bytes, "candidate": bytes, "unit": "B", "worse": true or false}`, for a benchmark that measures it. Otherwise `null`. |
+| `peak_memory` | Each version's peak memory, as `{"baseline": bytes, "candidate": bytes, "unit": "B", "verdict": "more" or "same"}`, for a benchmark that measures it: `"more"` by more than Duel tolerates. Otherwise `null`. |
 | `details` | What metrics said of the last samples, by metric and then by version, such as `{"allocations": {"baseline": "2 String", "candidate": "3 String"}}`. |
 | `explanation` | For a regression, the lines that explain it, as the terminal report and the Markdown report show them. Otherwise `[]`. |
 | `error` | Why it failed, with any backtrace. Otherwise `null`. |
@@ -289,7 +285,7 @@ Each timing in `timed`, such as `cpu`:
 | `limit` | The ratio above which it's slower. |
 | `pairs` | The pairs of samples measured. |
 | `processes` | The worker processes of each version that the interval is over, or `null` where it's over the pairs: for a process benchmark, or with fewer workers than the interval takes (see [How it works](how-it-works.md)). |
-| `verdict` | `"slower"`, `"faster"`, `"same"`, or `"undecided"` (too close to the limit to settle). |
+| `verdict` | `"slower"`, `"faster"`, `"same"`, or `"unsettled"` (too close to the limit to settle). |
 | `baseline`, `candidate` | Each version's median for one iteration, in `unit`. |
 | `unit`, `plural` | The metric's unit, singular and plural, such as `"ns"`, or `null` for a plain number. |
 | `across` | Whether it counts across the board. |
@@ -300,7 +296,7 @@ Each count in `counted`, such as `allocations`:
 |---|---|
 | `baseline`, `candidate` | Each version's fewest for one iteration, in `unit`. |
 | `unit`, `plural` | The metric's unit, singular and plural, such as `"query"` and `"queries"`, or `null` for a plain number. |
-| `worse` | Whether the candidate's count is worse, by more than the metric tolerates. |
+| `verdict` | `"more"` (worse: more than the metric tolerates), `"fewer"`, or `"same"` (or more, within what the metric tolerates). |
 
 ### Across the board
 
@@ -313,5 +309,5 @@ Each metric in `across`, such as `cpu`:
 | `limit` | The ratio above which it's slower across the board. |
 | `benchmarks` | The benchmarks that it's from. |
 | `processes` | The worker processes of each version that the interval is over, or `null` where it's over the benchmarks. |
-| `verdict` | `"slower"`, `"faster"`, `"same"`, or `"undecided"`. |
+| `verdict` | `"slower"`, `"faster"`, `"same"`, or `"unsettled"`. |
 | `confirmed` | Whether it was slower again when every benchmark was measured a second time, which fails the run. |

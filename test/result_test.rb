@@ -27,8 +27,8 @@ class ResultTest < DuelTest
     r = result(timed: {"cpu" => "slower", "db" => "same"}, counted: {"allocations" => [5, 6], "trips" => [2, 2]})
 
     assert_equal %w[cpu allocations], r.worse
-    assert_empty result(timed: {"cpu" => "undecided"}, counted: {"allocations" => [6, 5]}).worse,
-      "undecided and fewer aren't worse"
+    assert_empty result(timed: {"cpu" => "unsettled"}, counted: {"allocations" => [6, 5]}).worse,
+      "unsettled and fewer aren't worse"
   end
 
   # Counted by process, what's judged is how much more the candidate's
@@ -94,24 +94,24 @@ class ResultTest < DuelTest
   # measure it regressed on among them, is set aside, up to
   # Runner::CONFIRM of them. Any other is a confirmation.
   def test_confirm
-    r = result(timed: {"cpu" => "slower", "instructions" => "undecided"})
-    close = result(timed: {"cpu" => "undecided", "instructions" => "undecided"})
+    r = result(timed: {"cpu" => "slower", "instructions" => "unsettled"})
+    close = result(timed: {"cpu" => "unsettled", "instructions" => "unsettled"})
 
     assert r.confirm(close)
-    assert_equal [close], r.undecided
+    assert_equal [close], r.close_calls
     assert_empty r.confirmations
-    %w[slower same faster].map { |verdict| result(timed: {"cpu" => "undecided", "instructions" => verdict}) }
-      .push(result(timed: {"instructions" => "undecided"}), result).each do |again|
+    %w[slower same faster].map { |verdict| result(timed: {"cpu" => "unsettled", "instructions" => verdict}) }
+      .push(result(timed: {"instructions" => "unsettled"}), result).each do |again|
       refute r.confirm(again)
       assert_same again, r.confirmations.pop
     end
     2.times { r.confirm(close) }
 
     refute r.confirm(close), "Runner::CONFIRM set aside at most"
-    assert_equal 3, r.undecided.size
+    assert_equal 3, r.close_calls.size
     both = result(timed: {"cpu" => "slower"}, counted: {"allocations" => [5, 6]})
 
-    refute both.confirm(result(timed: {"cpu" => "undecided"})), "counts are exact"
+    refute both.confirm(result(timed: {"cpu" => "unsettled"})), "counts are exact"
   end
 
   def test_regressed_only_when_every_measurement_agrees
@@ -129,8 +129,8 @@ class ResultTest < DuelTest
   # and none saying it isn't (same, or faster): a regression, by those
   # slower in any.
   def test_slower_in_time_on_one_metric_or_another
-    r = result(timed: {"cpu" => "slower", "instructions" => "undecided"})
-    r.confirmations << result(timed: {"cpu" => "undecided", "instructions" => "slower"})
+    r = result(timed: {"cpu" => "slower", "instructions" => "unsettled"})
+    r.confirmations << result(timed: {"cpu" => "unsettled", "instructions" => "slower"})
     r.confirmations << result(timed: {"cpu" => "slower", "instructions" => "slower"})
 
     assert_equal %w[cpu instructions], r.regressed
@@ -142,7 +142,7 @@ class ResultTest < DuelTest
     r.confirmations[-1] = result(timed: {"cpu" => "faster", "instructions" => "slower"})
 
     assert_empty r.regressed, "nor faster"
-    r.confirmations[-1] = result(timed: {"cpu" => "undecided", "instructions" => "undecided"}, counted: {"allocations" => [5, 6]})
+    r.confirmations[-1] = result(timed: {"cpu" => "unsettled", "instructions" => "unsettled"}, counted: {"allocations" => [5, 6]})
 
     assert_empty r.regressed, "worse, but not slower"
   end
@@ -156,7 +156,7 @@ class ResultTest < DuelTest
       result(timed: {"cpu" => cpu}).tap { |r| r.memory = {"baseline" => 10 * MB, "candidate" => candidate * MB} }
     end
     r = process.call("slower", 10)
-    r.confirmations << process.call("undecided", 20)
+    r.confirmations << process.call("unsettled", 20)
 
     assert_empty r.regressed
     refute_predicate r, :confirming?
@@ -172,7 +172,7 @@ class ResultTest < DuelTest
   end
 
   def test_slower_on_one_metric_isnt_mixed
-    r = result(timed: {"cpu" => "slower", "instructions" => "undecided"})
+    r = result(timed: {"cpu" => "slower", "instructions" => "unsettled"})
     r.confirmations << result(timed: {"cpu" => "slower", "instructions" => "slower"})
 
     assert_equal %w[cpu], r.regressed
@@ -180,8 +180,8 @@ class ResultTest < DuelTest
   end
 
   def test_slower_in_time
-    assert_predicate result(timed: {"cpu" => "slower", "x" => "undecided"}), :slower_in_time?
-    refute_predicate result(timed: {"cpu" => "undecided"}), :slower_in_time?
+    assert_predicate result(timed: {"cpu" => "slower", "x" => "unsettled"}), :slower_in_time?
+    refute_predicate result(timed: {"cpu" => "unsettled"}), :slower_in_time?
     refute_predicate result(timed: {"cpu" => "slower", "x" => "same"}), :slower_in_time?
     refute_predicate result(timed: {"cpu" => "slower", "x" => "faster"}), :slower_in_time?
     assert_equal %w[cpu x], result(timed: {"cpu" => "slower", "x" => "slower", "y" => "same"}).slower
@@ -198,10 +198,10 @@ class ResultTest < DuelTest
     end
 
     assert_predicate r, :confirming?
-    r.confirmations << result(timed: {"cpu" => "slower", "instructions" => "undecided"})
+    r.confirmations << result(timed: {"cpu" => "slower", "instructions" => "unsettled"})
 
     refute_predicate r, :confirming?, "three agree"
-    r.confirmations[-1] = result(timed: {"cpu" => "undecided", "instructions" => "slower"})
+    r.confirmations[-1] = result(timed: {"cpu" => "unsettled", "instructions" => "slower"})
 
     assert_predicate r, :confirming?, "one more, where they don't"
     r.confirmations << result(timed: {"instructions" => "slower"})
@@ -241,7 +241,7 @@ class ResultTest < DuelTest
   end
 
   def test_unsettled
-    assert_predicate result(timed: {"cpu" => "same", "x" => "undecided"}), :unsettled?
+    assert_predicate result(timed: {"cpu" => "same", "x" => "unsettled"}), :unsettled?
     refute_predicate result(timed: {"cpu" => "same"}), :unsettled?
   end
 end

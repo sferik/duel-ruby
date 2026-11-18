@@ -51,7 +51,7 @@ class RunnerTest < DuelTest
         "2 benchmarks in 0s: 0 regressed, 0 errors, 0 with a timing too close to the limit to settle"
       ], out.lines(chomp: true)
       assert runner.passed?(results)
-      assert_equal({"cpu" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "undecided"}},
+      assert_equal({"cpu" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2, "verdict" => "unsettled"}},
         runner.across)
       assert_empty runner.regressed_across
       assert_equal 6, workers.made.size, "one lane"
@@ -838,7 +838,7 @@ class ConfirmTest < DuelTest
   # Slower in CPU time in one measurement, in instructions in the next:
   # slower in time in all of them takes one more.
   def test_slower_on_one_metric_or_another
-    slower = ->(metric) { {"cpu" => "undecided", "instructions" => "undecided", metric => "slower"} }
+    slower = ->(metric) { {"cpu" => "unsettled", "instructions" => "unsettled", metric => "slower"} }
     result = confirm(slower["instructions"], slower["cpu"], slower["instructions"], slower["cpu"], slower["cpu"],
       first: slower["cpu"])
 
@@ -857,15 +857,15 @@ class ConfirmTest < DuelTest
   # measured once more instead, up to CONFIRM times more.
   def test_one_too_close_to_call_is_measured_again
     out = StringIO.new
-    result = confirm("slower", "undecided", "slower", "slower", out: out)
+    result = confirm("slower", "unsettled", "slower", "slower", out: out)
 
     assert_equal 3, result.confirmations.size
-    assert_equal 1, result.undecided.size
+    assert_equal 1, result.close_calls.size
     assert_equal %w[cpu], result.regressed
-    assert_equal 1, out.string.scan("undecided  (too close to call: once more)\n").size
-    result = confirm("undecided", "undecided", "undecided", "undecided", "slower")
+    assert_equal 1, out.string.scan("unsettled  (too close to call: once more)\n").size
+    result = confirm("unsettled", "unsettled", "unsettled", "unsettled", "slower")
 
-    assert_equal 3, result.undecided.size
+    assert_equal 3, result.close_calls.size
     assert_equal 1, result.confirmations.size
     assert_empty result.regressed, "the fourth, cleared"
   end

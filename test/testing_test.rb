@@ -455,7 +455,7 @@ class TestingTest < DuelTest
   # comparison sees.
   def test_a_comparisons_result_slower_by_one_timing_or_another
     mixed = Duel::Result.new("mixed")
-    measured = [%w[slower undecided], %w[undecided slower]].map do |cpu, instructions|
+    measured = [%w[slower unsettled], %w[unsettled slower]].map do |cpu, instructions|
       Duel::Result.new("mixed").tap { |r| r.timed.update("cpu" => {"verdict" => cpu}, "instructions" => {"verdict" => instructions}) }
     end
     mixed.timed.update(measured.first.timed)

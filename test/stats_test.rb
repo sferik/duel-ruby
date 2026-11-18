@@ -73,26 +73,26 @@ class StatsTest < DuelTest
   def verdict(ratios) = Stats.verdict(ratios, limit: 1.02, confidence: 0.99)
 
   def test_verdicts
-    assert_equal :undecided, verdict([1.5] * 7), "too few to tell"
+    assert_equal :unsettled, verdict([1.5] * 7), "too few to tell"
     assert_equal :slower, verdict([1.05] * 20)
     assert_equal :faster, verdict([0.9] * 20)
     assert_equal :same, verdict([1.0] * 20)
     assert_equal :same, verdict([0.99] * 20), "a little faster is not slower: nothing more to prove"
-    assert_equal :undecided, verdict([1.0] * 10 + [1.05] * 10), "straddles the limit"
-    assert_equal :undecided, verdict([1.02] * 20), "at the limit is neither"
+    assert_equal :unsettled, verdict([1.0] * 10 + [1.05] * 10), "straddles the limit"
+    assert_equal :unsettled, verdict([1.02] * 20), "at the limit is neither"
   end
 
   def test_decide
-    assert_equal :undecided, Stats.decide(nil, 1.02), "too few"
+    assert_equal :unsettled, Stats.decide(nil, 1.02), "too few"
     assert_equal :slower, Stats.decide([1.03, 1.04], 1.02)
     assert_equal :faster, Stats.decide([0.9, 0.97], 1.02)
     assert_equal :same, Stats.decide([0.99, 1.01], 1.02)
-    assert_equal :undecided, Stats.decide([1.01, 1.03], 1.02)
+    assert_equal :unsettled, Stats.decide([1.01, 1.03], 1.02)
   end
 
   def test_one_slow_sample_never_makes_a_benchmark_slower
     assert_equal :same, verdict([1.0] * 19 + [10.0])
-    assert_equal :undecided, verdict([1.0] * 9 + [10.0]), "with 10 it can't be ruled out yet: more are taken"
+    assert_equal :unsettled, verdict([1.0] * 9 + [10.0]), "with 10 it can't be ruled out yet: more are taken"
   end
 
   # P(U <= u) for samples of +m+ and +n+, from every way of ordering

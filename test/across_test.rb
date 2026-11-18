@@ -47,7 +47,7 @@ class AcrossTest < DuelTest
     results = [result("b", {"cpu" => 9.0}, error: "boom"), result("c", {"cpu" => 9.0}, skipped: "new"), result("a", {"cpu" => 1.5})]
     cpu = verdicts(results).fetch("cpu")
 
-    assert_equal ["undecided", 1, nil], cpu.values_at("verdict", "benchmarks", "interval")
+    assert_equal ["unsettled", 1, nil], cpu.values_at("verdict", "benchmarks", "interval")
   end
 
   # A result judged by process: its median ratio, and each worker's
@@ -65,12 +65,12 @@ class AcrossTest < DuelTest
   # Every benchmark's median says the candidate is 1% slower, and an
   # interval over the benchmarks would call it, but the same workers
   # measured every one, and their luck (the same at each) leaves it
-  # undecided: the interval is over the workers' scores.
+  # unsettled: the interval is over the workers' scores.
   def test_by_process_the_workers_luck_counts_once
     results = Array.new(12) { |i| by_process("b#{i}", LUCK, slower: 1.01, base: 1000.0 * (i + 1)) }
     cpu = over_workers(results).fetch("cpu")
 
-    assert_equal ["undecided", 12, 5], cpu.values_at("verdict", "benchmarks", "processes")
+    assert_equal ["unsettled", 12, 5], cpu.values_at("verdict", "benchmarks", "processes")
     low, high = cpu.fetch("interval")
 
     assert_operator low, :<, 1.0
@@ -203,7 +203,7 @@ class AcrossConfirmTest < DuelTest
   def test_reported
     runner = runner(nil)
     runner.instance_variable_set(:@across, {"db_cpu" => {"median" => 1.0, "interval" => nil, "limit" => 1.005, "benchmarks" => 2,
-                                                         "verdict" => "undecided"},
+                                                         "verdict" => "unsettled"},
                                             "cpu" => {"median" => 1.02, "interval" => [1.01, 1.03], "limit" => 1.005,
                                                       "benchmarks" => 10, "verdict" => "slower", "confirmed" => true}})
     elsewhere { runner.send(:report, [], 1.0) }

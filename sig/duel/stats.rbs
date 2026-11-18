@@ -3,7 +3,7 @@ module Duel
   # interval for the median of paired ratios, and the decision it supports.
   # @api private
   module Stats
-    type verdict = :slower | :faster | :same | :undecided
+    type verdict = :slower | :faster | :same | :unsettled
 
     # The 1-based ranks [lower, upper] bounding a +confidence+ interval for
     # the median of +n+ samples, or nil when +n+ is too small for one.
