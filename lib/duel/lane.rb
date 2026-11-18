@@ -60,8 +60,6 @@ module Duel
     # StackProf's a version: enough to tell a few percent apart).
     PROFILE_SAMPLES = 500
 
-    attr_reader :profiler
-
     # Its workers start at once, each with its resources (a database
     # server takes seconds), and stop at once. +sides+ are the versions as
     # the run prepared them (Runner#prepare), by name.

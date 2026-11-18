@@ -50,7 +50,6 @@ class LaneTest < DuelTest
       {"B" => "1", "C" => "2"} # (B as the other has it: no clash)
     end
     with_fake_workers do |workers|
-      workers.profiler = :yes
       workers.benchmark("b")
       l = lane(workers, processes: 2, config_path: "/c/.duel.rb", timeout: 7.0)
       dir = File.dirname(given.first.first)
@@ -67,7 +66,6 @@ class LaneTest < DuelTest
       assert_equal File.join(tmpdir, "candidate"), workers.made.assoc("head-2")[1]
       assert_equal labels, given.map(&:last).uniq.sort
       assert Dir.exist?(dir)
-      assert_equal :yes, l.profiler
       assert_equal ["b"], l.benchmarks.keys
       l.stop
 

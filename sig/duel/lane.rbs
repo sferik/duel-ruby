@@ -47,8 +47,6 @@ module Duel
     # The warm-up's seconds (see #warm).
     @warm: Float
 
-    attr_reader profiler: bool
-
     def initialize: (Config config, Settings settings, Hash[String, Side] sides, ?processes: Integer) -> void
 
     # A number of its own for each lane, from 1.
