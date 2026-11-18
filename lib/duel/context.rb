@@ -68,10 +68,10 @@ module Duel
       body = definition.body
       @body = bound(body)
       @given_n = body.arity == 1
-      @setup = given_hooks(:setup, hooks)
-      @teardown = given_hooks(:teardown, hooks).reverse
-      @before_sample = given_hooks(:before_sample, hooks)
-      @after = hooks(:after_iterations, hooks)
+      @setup = plain_hooks(:setup, hooks)
+      @teardown = plain_hooks(:teardown, hooks).reverse
+      @before_sample = plain_hooks(:before_sample, hooks)
+      @after = plain_hooks(:after_iterations, hooks)
       # (Each around_iteration hook's Iteration, innermost first, made once:
       # running one allocates nothing.)
       iteration = nil #: Iteration?
@@ -188,16 +188,12 @@ module Duel
       hooks.fetch(name) + [*file, *@definition.hooks[name]].map { |hook| bound(hook) }
     end
 
-    # The hooks +name+d (see #hooks), each given the benchmark, if it
-    # takes it.
-    def given_hooks(name, hooks) = hooks(name, hooks).map { |hook| given(hook) }
-
-    # +hook+, given the benchmark, if it takes it.
-    def given(hook)
-      return hook if hook.arity.zero?
-
-      definition = @definition
-      -> { hook.call(definition) }
+    # The hooks +name+d (see #hooks), which Duel gives nothing: one that
+    # takes a parameter fails, saying so, not getting nil.
+    def plain_hooks(name, hooks)
+      hooks(name, hooks).each do |hook|
+        raise Error, "#{@definition.name}: a #{name} hook takes no parameter (give it a block without one)" unless hook.arity.zero?
+      end
     end
 
     # What pausing and resuming leaves in each of +metrics+' measures, an

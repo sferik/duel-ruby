@@ -47,9 +47,9 @@ benchmark's.
 
 A file's hooks and a benchmark's own run in the benchmark's context, so
 they share its instance variables. Hooks in `.duel.rb` run where they're
-written, which suits a plugin's hooks. `setup`, `teardown`, and
-`before_sample` receive the benchmark, with its `name`, `only`, and
-`peak_memory`, if they take a parameter.
+written, which suits a plugin's hooks. Only `around_iteration` takes
+a parameter, its iteration: a hook of any other kind that takes one
+fails, before anything runs.
 
 Inside a benchmark's own block, `once { ... }` runs its block the first
 time that the benchmark runs, and isn't timed, as in
@@ -82,7 +82,7 @@ a database's tables, give the hook in `.duel.rb`:
 
 ```ruby
 Duel.configure do |c|
-  c.before_sample { |benchmark| MyDatabase.truncate_all } # not measured
+  c.before_sample { MyDatabase.truncate_all } # not measured
 end
 ```
 

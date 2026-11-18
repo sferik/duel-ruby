@@ -574,7 +574,7 @@ class DSLTest < DuelTest
   # with a parameter can't run.
   def test_hooks_of_a_benchmark
     log = []
-    hooks = {setup: -> { log << :setup }, teardown: ->(benchmark) { log << benchmark.name }, before_sample: proc { log << :before },
+    hooks = {setup: -> { log << :setup }, teardown: -> { log << :teardown }, before_sample: proc { log << :before },
              around_iteration: ->(iteration) { iteration.call }, after_iterations: -> { log << :after }}
     definition = duel("hooked", **hooks) { log << :iteration }
 
@@ -607,7 +607,7 @@ class DSLTest < DuelTest
     in_file("/duel/a_duel.rb", <<~RUBY)
       setup { (@log ||= []) << :first }
       duel("a") { |n| @log << n }
-      setup { |benchmark| @log << benchmark.name }
+      setup { @log << :second }
       before_sample { @log << :before }
       teardown { @log << :done }
       teardown { @log << :last }
@@ -619,7 +619,7 @@ class DSLTest < DuelTest
       duel("c") { @log << :c }
     RUBY
 
-    assert_equal [:first, "a", :before, 1, :after, :last, :done], run_benchmark("a")
+    assert_equal [:first, :second, :before, 1, :after, :last, :done], run_benchmark("a")
     assert_equal [1], run_benchmark("b"), "none of a_duel.rb's"
     assert_equal %i[around c], run_benchmark("c")
     assert_equal ["/duel/a_duel.rb", "/duel/b_duel.rb", "/duel/c_duel.rb"], Duel.benchmarks.values.map(&:file)

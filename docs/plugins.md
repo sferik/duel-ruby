@@ -190,11 +190,10 @@ A plugin's hooks are the configuration's, so they run before a file's
 and a benchmark's own, in the order that they were given, and they run
 where they're written, with the plugin's module as `self`:
 
-- `c.before_sample { |benchmark| ... }` runs before every sample,
-  warm-up samples included, and isn't measured. Use it to put back what
-  earlier samples changed, such as reloading a database's fixtures, so
-  that every sample starts alike. The block receives the benchmark,
-  with its `name`, `only`, and `peak_memory`, if it takes it.
+- `c.before_sample { ... }` runs before every sample, warm-up samples
+  included, and isn't measured. Use it to put back what earlier samples
+  changed, such as reloading a database's fixtures, so that every
+  sample starts alike.
 - `c.after_iterations { ... }` runs after each sample's iterations, and
   is the one hook that Duel measures, with them. Use it to do the work
   that the iterations started and left to be done later, such as jobs

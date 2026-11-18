@@ -415,8 +415,7 @@ module Duel
     # benchmark's samples, and teardown after them (last first).
     # before_sample runs before every sample (the warm-up's too), not
     # measured: to put back what earlier samples changed (data they
-    # wrote, say), so that every sample starts alike. The first three
-    # are given the benchmark, if they take it.
+    # wrote, say), so that every sample starts alike.
     def setup(&block) = Duel.file_hook(:setup, block, DSL.caller_file)
 
     def teardown(&block) = Duel.file_hook(:teardown, block, DSL.caller_file)

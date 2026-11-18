@@ -203,23 +203,22 @@ class HarnessTest < DuelTest
     assert_raises(Duel::Error) { Duel::Harness.new(once) }
   end
 
-  # Each hook, from each level: the configuration's (as they are, given
-  # the benchmark if they take it), then its file's, then its own (in its
-  # context, given the benchmark if they take it), but teardown's in
-  # reverse, and around_iteration's outermost first.
+  # Each hook, from each level: the configuration's (as they are), then
+  # its file's, then its own (in its context), but teardown's in reverse,
+  # and around_iteration's outermost first.
   def test_hooks_of_every_level
     log = []
     config = Duel::HOOKS.to_h do |hook|
-      [hook, (hook == :around_iteration) ? [->(i) { (log << [hook, :config]) && i.call }] : [proc { |b| log << [hook, :config, b&.name] }]]
+      [hook, (hook == :around_iteration) ? [->(i) { (log << [hook, :config]) && i.call }] : [proc { log << [hook, :config] }]]
     end
     config.fetch(:teardown) << -> { log << %i[teardown config2] }
     file = Duel.file_hooks["/duel/x_duel.rb"]
     file[:setup] << -> { log << [:setup, :file, @mine] }
-    file[:teardown] << proc { |b| log << [:teardown, :file, b.name] } << proc { log << %i[teardown file2] }
+    file[:teardown] << proc { log << %i[teardown file] } << proc { log << %i[teardown file2] }
     file[:before_sample] << -> { log << %i[before_sample file] }
     file[:around_iteration] << ->(i) { (log << %i[around_iteration file]) && i.call }
     file[:after_iterations] << -> { log << %i[after_iterations file] }
-    own = {setup: ->(b) { log << [:setup, :own, b.name, @mine] }, teardown: -> { log << %i[teardown own] },
+    own = {setup: -> { log << [:setup, :own, @mine] }, teardown: -> { log << %i[teardown own] },
            before_sample: -> { log << %i[before_sample own] }, after_iterations: -> { log << %i[after_iterations own] }}
     harness = Duel::Harness.new(definition(around_iteration: ->(i) { (log << %i[around_iteration own]) && i.call }, **own) { log << :iteration }, config)
     harness.context.instance_variable_set(:@mine, :mine)
@@ -227,11 +226,26 @@ class HarnessTest < DuelTest
     harness.run(1, Duel::Trial.new)
     harness.finish
 
-    assert_equal [[:setup, :config, "x"], [:setup, :file, :mine], [:setup, :own, "x", :mine],
-      [:before_sample, :config, "x"], %i[before_sample file], %i[before_sample own],
+    assert_equal [%i[setup config], [:setup, :file, :mine], [:setup, :own, :mine],
+      %i[before_sample config], %i[before_sample file], %i[before_sample own],
       %i[around_iteration config], %i[around_iteration file], %i[around_iteration own], :iteration,
-      [:after_iterations, :config, nil], %i[after_iterations file], %i[after_iterations own],
-      %i[teardown own], %i[teardown file2], [:teardown, :file, "x"], %i[teardown config2], [:teardown, :config, "x"]], log
+      %i[after_iterations config], %i[after_iterations file], %i[after_iterations own],
+      %i[teardown own], %i[teardown file2], %i[teardown file], %i[teardown config2], %i[teardown config]], log
+  end
+
+  # A hook of any level but around_iteration's (which takes its
+  # iteration) is given nothing, so one that takes a parameter fails,
+  # saying so, before anything runs.
+  def test_hooks_take_no_parameter
+    %i[setup teardown before_sample after_iterations].each do |hook|
+      configs = config_hooks(hook => [proc { |benchmark| benchmark }])
+      error = assert_raises(Duel::Error) { Duel::Harness.new(definition { nil }, configs) }
+
+      assert_equal "x: a #{hook} hook takes no parameter (give it a block without one)", error.message
+    end
+    Duel.file_hooks["/duel/x_duel.rb"][:setup] << proc { |benchmark| benchmark }
+
+    assert_raises(Duel::Error, "a file's") { Duel::Harness.new(definition { nil }, config_hooks) }
   end
 
   # Inside nested around_iteration hooks, each one's iteration.call
@@ -284,22 +298,22 @@ class HarnessTest < DuelTest
   end
 
   # Before every sample (the trial's too), not measured: the config's
-  # hooks, given the benchmark, then its file's, in its context.
+  # hooks, then its file's, in its context.
   def test_before_sample
     log = []
     Duel.file_hooks["/duel/x_duel.rb"][:before_sample] << proc { (Ticks.now += 100) && (log << [:file, @mine, Duel.measuring?]) }
     Duel.file_hooks["/duel/other_duel.rb"][:before_sample] << proc { log << :other }
-    configs = config_hooks(before_sample: [->(benchmark) { (Ticks.now += 100) && (log << [:config, benchmark.name]) }])
+    configs = config_hooks(before_sample: [-> { (Ticks.now += 100) && (log << :config) }])
     harness = Duel::Harness.new(definition { (Ticks.now += 1) && (log << :iteration) }, configs)
     harness.context.instance_variable_set(:@mine, :mine)
     harness.trial
 
     assert_equal 2, ticks(harness, 2)
-    assert_equal [[:config, "x"], [:file, :mine, false], :iteration, [:config, "x"], [:file, :mine, false], :iteration, :iteration], log
+    assert_equal [:config, [:file, :mine, false], :iteration, :config, [:file, :mine, false], :iteration, :iteration], log
     memory = Duel::MemorySample.new
     stub(Duel::Native::Memory, :used, -> { 1 }) { harness.run_memory(1, memory) }
 
-    assert_equal [[:config, "x"], [:file, :mine, false], :iteration], log.last(3), "a peak memory sample's too"
+    assert_equal [:config, [:file, :mine, false], :iteration], log.last(3), "a peak memory sample's too"
   end
 
   # In an around_iteration hook, what the iteration leaves resident
@@ -371,7 +385,7 @@ class HarnessTest < DuelTest
 
     require "stackprof"
     benchmark = definition(around_iteration: ->(iteration) { iteration.call && Busy.undone }) { Busy.iteration || untimed { Busy.untimed } }
-    harness = Duel::Harness.new(benchmark, config_hooks(before_sample: [->(_) { Busy.before }], after_iterations: [-> { Busy.after }]))
+    harness = Duel::Harness.new(benchmark, config_hooks(before_sample: [-> { Busy.before }], after_iterations: [-> { Busy.after }]))
     StackProf.start(mode: Duel::ProfileSample::MODE, interval: Duel::ProfileSample::INTERVAL, raw: true)
     begin
       harness.run(10, Duel::ProfileSample.new)
@@ -504,7 +518,7 @@ class HarnessTest < DuelTest
     CostlyTicks.reads = 0
     CostlyTicks.samples = []
     extras = [9, 5, 7]
-    before = [->(_) { (Ticks.now += 1000) && extras.rotate! }]
+    before = [-> { (Ticks.now += 1000) && extras.rotate! }]
     around = lambda do |iteration|
       Ticks.now += extras.first
       iteration.call

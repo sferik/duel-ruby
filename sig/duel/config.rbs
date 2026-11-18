@@ -265,11 +265,11 @@ module Duel
 
     # The configuration's hooks (see Duel::HOOKS), for every benchmark,
     # run where they were written, before its file's and its own.
-    def setup: () { (?Definition benchmark) -> void } -> void
+    def setup: () { () -> void } -> void
 
-    def teardown: () { (?Definition benchmark) -> void } -> void
+    def teardown: () { () -> void } -> void
 
-    def before_sample: () { (?Definition benchmark) -> void } -> void
+    def before_sample: () { () -> void } -> void
 
     def around_iteration: () { (Iteration iteration) -> void } -> void
 

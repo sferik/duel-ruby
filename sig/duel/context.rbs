@@ -124,11 +124,8 @@ module Duel
     # The hooks +name+d: the configuration's, then its file's and its own.
     def hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
 
-    # The hooks +name+d, each given the benchmark, if it takes it.
-    def given_hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
-
-    # +hook+, given the benchmark, if it takes it.
-    def given: (_Bound hook) -> _Bound
+    # The hooks +name+d, none of which takes a parameter.
+    def plain_hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
 
     # What pausing and resuming leaves in each measure, an iteration.
     def paused: (Array[Metric] metrics) -> Hash[String, Float]

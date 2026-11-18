@@ -68,7 +68,7 @@ class EndToEndHooksTest < DuelTest
     RUBY
     File.write(File.join(candidate, ".duel.rb"), <<~RUBY)
       Duel.configure do |c|
-        c.before_sample { |_benchmark| Sample.jobs.clear }
+        c.before_sample { Sample.jobs.clear }
         c.after_iterations { Object.new while Sample.jobs.pop } # (a job allocates one)
       end
     RUBY

@@ -534,8 +534,7 @@ module Duel
     # The hooks (see Duel::HOOKS), for every benchmark, run in each worker
     # before its file's and its own: setup once before a benchmark's
     # samples, and teardown after them (last first), and before_sample
-    # before every sample (the warm-up's too), not measured, each given
-    # the benchmark (see Sample#benchmark) if it takes it.
+    # before every sample (the warm-up's too), not measured.
     # around_iteration runs around each iteration, given it to run, and
     # after_iterations after each sample's iterations (inside each
     # iteration, with around_iteration), measured with them: to do the

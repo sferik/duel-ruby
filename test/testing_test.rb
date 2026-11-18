@@ -242,7 +242,7 @@ class TestingTest < DuelTest
 
         define_method(:start_sample) { |sample| benchmarks << sample.benchmark.to_h.merge("n" => sample.n) }
       end)
-      config.before_sample { |benchmark| (total += 1000) && (seen << benchmark.name) }
+      config.before_sample { (total += 1000) && (seen << :before) }
       config.after_iterations { total += 5 }
       around = lambda do |iteration|
         total += 100
@@ -257,7 +257,7 @@ class TestingTest < DuelTest
       assert_equal({"rows" => 3 * 6}, measured, "costly: #{costly}")
       assert_equal({"name" => "test", "only" => "timing", "peak_memory" => false, "process" => nil, "n" => 3}, benchmarks.last)
       assert_equal [[Duel::Context, [TestingTest, true]]] * 3, seen.last(3)
-      assert_equal "test", seen[-4]
+      assert_equal :before, seen[-4]
     end
     config = Duel::Config.new(tmpdir)
     total = 0
@@ -306,18 +306,17 @@ class TestingTest < DuelTest
   end
 
   # As a sample of a benchmark is: after the config's before_sample
-  # hooks (given the benchmark), not measured, and before its
-  # after_iterations hooks, measured.
+  # hooks, not measured, and before its after_iterations hooks, measured.
   def test_measure_with_before_sample_and_after_iterations
     config = Duel::Config.new(tmpdir)
     total = 0
     log = []
     config.metric("rows") { total }
-    config.before_sample { |benchmark| (total += 100) && (log << [:before, benchmark.only, Duel.measuring?]) }
+    config.before_sample { (total += 100) && (log << [:before, Duel.measuring?]) }
     config.after_iterations { (total += 5) && (log << [:after, Duel.measuring?]) }
 
     assert_equal({"rows" => 6}, Duel::Testing.measure(config, only: :timing) { (total += 1) && (log << :block) })
-    assert_equal [[:before, :timing, false], :block, [:after, true]], log
+    assert_equal [[:before, false], :block, [:after, true]], log
   end
 
   # Its metrics are closed (last first) as its worker ends, before what

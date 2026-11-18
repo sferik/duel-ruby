@@ -316,7 +316,7 @@ class WorkerTest < DuelTest
         c.measure("probe_metric", tolerance: 4)
         c.metric("probe_totals") { 1 }.open { ConfigProbe.ended << :opened }.close { ConfigProbe.ended << :closed }
         c.setup { ConfigProbe.ended << :setup }
-        c.before_sample { |_| ConfigProbe.ended << :before }
+        c.before_sample { ConfigProbe.ended << :before }
         c.after_iterations { ConfigProbe.ended << :after }
       end
     RUBY
@@ -420,12 +420,12 @@ class WorkerHooksTest < DuelTest
     log = []
     duel("a") { log << :iteration }
     duel("around", around_iteration: ->(iteration) { iteration.call }) { nil }
-    hooks = Duel::NO_HOOKS.merge(before_sample: [->(benchmark) { log << benchmark.name }], after_iterations: [-> { log << :after }])
+    hooks = Duel::NO_HOOKS.merge(before_sample: [-> { log << :before }], after_iterations: [-> { log << :after }])
     worker = Duel::Worker.new([Three], hooks: hooks)
     worker.handle("op" => "setup", "name" => "a", "trial" => false)
     worker.handle("op" => "sample", "name" => "a", "n" => 2)
 
-    assert_equal ["a", :iteration, :iteration, :after], log
+    assert_equal %i[before iteration iteration after], log
     worker.handle("op" => "setup", "name" => "around", "trial" => false)
     reply = worker.handle("op" => "sample", "name" => "around", "n" => 5, "runs" => 2)
 

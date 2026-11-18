@@ -268,12 +268,12 @@ module Duel
     # The file's hooks (see HOOKS), for every benchmark in it, run in its
     # context: setup once in each worker before a benchmark's samples,
     # teardown after them, and before_sample before every sample, not
-    # measured, each given the benchmark if it takes it.
-    def setup: () { (?Definition benchmark) [self: Context] -> void } -> void
+    # measured. None takes a parameter.
+    def setup: () { () [self: Context] -> void } -> void
 
-    def teardown: () { (?Definition benchmark) [self: Context] -> void } -> void
+    def teardown: () { () [self: Context] -> void } -> void
 
-    def before_sample: () { (?Definition benchmark) [self: Context] -> void } -> void
+    def before_sample: () { () [self: Context] -> void } -> void
 
     # Runs the block around each iteration of every benchmark in the
     # file, given the iteration to run: only the iteration is measured.

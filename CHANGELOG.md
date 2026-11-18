@@ -59,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--ruby` takes `version_file` too.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and
   anything else fails. Any value forced before, `DUEL_FORCE=0` too.
+- A `setup`, `teardown`, `before_sample` or `after_iterations` hook
+  takes no parameter, at any level, and one that takes one fails before
+  anything runs. The first three were given the benchmark if they took
+  a parameter, which nothing needed. Only `around_iteration` takes one:
+  its iteration.
 
 ### Fixed
 
