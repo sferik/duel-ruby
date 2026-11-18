@@ -108,6 +108,10 @@ module Duel
     # @api private
     attr_accessor profile: profile?
 
+    # A counted measure's count an iteration: [baseline's, candidate's].
+    # @api private
+    def self.per_iteration: (counted c) -> [Float, Float]
+
     # @api private
     def initialize: (String name) -> void
 

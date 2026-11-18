@@ -88,8 +88,8 @@ module Duel
     def counted(result)
       worse = result.worse
       result.counted.to_h do |metric, c|
-        n = c.fetch("n")
-        [metric, {"baseline" => c.fetch("baseline").fdiv(n), "candidate" => c.fetch("candidate").fdiv(n), "unit" => c.fetch("unit"),
+        base, candidate = Result.per_iteration(c)
+        [metric, {"baseline" => base, "candidate" => candidate, "unit" => c.fetch("unit"),
                   "plural" => c.fetch("plural"), "worse" => worse.include?(metric)}]
       end
     end

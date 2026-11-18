@@ -83,12 +83,7 @@ module Duel
 
     # {metric => [baseline, candidate]}, an iteration, of the counted
     # measures that differ.
-    def self.changed_counts(result)
-      result.counted.to_h do |metric, c|
-        n = c.fetch("n")
-        [metric, [c.fetch("baseline").fdiv(n), c.fetch("candidate").fdiv(n)]] #: [String, [Float, Float]]
-      end.reject { |_, (base, candidate)| base == candidate }
-    end
+    def self.changed_counts(result) = result.counted.transform_values { |c| Result.per_iteration(c) }.reject { |_, (base, candidate)| base == candidate }
 
     # +runner+ ran, and made +results+, comparing +baseline+ with
     # +candidate+ (each a description, in Markdown, whose commit stands
@@ -173,12 +168,11 @@ module Duel
         counted = result.counted[metric]
         if timed then format("%s %+.1f%%", metric, (timed.fetch("median") - 1) * 100)
         elsif counted
-          n = counted.fetch("n")
-          "#{metric} #{Runner.number(counted.fetch("baseline").fdiv(n))} → #{Runner.number(counted.fetch("candidate").fdiv(n))}"
+          base, candidate = Result.per_iteration(counted)
+          "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
         else
           # (Peak memory, which grew too much.)
-          memory = result.memory #: Hash[String, Integer]
-          "#{metric} #{Runner.mb(memory.fetch("baseline"))} → #{Runner.mb(memory.fetch("candidate"))}"
+          memory_change(result)
         end
       end
       worse.join(result.mixed? ? " or " : ", ")
@@ -260,11 +254,14 @@ module Duel
       counted = Summary.changed_counts(result).map do |metric, (base, candidate)|
         "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
       end
-      if result.more_memory?
-        memory = result.memory #: Hash[String, Integer]
-        counted << "peak_memory #{Runner.mb(memory.fetch("baseline"))} → #{Runner.mb(memory.fetch("candidate"))}"
-      end
+      counted << memory_change(result) if result.more_memory?
       counted.join("<br>")
+    end
+
+    # How peak memory changed: each version's, in MB.
+    def memory_change(result)
+      memory = result.memory #: Hash[String, Integer]
+      "peak_memory #{Runner.mb(memory.fetch("baseline"))} → #{Runner.mb(memory.fetch("candidate"))}"
     end
 
     # The first +explained+ regressions, explained as the terminal report

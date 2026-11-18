@@ -50,6 +50,11 @@ module Duel
     # @api private
     attr_writer :n, :seconds, :skipped, :error, :memory, :profile
 
+    # A counted measure's (+c+'s) count an iteration (of its "n", one at
+    # least): [baseline's, candidate's].
+    # @api private
+    def self.per_iteration(c) = [c.fetch("baseline").fdiv(c.fetch("n")), c.fetch("candidate").fdiv(c.fetch("n"))]
+
     # @api private
     def initialize(name)
       @name = name

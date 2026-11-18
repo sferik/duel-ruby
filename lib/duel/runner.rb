@@ -479,9 +479,7 @@ module Duel
       end
       # (An iteration's, as the explanation's are.)
       counted = result.counted.map do |metric, c|
-        n = c.fetch("n") # (at least one)
-        base = c.fetch("baseline").fdiv(n)
-        candidate = c.fetch("candidate").fdiv(n)
+        base, candidate = Result.per_iteration(c)
         # (No unit its name ends in: "retained_objects 2", not "2 objects".)
         named = c.fetch("plural")&.then { |plural| metric.end_with?(plural.tr(" ", "_")) }
         [format("%s %s%s", metric, Runner.number(base), ("→#{Runner.number(candidate)}" unless base == candidate)),

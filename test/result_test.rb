@@ -19,6 +19,10 @@ class ResultTest < DuelTest
     assert_equal({}, Duel::Result.new("b").processes)
   end
 
+  def test_a_count_an_iteration
+    assert_equal [1.5, 3.5], Duel::Result.per_iteration({"baseline" => 3, "candidate" => 7, "n" => 2})
+  end
+
   def test_worse_is_slower_or_more
     r = result(timed: {"cpu" => "slower", "db" => "same"}, counted: {"allocations" => [5, 6], "trips" => [2, 2]})
 
