@@ -214,8 +214,7 @@ module Duel
     # Fails, saying it's this resource that did, with the end of +log+ (a
     # path) to say why.
     def failed(message, log: nil)
-      tail = log ? Spawn.tail(log) : ""
-      raise Failed, "#{@name}'s resource: #{message}#{"\n#{tail}" unless tail.empty?}"
+      raise Failed, Spawn.with_tail("#{@name}'s resource: #{message}", log)
     end
 
     # Stops it: the at_stop blocks, last first, then each process.

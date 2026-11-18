@@ -210,6 +210,13 @@ module Duel
     # LOG_LINES lines, without CRLF's CR (a Windows program's).
     def self.tail(path) = File.readlines(path, chomp: true).last(LOG_LINES).map { |line| "#{line}\n" }.join
 
+    # +message+, then the end of the log at +path+ (see .tail), where
+    # there's a log with anything in it.
+    def self.with_tail(message, path)
+      tail = path ? tail(path) : ""
+      tail.empty? ? message : "#{message}\n#{tail}"
+    end
+
     # The log at +path+, opened with +mode+, for a process's output: here,
     # so it's there for a failure to show, and binary, so what's copied to
     # it is as the process wrote it (on Windows, CRuby's text mode would

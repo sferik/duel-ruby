@@ -544,6 +544,18 @@ class SpawnTest < DuelTest
     assert_equal "", Duel::Spawn.tail(@log)
   end
 
+  # A failure's message, with the end of its log where there's a log with
+  # anything in it.
+  def test_with_tail
+    assert_equal "failed", Duel::Spawn.with_tail("failed", nil), "no log"
+    File.write(@log, "")
+
+    assert_equal "failed", Duel::Spawn.with_tail("failed", @log), "nothing in it"
+    File.write(@log, "it ended\n")
+
+    assert_equal "failed\nit ended\n", Duel::Spawn.with_tail("failed", @log)
+  end
+
   # A Child's thread is the one it was given, or Process.detach's, made
   # once, as it's asked for, or detached (so that until then, it's waited
   # for as any child: see test_a_child_waited_for).

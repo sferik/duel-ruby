@@ -81,6 +81,9 @@ module Duel
     # The end of the log at +path+, for a failure to show.
     def self.tail: (String path) -> String
 
+    # +message+, then the end of the log at +path+, if it has any.
+    def self.with_tail: (String message, String? path) -> String
+
     # The log at +path+, opened for a process's output.
     def self.log: (String path, String mode) -> File
 

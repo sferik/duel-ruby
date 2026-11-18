@@ -71,10 +71,8 @@ module Duel
 
       ended = JSON.parse(reply)
       failed = ended.fetch("failed")
-      if failed
-        tail = Spawn.tail(@log)
-        raise Failed, "#{@label}: #{command.join(" ")} #{failed}#{"\n#{tail}" unless tail.empty?}"
-      end
+      raise Failed, Spawn.with_tail("#{@label}: #{command.join(" ")} #{failed}", @log) if failed
+
       {"timed" => {"cpu" => ended.fetch("cpu")}, "counted" => {}, "heap" => 0, "peak" => ended.fetch("peak")}
     end
 
