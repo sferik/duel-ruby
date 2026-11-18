@@ -85,7 +85,7 @@ module Duel
           port = w.port
           listen = ["--port=#{port}", "--bind-address=127.0.0.1", "--socket=#{socket}"]
           address = "127.0.0.1:#{port}"
-          url = "#{scheme}://#{USER}@127.0.0.1:#{port}/#{DATABASE}"
+          url = "#{scheme}://#{USER}@#{address}/#{DATABASE}"
           vars = {URL => url}
         else
           # (No network at all.)
