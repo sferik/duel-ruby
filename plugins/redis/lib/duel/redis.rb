@@ -154,7 +154,12 @@ module Duel
       # closes the connection, as the rest of it can't be read, and raises
       # IOError.
       def call(*args)
-        @socket.write(args.map(&:to_s).reduce("*#{args.size}\r\n") { |out, arg| out << "$#{arg.bytesize}\r\n#{arg}\r\n" })
+        command = "*#{args.size}\r\n"
+        args.each do |arg|
+          arg = arg.to_s
+          command << "$#{arg.bytesize}\r\n#{arg}\r\n"
+        end
+        @socket.write(command)
         reply = read
         raise reply if reply.is_a?(Exception)
 
