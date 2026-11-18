@@ -257,6 +257,9 @@ module Duel
       # +text+ as a string literal.
       def quote: (String text) -> String
 
+      # +texts+ as a list of string literals, for IN (...).
+      def quote_all: (Array[String] texts) -> String
+
       # Closes it without telling the server (no QUIT); true.
       def close: () -> bool
 

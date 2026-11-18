@@ -218,7 +218,7 @@ module Duel
     # the +own+ digests, each one's [queries, rows, rows examined, time
     # (ps), digest].
     def self.digests(connection, since, own)
-      connection.query(format(DIGESTS, since, own.map { |digest| connection.quote(digest) }.join(", "))).rows
+      connection.query(format(DIGESTS, since, connection.quote_all(own))).rows
     end
 
     # The digest of each of +statements+, read over +connection+.
@@ -227,7 +227,7 @@ module Duel
     # The texts of the statements with these digests, by digest, read
     # over +connection+.
     def self.texts(connection, digests)
-      connection.query(format(TEXTS, digests.map { |digest| connection.quote(digest) }.join(", "))).to_h
+      connection.query(format(TEXTS, connection.quote_all(digests))).to_h
     end
 
     # For benchmarks: the worker's server.
@@ -557,6 +557,9 @@ module Duel
 
       # +text+ as a string literal.
       def quote(text) = "'#{text.gsub(/[\0\n\r\\'"\x1a]/, ESCAPES)}'"
+
+      # +texts+ as a list of string literals, for IN (...).
+      def quote_all(texts) = texts.map { |text| quote(text) }.join(", ")
 
       ESCAPES = {"\0" => "\\0", "\n" => "\\n", "\r" => "\\r", "\\" => "\\\\", "'" => "\\'", "\"" => "\\\"", "\x1a" => "\\Z"}.freeze
 

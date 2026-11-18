@@ -75,6 +75,8 @@ class Canned
 
   def quote(text) = "'#{text}'"
 
+  def quote_all(texts) = texts.map { |text| quote(text) }.join(", ")
+
   private
 
   # The statements at the next reading: all of them, to a query for all
