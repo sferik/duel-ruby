@@ -160,5 +160,8 @@ module Duel
 
     # The first measurement and its confirmations.
     def measurements: () -> Array[Result]
+
+    # The metrics it was worse on in every measurement.
+    def agreed: () -> Array[String]
   end
 end

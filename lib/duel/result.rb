@@ -137,8 +137,8 @@ module Duel
     def regressed
       return [] if @error || @skipped
 
-      agreed = measurements.map(&:worse).reduce(:&)
-      return agreed unless agreed.empty? && measurements.all?(&:slower_in_time?)
+      worse = agreed
+      return worse unless worse.empty? && measurements.all?(&:slower_in_time?)
 
       measurements.flat_map(&:slower).uniq
     end
@@ -148,7 +148,7 @@ module Duel
     # instructions in the next, say), slower in every one with none saying
     # it isn't: that takes one measurement more than one metric does.
     # @api private
-    def mixed? = measurements.map(&:worse).reduce(:&).empty? && !regressed.empty?
+    def mixed? = agreed.empty? && !regressed.empty?
 
     # Whether it regressed on nothing, and didn't fail.
     def passed? = regressed.empty? && !@error
@@ -161,5 +161,8 @@ module Duel
 
     # The first measurement and its confirmations.
     def measurements = [self, *@confirmations]
+
+    # The metrics it was worse on in every measurement.
+    def agreed = measurements.map(&:worse).reduce(:&)
   end
 end
