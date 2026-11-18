@@ -143,6 +143,10 @@ module Duel
     # Whether a benchmark's timings are judged by process.
     def by_process?: (String name) -> bool
 
+    # Whether there are workers enough of each version for an interval
+    # over them.
+    def enough_workers?: () -> bool
+
     # Judges each of +judged+ over workers, in rounds of a sample from
     # every worker.
     def judge_processes: (String name, Integer n, Array[Metric::spec] judged, Result result) -> void

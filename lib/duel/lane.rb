@@ -472,8 +472,13 @@ module Duel
     # #judge_processes): unless it's a process benchmark (each of its
     # samples is a fresh process already, so its pairs are independent),
     # or there are too few workers of each version for an interval over
-    # them (Lane.by_process?).
-    def by_process?(name) = !process_of(name) && Lane.by_process?(@bases.size, @settings.confidence)
+    # them (see #enough_workers?).
+    def by_process?(name) = !process_of(name) && enough_workers?
+
+    # Whether there are workers enough of each version for an interval
+    # over them (Lane.by_process?): then timings and counts alike are
+    # judged by process.
+    def enough_workers? = Lane.by_process?(@bases.size, @settings.confidence)
 
     # Takes rounds of pairs, each a sample from every worker of each
     # version (the baseline's in order, paired with the candidate's in
@@ -660,7 +665,7 @@ module Duel
     # Each counted measure's fewest, on each version, over COUNTS pairs of
     # samples, and what its metric said of those samples.
     def count(name, n, result)
-      return count_by_process(name, n, result) if Lane.by_process?(@bases.size, @settings.confidence)
+      return count_by_process(name, n, result) if enough_workers?
 
       samples = Array.new(counts) { |i| pair(name, n, i, runs: 1, count: true) }
       metrics.each do |spec|
