@@ -25,6 +25,9 @@ module Duel
     # The fastest of +samples+: the least CPU time and peak memory.
     def self.fastest: (Array[sampled] samples) -> sampled
 
+    # A process benchmark's sample: its CPU time and peak memory.
+    def self.sampled: (Integer cpu, Integer? peak) -> sampled
+
     # Runs +command+ once, and returns its sample.
     def run: (Array[String] command) -> sampled
 

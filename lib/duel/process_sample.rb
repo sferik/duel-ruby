@@ -41,8 +41,13 @@ module Duel
     def self.fastest(samples)
       peaks = samples.map { |sample| sample.fetch("peak") }
       cpu = samples.map { |sample| sample.fetch("timed").fetch("cpu") }.min #: Integer
-      {"timed" => {"cpu" => cpu}, "counted" => {}, "heap" => 0, "peak" => (peaks.min unless peaks.include?(nil))}
+      sampled(cpu, (peaks.min unless peaks.include?(nil)))
     end
+
+    # A process benchmark's sample, as a worker's is: its CPU time
+    # (nanoseconds) and its peak memory (bytes, or nil), counting nothing
+    # and leaving no heap.
+    def self.sampled(cpu, peak) = {"timed" => {"cpu" => cpu}, "counted" => {}, "heap" => 0, "peak" => peak}
 
     # Runs +command+ (as Process.spawn takes it) once, and returns its
     # sample ({"timed" => {"cpu" => nanoseconds}, "peak" => bytes or nil},
@@ -73,7 +78,7 @@ module Duel
       failed = ended.fetch("failed")
       raise Failed, Spawn.with_tail("#{@label}: #{command.join(" ")} #{failed}", @log) if failed
 
-      {"timed" => {"cpu" => ended.fetch("cpu")}, "counted" => {}, "heap" => 0, "peak" => ended.fetch("peak")}
+      ProcessSample.sampled(ended.fetch("cpu"), ended.fetch("peak"))
     end
 
     # Ends the Ruby process of its own, if it started: closing its input
