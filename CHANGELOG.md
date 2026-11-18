@@ -61,6 +61,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loads the version instead, which `c.load { |root| ... }` did:
   `c.library = ->(root) { require File.join(root, "config", "boot") }`.
   `c.load`, which hid `Kernel#load`, is gone.
+- What a benchmark is judged on is one option, `judge:`, one or a list of
+  `:timed`, `:counted` and `:peak_memory`, named as a result's measures
+  are, and `[:timed, :counted]` by default. It replaces `only: :count`
+  (`judge: :counted`), `only: :timing` (`judge: :timed`) and
+  `peak_memory: true` (`:peak_memory` too, which needs `:timed`: with
+  counts alone, it was quietly ignored), so `only: :timing, peak_memory:
+  true` reads as `judge: %i[timed peak_memory]`. A metric sees it as
+  `sample.benchmark.judge`, with `timed?`, `counted?` and
+  `peak_memory?`, in place of `only` and `peak_memory`, and
+  `Duel::Testing.measure` and `Duel::Testing.sample` take `judge:` too.
 - `--candidate-dir` is `--candidate`, as `--base` names the baseline,
   and `DUEL_CANDIDATE` sets it.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and

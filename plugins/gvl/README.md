@@ -50,13 +50,13 @@ end
 Duel.configure { |c| c.use :gvl }
 ```
 
-It measures only benchmarks marked `only: :timing`, as benchmarks with
+It measures only benchmarks marked `judge: :timed`, as benchmarks with
 threads of their own should be (their counts vary from run to run). The
 rest have one thread and nothing to wait for:
 
 ```ruby
 # duel/pool_duel.rb
-duel "pool: 4 threads", only: :timing do |n|
+duel "pool: 4 threads", judge: :timed do |n|
   jobs = Thread::Queue.new(Array.new(n) { |i| i }).tap(&:close)
   Array.new(4) { Thread.new { while (job = jobs.pop) do MyPool.handle(job) end } }.each(&:join)
 end

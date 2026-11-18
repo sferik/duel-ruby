@@ -168,14 +168,17 @@ class TestingTest < DuelTest
     metric = Class.new(Duel::Metric) do
       def self.metric_name = "seen"
 
-      define_method(:start_sample) { |sample| seen << [sample.n, sample.benchmark.only] }
+      define_method(:start_sample) { |sample| seen << [sample.n, sample.benchmark.judge] }
     end
     config = Duel::Config.new(tmpdir)
     config.metric(metric)
     Duel::Testing.measure(config) { 1 }
-    Duel::Testing.measure(config, n: 4, only: :timing) { 1 }
+    Duel::Testing.measure(config, n: 4, judge: :timed) { 1 }
 
-    assert_equal [[1, nil], [4, :timing]], seen
+    assert_equal [[1, %i[timed counted]], [4, %i[timed]]], seen
+    error = assert_raises(ArgumentError) { Duel::Testing.measure(config, judge: :memory) { 1 } }
+
+    assert_match(/\Aduel "test": judge: :memory: /, error.message)
     runs = 0
     Duel::Testing.measure(config, n: 3) { runs += 1 }
 
@@ -249,13 +252,13 @@ class TestingTest < DuelTest
         seen << [self.class, iteration.call]
         total += 10
       end
-      measured = Duel::Testing.measure(config, n: 3, only: :timing, around_iteration: around) do |sample|
+      measured = Duel::Testing.measure(config, n: 3, judge: :timed, around_iteration: around) do |sample|
         sample.untimed { total += 50 }
         (total += 1) && [self.class, Duel.measuring?]
       end
 
       assert_equal({"rows" => 3 * 6}, measured, "costly: #{costly}")
-      assert_equal({"name" => "test", "only" => "timing", "peak_memory" => false, "process" => nil, "n" => 3}, benchmarks.last)
+      assert_equal({"name" => "test", "judge" => %w[timed], "process" => nil, "n" => 3}, benchmarks.last)
       assert_equal [[Duel::Context, [TestingTest, true]]] * 3, seen.last(3)
       assert_equal :before, seen[-4]
     end
@@ -315,7 +318,7 @@ class TestingTest < DuelTest
     config.before_sample { (total += 100) && (log << [:before, Duel.measuring?]) }
     config.after_iterations { (total += 5) && (log << [:after, Duel.measuring?]) }
 
-    assert_equal({"rows" => 6}, Duel::Testing.measure(config, only: :timing) { (total += 1) && (log << :block) })
+    assert_equal({"rows" => 6}, Duel::Testing.measure(config, judge: :timed) { (total += 1) && (log << :block) })
     assert_equal [[:before, false], :block, [:after, true]], log
   end
 
@@ -345,10 +348,13 @@ class TestingTest < DuelTest
     sample = Duel::Testing.sample
 
     assert_instance_of Duel::Sample, sample
-    assert_equal [1, "test", nil, false], [sample.n, sample.benchmark.name, sample.benchmark.only, sample.benchmark.peak_memory]
-    sample = Duel::Testing.sample(n: 4, name: "x", only: :timing, peak_memory: true)
+    assert_equal [1, "test", %i[timed counted]], [sample.n, sample.benchmark.name, sample.benchmark.judge]
+    sample = Duel::Testing.sample(n: 4, name: "x", judge: %i[timed peak_memory])
 
-    assert_equal [4, "x", :timing, true, :process], [sample.n, *sample.benchmark.to_a.first(3), sample.benchmark.cpu]
+    assert_equal [4, "x", %i[timed peak_memory], :process], [sample.n, *sample.benchmark.to_a.first(2), sample.benchmark.cpu]
+    error = assert_raises(ArgumentError) { Duel::Testing.sample(name: "x", judge: :memory) }
+
+    assert_match(/\Aduel "x": judge: :memory: /, error.message)
     assert_equal [File.expand_path("../lib/duel/testing.rb", __dir__), nil], [sample.benchmark.file, sample.benchmark.body.call]
     assert_equal [{}, nil], [Duel::Testing.reading.totals, Duel::Testing.reading.context]
     reading = Duel::Testing.reading({"rows" => 3}, :views)

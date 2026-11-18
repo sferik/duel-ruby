@@ -142,7 +142,7 @@ without the pauses, pass `rollback: false`.
 | `headers:` | Request headers, by name, for example `{"Accept" => "text/csv"}`. |
 | `status:` | The status that the response must have: an Integer, or a Range. The default is `200..399`. Any other status fails the benchmark, because it's measuring an error page. |
 | `rollback:` | `false` to keep what the request writes, and to run its iterations without pausing the metrics between them. The default is `true`. To start each sample with the same data anyway, see [Start every sample with the same data](#start-every-sample-with-the-same-data). |
-| `only:`, `peak_memory:` | Duel's options for what the benchmark is judged on. See [Choose what a benchmark is judged on](https://github.com/sferik/duel-ruby/blob/main/docs/benchmarks.md#choose-what-a-benchmark-is-judged-on). |
+| `judge:` | Duel's option for what the benchmark is judged on. See [Choose what a benchmark is judged on](https://github.com/sferik/duel-ruby/blob/main/docs/benchmarks.md#choose-what-a-benchmark-is-judged-on). |
 | `setup:`, `teardown:`, `before_sample:`, `around_iteration:`, `after_iterations:` | The benchmark's own hooks, as `duel` takes them. See [Run code around a benchmark](https://github.com/sferik/duel-ruby/blob/main/docs/benchmarks.md#run-code-around-a-benchmark). An `around_iteration:` hook would replace the rollback, so it raises an `ArgumentError` unless you also pass `rollback: false`. To run a hook around the rollback, give it to the whole file instead. |
 
 To change the request before it's sent, pass a block. The block

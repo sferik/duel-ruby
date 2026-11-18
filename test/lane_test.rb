@@ -533,10 +533,10 @@ class LaneTest < DuelTest
   # What metrics said of the samples (Metric#details), timed and counted.
   def test_details_noted
     with_fake_workers do |workers|
-      workers.benchmark("b", only: "timing") do |side, n, _| # (so no counting samples)
+      workers.benchmark("b", judge: %w[timed]) do |side, n, _| # (so no counting samples)
         {"timed" => {"cpu" => n * 100_000}, "counted" => {}, "heap" => 0, "details" => {"cpu" => "#{side} timed"}}
       end
-      workers.benchmark("c", only: "count") do |side, n, _|
+      workers.benchmark("c", judge: %w[counted]) do |side, n, _|
         {"timed" => {"cpu" => n}, "counted" => {"allocations" => n}, "heap" => 0, "details" => {"allocations" => "#{side} counted"}}
       end
       l = lane(workers)
@@ -555,7 +555,7 @@ class LaneTest < DuelTest
         FakeWorkers::ALLOCATIONS.merge("name" => "falling")]
       counts = Hash.new(0)
       lock = Mutex.new
-      workers.benchmark("c", only: "count") do |side, n, _|
+      workers.benchmark("c", judge: %w[counted]) do |side, n, _|
         count = lock.synchronize { counts[side] += 1 } # (the fewest rising are the first, falling the latest)
         {"timed" => {"cpu" => n}, "counted" => {"rising" => count, "falling" => 100 - count}, "heap" => 0,
          "details" => {"rising" => "#{side} #{count}", "falling" => "#{side} #{100 - count}"}}
@@ -624,7 +624,7 @@ class LaneTest < DuelTest
 
   def test_threads_of_its_own_need_ten_times_the_cpu
     with_fake_workers do |workers|
-      workers.benchmark("b", only: "timing")
+      workers.benchmark("b", judge: %w[timed])
       workers.per_iteration.transform_values! { 95_000 }
 
       assert_equal 200, compare(workers).first.n, "at most a hundredfold at a time: 100 make 9.5 ms"
@@ -633,7 +633,7 @@ class LaneTest < DuelTest
 
   def test_ten_times_exactly
     with_fake_workers do |workers|
-      workers.benchmark("b", only: "timing")
+      workers.benchmark("b", judge: %w[timed])
       workers.per_iteration.transform_values! { 105_000 }
 
       assert_equal 100, compare(workers).first.n
@@ -966,7 +966,7 @@ class LaneTest < DuelTest
   def test_counts_only_by_process
     with_fake_workers do |workers|
       workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS]
-      workers.benchmark("b", only: "count") do |_, n, label|
+      workers.benchmark("b", judge: %w[counted]) do |_, n, label|
         {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => 2}, "heap" => 0, "details" => {"allocations" => "by #{label}"}}
       end
       result, = compare(workers, processes: 5)
@@ -978,7 +978,7 @@ class LaneTest < DuelTest
 
   def test_counts_only
     with_fake_workers do |workers|
-      workers.benchmark("b", only: "count")
+      workers.benchmark("b", judge: %w[counted])
       result, = compare(workers)
 
       assert_equal 4, result.n, "Duel::COUNTS_ONLY"
@@ -990,7 +990,7 @@ class LaneTest < DuelTest
 
   def test_threads_of_its_own_arent_counted
     with_fake_workers do |workers|
-      workers.benchmark("b", only: "timing")
+      workers.benchmark("b", judge: %w[timed])
       result, = compare(workers)
 
       assert_empty result.counted
@@ -1005,7 +1005,7 @@ class LaneTest < DuelTest
     config.prepare(:worker) { |r| r.at_stop { stopped << r.name } && {} }
     config.prepare(:worker) { |r| r.at_stop { stopped << "#{r.name}'s other" } && {} }
     with_fake_workers do |workers|
-      workers.benchmark("b", peak_memory: true)
+      workers.benchmark("b", judge: %w[timed counted peak_memory])
       workers.peaks("baseline", 30, 10, 20)
       workers.peaks("candidate", 5, 6, 7)
       l = lane(workers)
@@ -1033,7 +1033,7 @@ class LaneTest < DuelTest
 
   def test_no_peak_memory_without_a_way_to_tell
     with_fake_workers do |workers|
-      workers.benchmark("b", peak_memory: true)
+      workers.benchmark("b", judge: %w[timed counted peak_memory])
       workers.memory = false
 
       assert_nil compare(workers).first.memory

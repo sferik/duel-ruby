@@ -115,14 +115,14 @@ always to the object, so a sample is allowed 16 before any is counted.
 On top of that, it's one more per two iterations, not one more, that's a
 regression. So for a benchmark that runs thousands of iterations a
 sample, as most do, one object kept an iteration fails. For one that
-runs a few (a slow one, or one with `only: :count`, which runs four),
+runs a few (a slow one, or one with `judge: :counted`, which runs four),
 it takes more an iteration.
 
 What a benchmark makes the first time and keeps (a constant it
 memoizes, a method cache) isn't a leak: Duel runs each benchmark many
 times before it counts, and none of that is counted.
 
-Benchmarks with `only: :timing` aren't counted at all, so they aren't
+Benchmarks with `judge: :timed` aren't counted at all, so they aren't
 judged on this either.
 
 ### Untimed blocks

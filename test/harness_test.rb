@@ -37,7 +37,7 @@ class HarnessTest < DuelTest
   end
 
   # A benchmark in /duel/x_duel.rb, with its own +hooks+.
-  def definition(name = "x", **hooks, &body) = Duel::Definition.new(name, nil, false, "/duel/x_duel.rb", body, hooks)
+  def definition(name = "x", **hooks, &body) = Duel::Definition.new(name, Duel::JUDGE, "/duel/x_duel.rb", body, hooks)
 
   # The configuration's hooks: +hooks+, by name, and none of the rest.
   def config_hooks(**hooks) = Duel::NO_HOOKS.merge(hooks)
@@ -194,7 +194,7 @@ class HarnessTest < DuelTest
     around = Class.new(Proc).new { |iteration| iteration.call }
 
     assert_same around, duel("a kind of proc", around_iteration: around) { 1 }.hooks.fetch(:around_iteration)
-    once = Duel::Definition.new("once", nil, false, "/duel/x_duel.rb", proc { |n| n }, {})
+    once = Duel::Definition.new("once", Duel::JUDGE, "/duel/x_duel.rb", proc { |n| n }, {})
     error = assert_raises(Duel::Error) { Duel::Harness.new(once, config_hooks(around_iteration: [around])) }
 
     assert_equal "once: around_iteration runs around each iteration: give the benchmark's block no parameter", error.message
@@ -291,7 +291,7 @@ class HarnessTest < DuelTest
     assert_equal 20, ticks(around, 2)
     assert_equal [[:after, 10, true], :around] * 2, log
     log.clear
-    once = Duel::Harness.new(Duel::Definition.new("n", nil, false, "/duel/x_duel.rb", proc { |n| pending += n }, {}), after)
+    once = Duel::Harness.new(Duel::Definition.new("n", Duel::JUDGE, "/duel/x_duel.rb", proc { |n| pending += n }, {}), after)
 
     assert_equal 4, ticks(once, 4)
     assert_equal [[:after, 4, true]], log

@@ -11,7 +11,7 @@ teardown { @connection.close }
 # server's time to answer isn't the plugin's, and varies with what else
 # the machine does. (No other connection runs a statement: it doesn't
 # wait for the server to settle.)
-duel "read: a reading of a server's 50 statements, none ran since", only: :count do
+duel "read: a reading of a server's 50 statements, none ran since", judge: :counted do
   once do
     # (Each a statement of its own: its column's name isn't a constant.)
     @connection.execute(Array.new(50) { |i| "SELECT #{i} AS c#{i}" }.join("; "))

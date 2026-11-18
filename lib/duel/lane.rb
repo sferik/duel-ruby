@@ -300,14 +300,13 @@ module Duel
     end
 
     def measure(name, result)
-      benchmark = benchmarks.fetch(name)
-      only = benchmark.fetch("only")
-      if only == "count"
+      judge = benchmarks.fetch(name).fetch("judge")
+      unless judge.include?("timed")
         count(name, result.n = COUNTS_ONLY, result)
         return
       end
 
-      timings_only = !only.nil? # (the only other choice)
+      timings_only = !judge.include?("counted")
       target = timings_only ? TARGET_NS * 10 : TARGET_NS
       n = calibrate(name, target, 1)
       warm(name, n)
@@ -320,7 +319,7 @@ module Duel
         floors = warm_up_pairs(name, n)
       end
       result.n = n
-      peak_memory(name, n, result) if benchmark.fetch("peak_memory")
+      peak_memory(name, n, result) if judge.include?("peak_memory")
       judge(name, n, floors, result)
       # (Counted once it's timed: on JRuby, the bytes a benchmark allocates
       # can fall as its JIT compiles it, so a count right after a short

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `gvl_wait` measures the benchmarks judged on their timings alone,
+  `judge: :timed`, which Duel's `only: :timing` became.
+
 ## [0.2.0] - 2026-11-16
 
 No changes of its own: released in step with the other Duel gems.

@@ -105,7 +105,7 @@ module Duel
       def hooks: () -> Hash[Symbol, untyped]
 
       # Defines a benchmark of the request, on a file of benchmarks' DSL.
-      def self.duel: (::Duel::DSL dsl, String name, String request, ?only: only?, ?peak_memory: bool, **untyped options) ?{ (Hash[String, untyped] env) [self: untyped] -> void } -> void
+      def self.duel: (::Duel::DSL dsl, String name, String request, ?judge: ::Duel::judged | Array[::Duel::judged], **untyped options) ?{ (Hash[String, untyped] env) [self: untyped] -> void } -> void
 
       private
 

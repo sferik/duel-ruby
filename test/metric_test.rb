@@ -444,7 +444,7 @@ class MetricTest < DuelTest
     refute_predicate Duel::Snapshot.define({"rows" => {}}, -> { 1 }), :costly?
   end
 
-  def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? :timing : nil, false, nil, nil), [], n: 1, counting: false)
+  def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? %i[timed] : Duel::JUDGE, nil, nil), [], n: 1, counting: false)
 
   def test_cpu_measures_the_threads_or_the_processes_cpu_time
     assert_equal([{"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
@@ -673,7 +673,7 @@ class InstructionsTest < DuelTest
     Duel::Metrics::Instructions.instance_variable_set(:@counter, saved)
   end
 
-  def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? :timing : nil, false, nil, nil), [], n: 1, counting: false)
+  def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? %i[timed] : Duel::JUDGE, nil, nil), [], n: 1, counting: false)
 
   def test_spec
     assert_equal([{"name" => "instructions", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 100_000, "unit_ns" => 1, "limit" => 1.01,

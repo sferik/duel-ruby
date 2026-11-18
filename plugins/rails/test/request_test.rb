@@ -153,14 +153,14 @@ class RequestTest < PluginTest
   def test_duel_request
     dsl = self.dsl
     dsl.duel_request("posts: index", "GET /posts")
-    dsl.duel_request("GET /plain", only: :count, peak_memory: true, rollback: false)
+    dsl.duel_request("GET /plain", judge: :timed, rollback: false)
     dsl.duel_request("hello", "GET /plain", params: {say: "x"}) { |env| env["QUERY_STRING"] = "say=#{@say}" }
     dsl.duel_request("boom", "GET /boom", status: 500)
     index, plain, hello, boom = Duel.benchmarks.values
 
     assert_equal 500, Object.new.instance_exec(&boom.body), "the request's options"
-    assert_equal [["posts: index", nil, false], ["GET /plain", :count, true], ["hello", nil, false], ["boom", nil, false]],
-      Duel.benchmarks.values.map { |b| [b.name, b.only, b.peak_memory] }
+    assert_equal [["posts: index", %i[timed counted]], ["GET /plain", %i[timed]], ["hello", %i[timed counted]], ["boom", %i[timed counted]]],
+      Duel.benchmarks.values.map { |b| [b.name, b.judge] }
     assert_equal [{around_iteration: Duel::Rails::ROLLBACK}, {}], [index.hooks, plain.hooks]
     assert_equal 200, Object.new.instance_exec(&index.body)
     assert_equal 200, Object.new.instance_exec(&plain.body)

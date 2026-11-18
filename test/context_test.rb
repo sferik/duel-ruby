@@ -13,7 +13,7 @@ class ContextTest < DuelTest
   cover "Duel.measured"
   cover "Duel.unmeasured!"
 
-  def definition(name = "x", &body) = Duel::Definition.new(name, nil, false, "/duel/x_duel.rb", body, {})
+  def definition(name = "x", &body) = Duel::Definition.new(name, Duel::JUDGE, "/duel/x_duel.rb", body, {})
 
   def metrics = [Duel::Metrics::Allocations.new, Duel::Metrics::CPU.new].select { |m| m.class.available? }
 

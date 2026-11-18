@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `.duel.rb` that `bin/rails generate duel:install` writes shows
   `c.accept_label = "duel: accept"` commented out, now that it's Duel's
   default.
+- `duel_request` takes `judge:`, as `duel` does now, in place of `only:`
+  and `peak_memory:`.
 
 ## [0.2.0] - 2026-11-16
 

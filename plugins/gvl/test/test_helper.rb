@@ -87,9 +87,9 @@ class PluginTest < Minitest::Test
       "duel/wait_duel.rb" => <<~RUBY,
         require "sample"
 
-        duel("wait", only: :timing) { |n| Sample.wait(n) }
-        duel("fight", only: :timing) { |n| Array.new(3) { Thread.new { n.times { 500.times {} } } }.each(&:join) }
-        duel("one thread", only: :timing) { |n| Thread.new { n.times { 500.times {} } }.join }
+        duel("wait", judge: :timed) { |n| Sample.wait(n) }
+        duel("fight", judge: :timed) { |n| Array.new(3) { Thread.new { n.times { 500.times {} } } }.each(&:join) }
+        duel("one thread", judge: :timed) { |n| Thread.new { n.times { 500.times {} } }.join }
       RUBY
       ".duel.rb" => <<~RUBY)
         Duel.configure do |c|

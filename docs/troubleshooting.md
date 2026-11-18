@@ -125,7 +125,7 @@ Duel reports a timing that's still too close to the limit to call, and
 doesn't fail on it. A benchmark that's reported unsettled run after run
 is noisy. Make every iteration do the same work, or, for work that's
 mostly waiting, judge the benchmark on its counts alone with
-`only: :count`. See
+`judge: :counted`. See
 [Choose what a benchmark is judged on](benchmarks.md#choose-what-a-benchmark-is-judged-on)
 and [How Duel tells a regression from noise](how-it-works.md#how-duel-tells-a-regression-from-noise).
 

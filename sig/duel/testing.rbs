@@ -54,7 +54,7 @@ module Duel
     # of +n+ iterations of a benchmark would, with its hooks (each
     # iteration inside around_iteration hooks, if it has them). The
     # block gets the benchmark's Context.
-    def measure: (Config config, ?n: Integer, ?only: (:count | :timing)?, **untyped hooks) { (Context context) -> untyped } -> Measurement
+    def measure: (Config config, ?n: Integer, ?judge: judged | Array[judged], **untyped hooks) { (Context context) -> untyped } -> Measurement
 
     # Runs the block with +env+ set, and the environment as it was after.
     # @api private
@@ -77,7 +77,7 @@ module Duel
 
     # A stand-in Sample of +n+ iterations of a benchmark, measuring
     # nothing.
-    def sample: (?n: Integer, ?name: String, ?only: only?, ?peak_memory: bool) -> Sample
+    def sample: (?n: Integer, ?name: String, ?judge: judged | Array[judged]) -> Sample
 
     # A stand-in reading of running totals, and what was read with them.
     def reading: [T, C] (?Snapshot::totals[T] totals, ?C? context) -> Snapshot::Reading[T, C?]

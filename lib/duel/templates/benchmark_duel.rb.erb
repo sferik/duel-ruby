@@ -22,8 +22,8 @@
 #   with a `before_sample` hook.
 # - Aim for microseconds to a few milliseconds an iteration, and split
 #   anything slower.
-# - Use `only: :count` for work that's mostly waiting (on a socket, say),
-#   and `only: :timing` for work on threads of its own.
+# - Use `judge: :counted` for work that's mostly waiting (on a socket,
+#   say), and `judge: :timed` for work on threads of its own.
 # - Use only the API that the main branch has: a benchmark that the
 #   baseline can't run is skipped.
 

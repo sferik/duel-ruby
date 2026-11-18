@@ -59,11 +59,11 @@ class GVLTest < PluginTest
 
   # A benchmark that only counts isn't measured.
   def test_not_for_counting
-    assert_empty Duel::Testing.measure(config, only: :count) { busy(3, 0.05) }
+    assert_empty Duel::Testing.measure(config, judge: :counted) { busy(3, 0.05) }
   end
 
   def test_measures_threads_waiting
-    measured = Duel::Testing.measure(config, only: :timing) { busy(3, 0.2) }
+    measured = Duel::Testing.measure(config, judge: :timed) { busy(3, 0.2) }
 
     refute_predicate Duel::GVL::Hook, :running?
     assert_operator measured.fetch("gvl_wait"), :>, 0.1e9
@@ -75,8 +75,8 @@ class GVLTest < PluginTest
   # a sample of a lot of waiting came first.
   def test_measures_only_waiting
     Duel::Testing.in_worker(config) do
-      Duel::Testing.measure(config, only: :timing) { busy(3, 0.2) }
-      measured = Duel::Testing.measure(config, only: :timing) { busy(1, 0.2) }
+      Duel::Testing.measure(config, judge: :timed) { busy(3, 0.2) }
+      measured = Duel::Testing.measure(config, judge: :timed) { busy(1, 0.2) }
 
       assert_operator measured.fetch("gvl_wait"), :<, Duel::GVL::Wait::CPU_FLOOR * 0.2e9
     end
@@ -86,7 +86,7 @@ class GVLTest < PluginTest
   # out while it's paused.
   def test_paused
     hooked = nil
-    measured = Duel::Testing.measure(config, only: :timing) do |sample|
+    measured = Duel::Testing.measure(config, judge: :timed) do |sample|
       busy(2, 0.05)
       sample.untimed do
         hooked = Duel::GVL::Hook.running?

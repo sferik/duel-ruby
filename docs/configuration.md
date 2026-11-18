@@ -566,7 +566,7 @@ worker. A subclass defines the following methods:
 | `self.available?` | Returns `false` where the metric can't measure, to leave it out. |
 | `self.costly?` | Returns `true` for a metric that's costly to read, such as one that queries a server, so that Duel doesn't pause it around each iteration inside an `around_iteration` hook. For more information, see [Account for the cost of reading](#account-for-the-cost-of-reading). |
 | `open` | Called once in each worker, after its `c.in_worker` blocks, to set up what the metric reads, such as a subscription. |
-| `start_sample(sample)` | Called before every sample. `sample.n` is the sample's number of iterations, and `sample.benchmark` is the benchmark, with its `name`, `only`, and `peak_memory`. |
+| `start_sample(sample)` | Called before every sample. `sample.n` is the sample's number of iterations, and `sample.benchmark` is the benchmark, with its `name`, and what it's judged on: `judge` (`[:timed, :counted]`, say), and `timed?`, `counted?` and `peak_memory?`. |
 | `stop_sample` | Called after the sample. Returns what was measured, or a Hash of measurements by name. |
 | `pause_sample` and `resume_sample(sample)` | Called around an `untimed` block, and around what an `around_iteration` hook does outside each iteration (unless the metric is costly). By default, they call `stop_sample` and `start_sample`. |
 | `details` | Explains a regression. See the following paragraphs. |

@@ -13,7 +13,7 @@ class EndToEndMemoryTest < DuelTest
     skip "no way to tell the memory in use here" unless Duel::Native::Memory.used
 
     # (With a setup of its own: the fresh workers measuring it run no trial.)
-    benchmarks = %(require "sample"\nduel("big", peak_memory: true) { once { @more = 0 }\n Sample.big.size + @more }\n)
+    benchmarks = %(require "sample"\nduel("big", judge: %i[timed counted peak_memory]) { once { @more = 0 }\n Sample.big.size + @more }\n)
     base = project(File.join(tmpdir, "base"), benchmarks: benchmarks, extra: "def self.big = Random.bytes(1 << 20)")
     same = project(File.join(tmpdir, "same"), benchmarks: benchmarks, extra: "def self.big = Random.bytes(1 << 20)")
     bigger = project(File.join(tmpdir, "bigger"), benchmarks: benchmarks, extra: "def self.big = Random.bytes(25 << 20)")

@@ -64,7 +64,7 @@ module Duel
       # the request: see DSL#duel_request. +hooks+ are its own (as
       # Duel::DSL#duel takes them): an around_iteration one, only for a request not
       # rolled back (it would replace the rollback).
-      def self.duel(dsl, name, request, only: nil, peak_memory: false, **options, &prepare)
+      def self.duel(dsl, name, request, judge: JUDGE, **options, &prepare)
         hooks = options.slice(*HOOKS)
         sent = new(request, **options.except(*HOOKS))
         if sent.hooks.key?(:around_iteration) && hooks.key?(:around_iteration)
@@ -72,7 +72,7 @@ module Duel
             "or give the hook to the file (around_iteration { |iteration| ... })"
         end
 
-        dsl.duel(name, only:, peak_memory:, **sent.hooks, **hooks) do
+        dsl.duel(name, judge:, **sent.hooks, **hooks) do
           env = sent.env
           instance_exec(env, &prepare) if prepare
           sent.call(env)

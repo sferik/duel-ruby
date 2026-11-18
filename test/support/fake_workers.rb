@@ -51,8 +51,8 @@ class FakeWorkers
   # iteration. A +process+ benchmark's runs (see Worker#run) are the
   # block's too (of one iteration), with a "peak" of their own (by
   # default, 1 MB).
-  def benchmark(name, only: nil, peak_memory: false, process: nil, &measures)
-    @benchmarks[name] = {"name" => name, "only" => only, "peak_memory" => peak_memory, "process" => process}
+  def benchmark(name, judge: %w[timed counted], process: nil, &measures)
+    @benchmarks[name] = {"name" => name, "judge" => judge, "process" => process}
     @measures[name] = measures || lambda do |side, iterations, _label|
       {"timed" => {"cpu" => iterations * per_iteration.fetch(side)}, "counted" => {"allocations" => iterations * 2},
        "heap" => iterations * 1024}

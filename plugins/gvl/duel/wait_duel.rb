@@ -10,7 +10,7 @@ setup { load_hook }
 duel "wait: start and stop around a sample of a benchmark with threads of its own" do
   once do
     @start, @stop = sample_methods(Duel::GVL::Wait.new)
-    @threaded = sample(:timing)
+    @threaded = sample(:timed)
   end
   @start.call(@threaded)
   @stop.call
@@ -20,7 +20,7 @@ end
 duel "wait: start and stop around a sample of a benchmark without" do
   once do
     @start, @stop = sample_methods(Duel::GVL::Wait.new)
-    @unthreaded = sample(nil)
+    @unthreaded = sample(%i[timed counted])
   end
   @start.call(@unthreaded)
   @stop.call

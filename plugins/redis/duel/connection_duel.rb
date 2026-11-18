@@ -9,20 +9,20 @@ require_relative "duel_helper"
 setup { connect }
 teardown { @redis.close }
 
-duel("connection: a status reply", only: :count) { @redis.call("PING") }
+duel("connection: a status reply", judge: :counted) { @redis.call("PING") }
 
-duel("connection: a command of three arguments", only: :count) { @redis.call("SET", "key", "value") }
+duel("connection: a command of three arguments", judge: :counted) { @redis.call("SET", "key", "value") }
 
-duel("connection: INFO all", only: :count) { @redis.call("INFO", "all") }
+duel("connection: INFO all", judge: :counted) { @redis.call("INFO", "all") }
 
 # INFO all's reply, as big as a server that ran every command makes it.
-duel "connection: an 80 KB bulk reply", only: :count do
+duel "connection: an 80 KB bulk reply", judge: :counted do
   once { @redis.call("SET", "big", "x" * 80_000) }
   @redis.call("GET", "big")
 end
 
 # An array reply, of a hundred bulk strings (LRANGE's, or MGET's).
-duel "connection: an array reply", only: :count do
+duel "connection: an array reply", judge: :counted do
   once { @redis.call("RPUSH", "list", *Array.new(100) { |i| "value #{i}" }) }
   @redis.call("LRANGE", "list", 0, -1)
 end

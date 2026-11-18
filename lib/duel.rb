@@ -41,23 +41,33 @@ module Duel
   # @api private
   NO_HOOKS = HOOKS.to_h { |hook| [hook, Array.new(0).freeze] }.freeze #: Hash[Symbol, Array[hook]]
 
-  # A benchmark (see DSL#duel), defined in +file+, whose hooks (those of
-  # its file, and its own, +hooks+, by name) it gets. Or a benchmark of a
-  # whole +process+ (see DSL#duel_process), with no +body+. What a
-  # metric sees of it (Sample#benchmark), and its hooks are given, is
-  # its +name+, +only+ and +peak_memory+. Its +file+, +body+, +hooks+
-  # and +process+, and its writers, are @api private.
-  Definition = Struct.new(:name, :only, :peak_memory, :file, :body, :hooks, :process)
+  # A benchmark (see DSL#duel), defined in +file+, judged on what
+  # +judge+ says (see JUDGED), whose hooks (those of its file, and its
+  # own, +hooks+, by name) it gets. Or a benchmark of a whole +process+
+  # (see DSL#duel_process), with no +body+. What a metric sees of it
+  # (Sample#benchmark) is its +name+ and +judge+, and #timed?, #counted?
+  # and #peak_memory?. Its +file+, +body+, +hooks+ and +process+, and its
+  # writers, are @api private.
+  Definition = Struct.new(:name, :judge, :file, :body, :hooks, :process)
 
   class Definition
+    # Whether it's judged on its timings.
+    def timed? = judge.include?(:timed)
+
+    # Whether it's judged on its counts.
+    def counted? = judge.include?(:counted)
+
+    # Whether it's judged on its peak memory too.
+    def peak_memory? = judge.include?(:peak_memory)
+
     # Whose CPU time it takes: the benchmark thread's, or (judged on its
     # timings alone, as work on threads of its own is) the process's.
     # @api private
-    def cpu = (only == :timing) ? :process : :thread
+    def cpu = counted? ? :thread : :process
 
     # What the runner learns of it.
     # @api private
-    def to_h = {"name" => name, "only" => only&.to_s, "peak_memory" => peak_memory, "process" => process}
+    def to_h = {"name" => name, "judge" => judge.map(&:to_s), "process" => process}
   end
 
   # The iterations of a benchmark judged on its counts alone (see
@@ -65,9 +75,18 @@ module Duel
   # @api private
   COUNTS_ONLY = 4
 
-  # What a benchmark may be judged on (see DSL#duel): nil for both.
+  # What a benchmark can be judged on (see DSL#duel), in this order: its
+  # timings, its counts, and its peak memory.
+  JUDGED = %i[timed counted peak_memory].freeze #: Array[judged]
+
+  # What a benchmark is judged on, unless it says (see DSL#duel): its
+  # timings and its counts.
+  JUDGE = %i[timed counted].freeze #: Array[judged]
+
+  # What a process benchmark is judged on (see DSL#duel_process): its CPU
+  # time, and its peak memory.
   # @api private
-  ONLY = [nil, :count, :timing] #: Array[only?]
+  PROCESS_JUDGE = %i[timed peak_memory].freeze #: Array[judged]
 
   # What a worker's blocks (Config#in_worker) are given: blocks to run
   # when the worker ends, last first.
@@ -330,12 +349,13 @@ module Duel
     #     queue.drain
     #   end
     #
-    # Options: only: what it's judged on, if not both its timings and its
-    # counts: :count for work too slow and light to time (waiting, say),
-    # run a few iterations at a time, or :timing for work done by
-    # threads of its own, which make its counts vary (and whose CPU time
-    # is the process's, not the benchmark thread's). peak_memory: true to
-    # judge its peak memory too. And its own hooks (see HOOKS), lambdas
+    # Options: judge: what it's judged on (see JUDGED), one or a list, if
+    # not its timings and its counts: :counted alone for work too slow and
+    # light to time (waiting, say), run a few iterations at a time,
+    # :timed alone for work done by threads of its own, which make its
+    # counts vary (and whose CPU time is the process's, not the benchmark
+    # thread's), and :peak_memory too to judge its peak memory. And its
+    # own hooks (see HOOKS), lambdas
     # run in its context, after its configuration's and its file's: an
     # around_iteration one takes the iteration (an Iteration) and runs
     # it, and only the iteration is measured, so what it does before and
@@ -344,12 +364,27 @@ module Duel
     #   duel "posts: create", around_iteration: ->(iteration) { rolled_back { iteration.call } } do
     #     Post.create!(title: "Hi")
     #   end
-    def duel(name, only: nil, peak_memory: false, **hooks, &body)
+    #
+    #   duel "redis: PING", judge: :counted do ... end
+    #   duel "server: 10 workers", judge: %i[timed peak_memory] do ... end
+    def duel(name, judge: JUDGE, **hooks, &body)
       raise ArgumentError, "duplicate benchmark #{name.inspect}" if Duel.benchmarks.key?(name)
-      raise ArgumentError, "only: must be :count or :timing, not #{only.inspect}" unless ONLY.include?(only)
 
-      Duel.benchmarks[name] = Definition.new(name, only, peak_memory, Duel.defining_file || body.source_location.first, body,
+      Duel.benchmarks[name] = Definition.new(name, DSL.judged(name, judge), Duel.defining_file || body.source_location.first, body,
         DSL.hooks(name, hooks, body))
+    end
+
+    # What a benchmark +name+d is judged on, given +judge+ (one of JUDGED,
+    # or a list of them: :timed, :counted, or both, and :peak_memory, with
+    # :timed, as it's measured at the timings' number of iterations): a
+    # list of them, in JUDGED's order.
+    # @api private
+    def self.judged(name, judge)
+      given = Array(judge)
+      valid = (given - JUDGED).empty? && given.intersect?(%i[timed counted]) && (given.include?(:timed) || !given.include?(:peak_memory))
+      raise ArgumentError, "duel #{name.inspect}: judge: #{judge.inspect}: give :timed, :counted, or both, and :peak_memory with :timed" unless valid
+
+      JUDGED & given
     end
 
     # A benchmark's own hooks (+hooks+, by name), each one a hook there
@@ -358,7 +393,7 @@ module Duel
     # @api private
     def self.hooks(name, hooks, body)
       unknown = hooks.keys - HOOKS
-      raise ArgumentError, "duel #{name.inspect}: no option #{unknown.join(", ")} (only, peak_memory, #{HOOKS.join(", ")})" unless unknown.empty?
+      raise ArgumentError, "duel #{name.inspect}: no option #{unknown.join(", ")} (judge, #{HOOKS.join(", ")})" unless unknown.empty?
 
       hooks.each { |hook, block| Duel.hook(hook, block) }
       if hooks.key?(:around_iteration) && body.arity == 1
@@ -400,7 +435,7 @@ module Duel
       end
 
       process = {"command" => (command unless command.empty?), "ruby" => ruby, "runs" => runs} #: Definition::process
-      Duel.benchmarks[name] = Definition.new(name, nil, false, Duel.defining_file || caller_locations.fetch(0).path, nil, {}, process)
+      Duel.benchmarks[name] = Definition.new(name, PROCESS_JUDGE, Duel.defining_file || caller_locations.fetch(0).path, nil, {}, process)
     end
 
     # En garde.

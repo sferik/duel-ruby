@@ -14,7 +14,7 @@ end
 
 duel "sample: start and stop, with three metrics" do
   once do
-    @definition = Subject::Duel::Definition.new("work", nil, false, __FILE__, -> {}, own_hooks)
+    @definition = definition("work", own_hooks)
     @metrics = three_metrics
   end
   sample = Subject::Duel::Sample.new(@definition, @metrics, n: 1, counting: true)
@@ -24,9 +24,8 @@ end
 
 duel "sample: 1000 iterations of an empty benchmark" do
   once do
-    definition = Subject::Duel::Definition.new("empty", nil, false, __FILE__, -> {}, own_hooks)
     # (A version without a Harness ran a benchmark in its Context.)
-    @harness = (defined?(Subject::Duel::Harness) ? Subject::Duel::Harness : Subject::Duel::Context).new(definition)
+    @harness = (defined?(Subject::Duel::Harness) ? Subject::Duel::Harness : Subject::Duel::Context).new(definition("empty", own_hooks))
     @trial = Subject::Duel::Trial.new
   end
   @harness.run(1000, @trial)
@@ -36,7 +35,7 @@ end
 # resumes every metric.
 duel "sample: 100 iterations around each, 3 metrics" do
   once do
-    @definition = Subject::Duel::Definition.new("empty", nil, false, __FILE__, -> {}, own_hooks(->(iteration) { iteration.call }))
+    @definition = definition("empty", own_hooks(->(iteration) { iteration.call }))
     @harness = Subject::Duel::Harness.new(@definition)
     @metrics = three_metrics
   end

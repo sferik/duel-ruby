@@ -25,7 +25,7 @@ end
 # A reading as a worker takes it: INFO over the plugin's connection, and
 # its reply parsed (judged on its allocations: the socket's time is too
 # noisy to).
-duel "stats: read a server after a typical benchmark", only: :count do
+duel "stats: read a server after a typical benchmark", judge: :counted do
   once do
     connect
     16.times { |i| @redis.call("SET", "k#{i}", "v") }

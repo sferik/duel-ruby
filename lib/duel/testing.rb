@@ -96,7 +96,7 @@ module Duel
 
     # What +config+'s metrics (a plugin's: not Duel's own) measure of the
     # block, as one counted sample of +n+ iterations of a benchmark would,
-    # with +only:+ (:timing, say) and its own +hooks+ (around_iteration:,
+    # with +judge:+ (:timed, say) and its own +hooks+ (around_iteration:,
     # say), as DSL#duel takes them: {name => measured}, with what they
     # said of it (Measurement#details). It runs with the configuration's
     # hooks too, as a worker runs a benchmark: its setup hooks, then the
@@ -115,11 +115,11 @@ module Duel
     # Inside #in_worker, it's that worker's. Outside, it's a worker of its
     # own, ended after (its metrics closed, and what its blocks gave
     # at_stop run).
-    def measure(config, n: 1, only: nil, **hooks, &block)
-      return in_worker(config) { measure(config, n: n, only: only, **hooks, &block) } unless STOPS.key?(config)
+    def measure(config, n: 1, judge: JUDGE, **hooks, &block)
+      return in_worker(config) { measure(config, n: n, judge: judge, **hooks, &block) } unless STOPS.key?(config)
 
       body = -> { block.call(self) } #: ^() [self: Context] -> void
-      benchmark = Definition.new("test", only, false, __FILE__, body, DSL.hooks("test", hooks, body))
+      benchmark = Definition.new("test", DSL.judged("test", judge), __FILE__, body, DSL.hooks("test", hooks, body))
       harness = Harness.new(benchmark, config.hooks)
       metrics = metrics(config)
       sample = harness.sample(metrics, n: n)
@@ -175,14 +175,14 @@ module Duel
     MADE.compare_by_identity
 
     # A stand-in Sample of +n+ iterations of a benchmark named +name+
-    # (with +only:+ and +peak_memory:+, as DSL#duel takes them), measuring
+    # (judged on what +judge:+ says, as DSL#duel takes it), measuring
     # nothing: what a metric's #start_sample, and its details block
     # (Snapshot.details), are given.
     #
     #   metric.start_sample(Duel::Testing.sample(n: 10))
-    def sample(n: 1, name: "test", only: nil, peak_memory: false)
+    def sample(n: 1, name: "test", judge: JUDGE)
       nothing = -> {} #: ^() [self: Context] -> void
-      Sample.new(Definition.new(name, only, peak_memory, __FILE__, nothing), [], n: n)
+      Sample.new(Definition.new(name, DSL.judged(name, judge), __FILE__, nothing), [], n: n)
     end
 
     # A stand-in reading of running totals (Snapshot::Reading): +totals+,

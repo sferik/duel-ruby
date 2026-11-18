@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 # What a metric's start_sample is given, as Duel gives it: a sample of one
-# iteration, of a benchmark with +only+ (:timing for one with threads of
-# its own).
-def sample(only)
-  benchmark = Data.define(:name, :only, :peak_memory).new(name: "work", only:, peak_memory: false)
+# iteration, of a benchmark judged on what +judge+ says (:timed alone for
+# one with threads of its own).
+def sample(judge)
+  benchmark = Duel::Definition.new("work", Duel::DSL.judged("work", judge), __FILE__, -> {})
   Data.define(:n, :benchmark).new(n: 1, benchmark:)
 end
 

@@ -31,6 +31,16 @@ def three_metrics
   metrics.each { |metric| metric.open if metric.class.method_defined?(:open) }
 end
 
+# A benchmark named +name+, with +hooks+ (see #own_hooks), as a version's
+# Definition takes one: judged on its timings and counts, Duel's default,
+# as judge: says (or, a version before judge:, only: and peak_memory:
+# do, with neither).
+def definition(name, hooks)
+  return Subject::Duel::Definition.new(name, nil, false, __FILE__, -> {}, hooks) unless Subject::Duel::Definition.members.include?(:judge)
+
+  Subject::Duel::Definition.new(name, Subject::Duel::JUDGE, __FILE__, -> {}, hooks)
+end
+
 # A benchmark's own hooks, as a version's Definition takes them: by name
 # (Duel::HOOKS), or, a version from before them, its around block alone.
 def own_hooks(around = nil)

@@ -477,24 +477,34 @@ class DSLTest < DuelTest
     body = proc { 1 }
     definition = duel("one", &body)
 
-    assert_equal Duel::Definition.new("one", nil, false, __FILE__, body, {}), definition
+    assert_equal Duel::Definition.new("one", %i[timed counted], __FILE__, body, {}), definition
     assert_same definition, Duel.benchmarks.fetch("one")
     assert_equal :thread, definition.cpu
   end
 
-  def test_options
-    timings = duel("timings", only: :timing, peak_memory: true) { 1 }
-    counts = duel("counts", only: :count) { 1 }
+  # What a benchmark's judged on: a list, or one, in JUDGED's order,
+  # each told by a predicate.
+  def test_judge
+    timings = duel("timings", judge: %i[peak_memory timed]) { 1 }
+    counts = duel("counts", judge: :counted) { 1 }
+    both = duel("both") { 1 }
 
-    assert_equal [:timing, true, :process], [timings.only, timings.peak_memory, timings.cpu]
-    assert_equal [:count, false, :thread], [counts.only, counts.peak_memory, counts.cpu]
+    assert_equal [%i[timed peak_memory], true, false, true, :process],
+      [timings.judge, timings.timed?, timings.counted?, timings.peak_memory?, timings.cpu]
+    assert_equal [%i[counted], false, true, false, :thread], [counts.judge, counts.timed?, counts.counted?, counts.peak_memory?, counts.cpu]
+    assert_equal [%i[timed counted], true, true, false, :thread], [both.judge, both.timed?, both.counted?, both.peak_memory?, both.cpu]
+    assert_equal [%i[timed counted peak_memory], %i[timed counted]], [Duel::JUDGED, Duel::JUDGE]
     assert_equal 4, Duel::COUNTS_ONLY
   end
 
-  def test_only_counts_or_timings
-    error = assert_raises(ArgumentError) { duel("x", only: :memory) { 1 } }
+  # Its timings, its counts, or both, and its peak memory with its
+  # timings (measured at their iterations): nothing else.
+  def test_judge_takes_what_it_can_judge
+    [:memory, [], :peak_memory, %i[counted peak_memory], %i[timed memory]].each do |judge|
+      error = assert_raises(ArgumentError) { duel("x", judge:) { 1 } }
 
-    assert_equal "only: must be :count or :timing, not :memory", error.message
+      assert_equal "duel \"x\": judge: #{judge.inspect}: give :timed, :counted, or both, and :peak_memory with :timed", error.message
+    end
     refute Duel.benchmarks.key?("x")
   end
 
@@ -528,10 +538,10 @@ class DSLTest < DuelTest
       duel_process "require", ruby: %(require "my_gem"), runs: 5
     RUBY
 
-    assert_equal [Duel::Definition.new("boot", nil, false, "/duel/boot_duel.rb", nil, {},
+    assert_equal [Duel::Definition.new("boot", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {},
       {"command" => %w[bin/rails runner 1], "ruby" => nil, "runs" => nil}),
-      Duel::Definition.new("shell", nil, false, "/duel/boot_duel.rb", nil, {}, {"command" => ["bin/rails runner 1"], "ruby" => nil, "runs" => nil}),
-      Duel::Definition.new("require", nil, false, "/duel/boot_duel.rb", nil, {}, {"command" => nil, "ruby" => %(require "my_gem"), "runs" => 5})],
+      Duel::Definition.new("shell", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => ["bin/rails runner 1"], "ruby" => nil, "runs" => nil}),
+      Duel::Definition.new("require", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => nil, "ruby" => %(require "my_gem"), "runs" => 5})],
       Duel.benchmarks.values
     assert_equal({"command" => nil, "ruby" => %(require "my_gem"), "runs" => 5}, Duel.benchmarks.fetch("require").to_h.fetch("process"))
     [["neither"], ["both", "true", {ruby: "1"}]].each do |name, *command|
@@ -562,17 +572,16 @@ class DSLTest < DuelTest
 
     assert_equal 'duel_process "boot": around_iteration is duel\'s, for a benchmark run in a worker: a process benchmark runs no ' \
       "hooks, and is judged on its CPU time and peak memory alone", error.message
-    error = assert_raises(ArgumentError) { DSL.duel_process("boot", ruby: "1", only: :count, peak_memory: true) }
+    error = assert_raises(ArgumentError) { DSL.duel_process("boot", ruby: "1", judge: :counted, around_iteration: -> {}) }
 
-    assert_match(/: only, peak_memory are duel's, /, error.message)
+    assert_match(/: judge, around_iteration are duel's, /, error.message)
     assert_empty Duel.benchmarks
   end
 
   def test_what_the_runner_learns
-    definition = Duel::Definition.new("a", :timing, true, "/a_duel.rb", nil)
+    definition = Duel::Definition.new("a", %i[timed peak_memory], "/a_duel.rb", nil)
 
-    assert_equal({"name" => "a", "only" => "timing", "peak_memory" => true, "process" => nil}, definition.to_h)
-    assert_nil Duel::Definition.new("b", nil, false, nil, nil).to_h.fetch("only")
+    assert_equal({"name" => "a", "judge" => %w[timed peak_memory], "process" => nil}, definition.to_h)
   end
 
   # A benchmark's own hooks: lambdas (or procs), one of each there is,
@@ -587,7 +596,7 @@ class DSLTest < DuelTest
     assert_equal hooks, definition.hooks
     error = assert_raises(ArgumentError) { duel("x", around: -> {}, drain: -> {}) { nil } }
 
-    assert_equal 'duel "x": no option around, drain (only, peak_memory, setup, teardown, before_sample, around_iteration, after_iterations)',
+    assert_equal 'duel "x": no option around, drain (judge, setup, teardown, before_sample, around_iteration, after_iterations)',
       error.message
     error = assert_raises(ArgumentError) { duel("x", setup: :prepare) { nil } }
 

@@ -11,22 +11,22 @@ teardown { @connection.close }
 # Over the worker's own server: the round trip, and the reading. (A
 # socket's timings are too noisy to settle: these are judged on what
 # they allocate.)
-duel "stats: read a server's statistics", only: :count do
+duel "stats: read a server's statistics", judge: :counted do
   once { connect }
   @connection.stats
 end
 
-duel "stats: read a server's reply to stats", only: :count do
+duel "stats: read a server's reply to stats", judge: :counted do
   once { connect }
   @connection.stats_reply
 end
 
-duel "stats: the operations, misses and bytes, from a server", only: :count do
+duel "stats: the operations, misses and bytes, from a server", judge: :counted do
   once { connect }
   Duel::Memcached.stats(@connection)
 end
 
-duel "cpu: the CPU time, from a server", only: :count do
+duel "cpu: the CPU time, from a server", judge: :counted do
   once { connect }
   Duel::Memcached.cpu_time(@connection)
 end

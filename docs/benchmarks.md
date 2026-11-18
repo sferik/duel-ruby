@@ -235,24 +235,28 @@ By default, Duel judges each benchmark on its timings and its counts:
   own.
 - Counts: allocations, and any other exact counts.
 
-To change that, pass these options to `duel`:
+To change that, give `duel` what to judge, `judge:`, one of these or a
+list of them (`judge: %i[timed counted]` by default):
 
-- `only: :count`: for work that's mostly waiting, too slow and light to
-  time. Duel judges the benchmark on its counts alone, over a few
-  iterations.
-- `only: :timing`: for work done by threads that the benchmark starts,
-  which make its counts vary from run to run. Duel judges the benchmark
-  on its timings alone, and takes the process's CPU time instead of the
-  benchmark thread's.
-- `peak_memory: true`: also judges the benchmark's peak memory, which is
-  the most resident memory that its measured work reached, above where
-  it started, or on JRuby, the most of the JVM's heap that it had in
-  use. Duel takes each version's lowest peak from three fresh
-  workers. Like every other measure, peak memory leaves out what
-  `once` and `untimed` blocks leave behind.
+- `:counted`: its counts. Alone, for work that's mostly waiting, too
+  slow and light to time, Duel judges the benchmark on its counts over a
+  few iterations.
+- `:timed`: its timings. Alone, for work done by threads that the
+  benchmark starts, which make its counts vary from run to run, Duel
+  takes the process's CPU time instead of the benchmark thread's.
+- `:peak_memory`: its peak memory too, with its timings: the most
+  resident memory that its measured work reached, above where it
+  started, or on JRuby, the most of the JVM's heap that it had in use.
+  Duel takes each version's lowest peak from three fresh workers. Like
+  every other measure, peak memory leaves out what `once` and `untimed`
+  blocks leave behind.
 
 ```ruby
-duel "server: 10 workers", only: :timing, peak_memory: true do |n|
+duel "redis: PING", judge: :counted do
+  # ...
+end
+
+duel "server: 10 workers", judge: %i[timed peak_memory] do |n|
   # ...
 end
 ```
@@ -315,5 +319,5 @@ makes the same code look slower.
 A process benchmark doesn't run in a worker, so nothing that runs there
 applies to it: hooks, from `.duel.rb` or its file, and the metrics that
 plugins add. `duel_process` doesn't take the options of `duel`
-(`only:`, `peak_memory:`, and the hooks, such as `around_iteration:`),
+(`judge:`, and the hooks, such as `around_iteration:`),
 and raises an `ArgumentError` if it's given one.

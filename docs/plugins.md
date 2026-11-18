@@ -273,8 +273,9 @@ returns. The block receives the following:
   it has one stretch, and one more for each `untimed` block, as any
   other sample does.
 - `sample`: the sample. `sample.n` is its number of iterations, and
-  `sample.benchmark` is the benchmark, with its `name`, `only`, and
-  `peak_memory`.
+  `sample.benchmark` is the benchmark, with its `name`, and what it's
+  judged on: `judge` (`[:timed, :counted]`, say), and `timed?`,
+  `counted?` and `peak_memory?`.
 
 A reading has the following:
 
@@ -344,8 +345,8 @@ Duel::Testing.compare(base, candidate).passed? # whole comparisons, in workers
   `around_iteration` hook, the configuration's or its own, each
   iteration runs inside the hook, the way that a worker runs a
   benchmark with one, including what it learns first to subtract the
-  hook's work from a costly metric. `only:` makes the sample a
-  benchmark's that has, for example, `only: :timing`. It also takes the
+  hook's work from a costly metric. `judge:` makes the sample a
+  benchmark's that has, for example, `judge: :timed`. It also takes the
   benchmark's own hooks, as `duel` does, such as `before_sample:`. It
   returns a Hash of what was measured, by name, whose `details` are
   what the metrics said of the sample, by measure.
@@ -361,8 +362,8 @@ Duel::Testing.compare(base, candidate).passed? # whole comparisons, in workers
 - `compare(base, candidate)`: compares two projects in workers. See the
   following paragraphs.
 - `sample(n: 1)`: a stand-in sample of `n` iterations, which measures
-  nothing, for a metric's `start_sample` or a `details` block. `name:`,
-  `only:`, and `peak_memory:` describe its benchmark.
+  nothing, for a metric's `start_sample` or a `details` block. `name:`
+  and `judge:` describe its benchmark.
 - `reading(totals, context)`: a stand-in reading of running totals, by
   name, with the context that was read with them. A sample's stretches
   are pairs of readings.

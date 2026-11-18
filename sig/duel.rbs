@@ -11,18 +11,16 @@ module Duel
   class Failed < Error
   end
 
-  # What a benchmark is judged on, if not both its timings and its
-  # counts (see DSL#duel).
-  type only = :count | :timing
+  # What a benchmark can be judged on (see DSL#duel, and JUDGED).
+  type judged = :timed | :counted | :peak_memory
 
   # A benchmark's body, run in its Context: given the iterations to do
   # when it takes a parameter, else run once an iteration.
   # @api private
   type body = ^() [self: Context] -> void | ^(Integer n) [self: Context] -> void
 
-  # A hook (see HOOKS): a block, or a lambda, given the benchmark (setup,
-  # teardown and before_sample, if it takes it), or the Iteration to run
-  # (around_iteration), or nothing (after_iterations). A file's, or a
+  # A hook (see HOOKS): a block, or a lambda, given the Iteration to run
+  # (around_iteration), or nothing (the rest). A file's, or a
   # benchmark's own, runs in each benchmark's Context.
   type hook = ^(?untyped) [self: Context] -> untyped
 
@@ -30,18 +28,18 @@ module Duel
   # @api private
   type hooks = Hash[Symbol, hook]
 
-  # A benchmark (see DSL#duel), defined in +file+, whose hooks (its
-  # file's, and its own) it gets. Or one of a whole process (see
-  # DSL#duel_process). What a metric sees of it (Sample#benchmark): its
-  # name, only and peak_memory.
-  class Definition < Struct[String | only | bool | body | hooks | Definition::process | nil]
+  # A benchmark (see DSL#duel), defined in +file+, judged on what +judge+
+  # says, whose hooks (its file's, and its own) it gets. Or one of a
+  # whole process (see DSL#duel_process). What a metric sees of it
+  # (Sample#benchmark): its name and what it's judged on.
+  class Definition < Struct[String | Array[judged] | body | hooks | Definition::process | nil]
     # A process benchmark's process: its command, or Ruby code.
     # @api private
     type process = { "command" => Array[String]?, "ruby" => String?, "runs" => Integer? }
 
     # What the runner learns of it (see #to_h).
     # @api private
-    type summary = { "name" => String, "only" => String?, "peak_memory" => bool, "process" => process? }
+    type summary = { "name" => String, "judge" => Array[String], "process" => process? }
 
     # Its name, as DSL#duel was given it.
     attr_reader name: String
@@ -49,18 +47,20 @@ module Duel
     # @api private
     attr_writer name: String
 
-    # What it's judged on (DSL#duel's only:): nil for both its timings
-    # and its counts.
-    attr_reader only: only?
+    # What it's judged on (DSL#duel's judge:), in JUDGED's order.
+    attr_reader judge: Array[judged]
 
     # @api private
-    attr_writer only: only?
+    attr_writer judge: Array[judged]
 
-    # Whether its peak memory is judged too.
-    attr_reader peak_memory: bool
+    # Whether it's judged on its timings.
+    def timed?: () -> bool
 
-    # @api private
-    attr_writer peak_memory: bool
+    # Whether it's judged on its counts.
+    def counted?: () -> bool
+
+    # Whether it's judged on its peak memory too.
+    def peak_memory?: () -> bool
 
     # @api private
     attr_accessor file: String
@@ -78,7 +78,7 @@ module Duel
     attr_accessor process: process?
 
     # @api private
-    def self.new: (String name, only? only, bool peak_memory, String file, body? body, ?hooks? hooks, ?process? process) -> instance
+    def self.new: (String name, Array[judged] judge, String file, body? body, ?hooks? hooks, ?process? process) -> instance
 
     # Whose CPU time it takes: the benchmark thread's, or the process's.
     # @api private
@@ -93,9 +93,15 @@ module Duel
   # @api private
   COUNTS_ONLY: Integer
 
-  # What a benchmark may be judged on: nil for both.
+  # What a benchmark can be judged on, in order.
+  JUDGED: Array[judged]
+
+  # What a benchmark is judged on, unless it says.
+  JUDGE: Array[judged]
+
+  # What a process benchmark is judged on.
   # @api private
-  ONLY: Array[only?]
+  PROCESS_JUDGE: Array[judged]
 
   # The hooks, by name, in the order a benchmark's life runs them.
   HOOKS: Array[Symbol]
@@ -247,7 +253,11 @@ module Duel
     # iterations to do. Its own hooks (see HOOKS) run after its file's:
     # an around_iteration one runs around each iteration, given it to
     # run, and only the iteration is measured.
-    def duel: (String name, ?only: only?, ?peak_memory: bool, **hook hooks) { (?Integer n) [self: Context] -> void } -> void
+    def duel: (String name, ?judge: judged | Array[judged], **hook hooks) { (?Integer n) [self: Context] -> void } -> void
+
+    # What a benchmark is judged on, given judge:, checked.
+    # @api private
+    def self.judged: (String name, untyped judge) -> Array[judged]
 
     # A benchmark's own hooks, checked.
     # @api private

@@ -30,10 +30,10 @@ class WorkerTest < DuelTest
   end
 
   def test_hello_lists_benchmarks_and_metrics
-    duel("a", only: :count) { 1 }
+    duel("a", judge: :counted) { 1 }
     hello = Duel::Worker.new([Calls, Unavailable]).hello
 
-    assert_equal [{"name" => "a", "only" => "count", "peak_memory" => false, "process" => nil}], hello.fetch("benchmarks")
+    assert_equal [{"name" => "a", "judge" => %w[counted], "process" => nil}], hello.fetch("benchmarks")
     # (On JRuby on Windows, its bytes innermost: see Worker::BUILT_IN.)
     innermost = Duel::Platform::JRUBY_ON_WINDOWS ? %w[cpu] + ALLOCATION_COUNTS : ALLOCATION_COUNTS + %w[cpu]
     names = %w[calls] + (INSTRUCTIONS ? %w[instructions] : []) + innermost

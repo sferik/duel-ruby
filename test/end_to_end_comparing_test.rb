@@ -128,8 +128,8 @@ class EndToEndComparingTest < DuelTest
   # again, and a counts-only benchmark skips all that.
   def test_warm_up_and_counts_only
     benchmarks = DEFAULT_BENCHMARKS + <<~RUBY
-      duel("counts", only: :count) { Object.new }
-      duel("process", only: :timing) { Sample.work }
+      duel("counts", judge: :counted) { Object.new }
+      duel("process", judge: :timed) { Sample.work }
     RUBY
     base = project(File.join(tmpdir, "base"))
     candidate = project(File.join(tmpdir, "candidate"), benchmarks: benchmarks)
@@ -143,7 +143,7 @@ class EndToEndComparingTest < DuelTest
     failed = results.reject(&:passed?).map { |r| [r.name, r.error || r.regressed, r.timed, r.counted] }
 
     assert_empty failed, "the same code, every benchmark passed"
-    assert_empty process.counted, "only: :timing"
+    assert_empty process.counted, "judge: :timed"
     assert_equal timed_metrics(cpu: :process), process.timed.keys
     assert_equal Duel::COUNTS_ONLY, counts.n
     assert_empty counts.timed

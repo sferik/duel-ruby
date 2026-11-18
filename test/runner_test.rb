@@ -741,7 +741,7 @@ class RunnerTest < DuelTest
     with_fake_workers do |workers|
       workers.benchmark("skipped")
       workers.fail("base-1", "setup", "skipped", error: Duel::Failed.new("base-1: NameError: no"))
-      workers.benchmark("more", peak_memory: true) do |side, n, _|
+      workers.benchmark("more", judge: %w[timed counted peak_memory]) do |side, n, _|
         {"timed" => {"cpu" => n * 100_000}, "counted" => {"allocations" => (side == "baseline") ? n : n + 1}, "heap" => 0}
       end
       workers.peaks("baseline", *[1 << 20] * 12)
