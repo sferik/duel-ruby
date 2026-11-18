@@ -248,17 +248,19 @@ module Duel
             end
           end
         end
-      elsif @given_n
+        return
+      end
+
+      if @given_n
         @body.call(n)
-        @after.each(&:call)
       else
         i = 0
         while i < n
           @body.call
           i += 1
         end
-        @after.each(&:call)
       end
+      @after.each(&:call)
     end
 
     # +block+ as a method of the context's (of a module of its own, not
