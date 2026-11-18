@@ -96,6 +96,9 @@ module Duel
       # The struct K32GetProcessMemoryInfo fills in, in place.
       @buffer: String
 
+      # K32GetProcessMemoryInfo, a process's memory.
+      def self.process_memory_info: () -> _Function
+
       def self.open: (?platform: String, ?memory_info: _Function?) -> Windows?
 
       # The bytes of physical memory available, or nil.

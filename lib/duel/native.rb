@@ -167,11 +167,14 @@ module Duel
       STATUS = 64 # sizeof(MEMORYSTATUSEX)
       AVAILABLE = 16 # offsetof(ullAvailPhys)
 
+      # K32GetProcessMemoryInfo, a process's memory (raising
+      # Fiddle::DLError where there's no such function).
+      def self.process_memory_info = Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32)
+
       def self.open(platform: Platform::OS, memory_info: nil)
         return unless platform.match?(Platform::WINDOWS_OS)
 
-        memory_info ||= Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32)
-        windows = new(memory_info)
+        windows = new(memory_info || process_memory_info)
         windows if windows.resident
       rescue Fiddle::DLError # no such function
         nil
@@ -262,8 +265,7 @@ module Duel
         def initialize(handle, cycles: nil, memory_info: nil, close: nil)
           @handle = handle
           @cycles = cycles || Cycles.new(:process, handle: handle)
-          @memory = Windows.new(memory_info || Native.function("K32GetProcessMemoryInfo", %i[VOIDP VOIDP INT], :INT, library: KERNEL32),
-            handle: handle)
+          @memory = Windows.new(memory_info || Windows.process_memory_info, handle: handle)
           @close = close || Native.function("CloseHandle", %i[INTPTR_T], :INT, library: KERNEL32)
         end
 
