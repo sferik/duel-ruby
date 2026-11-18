@@ -130,15 +130,17 @@ module Duel
     end
 
     # The settings of a run that .duel.rb can set too, as the options of
-    # their names do (--limit, --confidence, --processes, --timeout,
-    # --time-limit, --warm): for a run not given that option, as in CI,
-    # where the workflow runs Duel with none. Each is nil, by default, for
-    # Duel's own default. For each, what it takes, and whether a value is
-    # that: a number, as a Float, but a number of processes, a whole one.
+    # their names do (--limit, --confidence, --jobs, --processes,
+    # --timeout, --time-limit, --warm), and their variables (DUEL_LIMIT,
+    # say): for a run given neither, as in CI, where the workflow runs Duel
+    # with none. Each is nil, by default, for Duel's own default. For
+    # each, what it takes, and whether a value is that: a number, as a
+    # Float, but a number of jobs or processes, a whole one.
     # @api private
     RUN_SETTINGS = {
       limit: ["a ratio of 1 or more", ->(value) { value >= 1 }],
       confidence: ["a level above 0 and below 1", ->(value) { value.positive? && value < 1 }],
+      jobs: ["a whole number, 1 or more", ->(value) { value.is_a?(Integer) && value.positive? }],
       processes: ["a whole number, 1 or more", ->(value) { value.is_a?(Integer) && value.positive? }],
       timeout: ["seconds, more than 0", ->(value) { value.positive? }],
       time_limit: ["seconds, more than 0", ->(value) { value.positive? }],
@@ -166,6 +168,17 @@ module Duel
 
     def confidence=(level)
       @confidence = Config.setting(:confidence, level)
+    end
+
+    # The benchmarks measured at once (--jobs): by default, one for every
+    # CPUS_PER_LANE CPUs, as many as fit in memory. One set is
+    # that many, however much memory there is.
+    #
+    #   c.jobs = 2
+    attr_reader :jobs
+
+    def jobs=(count)
+      @jobs = Config.setting(:jobs, count)
     end
 
     # The worker processes of each version (--processes): 12 by default (8
@@ -231,8 +244,12 @@ module Duel
       problem = problem(name, value)
       raise Error, "c.#{name} = #{value.inspect}: give #{problem}, or nil" if problem
 
-      (name == :processes) ? value : Float(value)
+      WHOLE.include?(name) ? value : Float(value)
     end
+
+    # The RUN_SETTINGS that are whole numbers: the rest are Floats.
+    # @api private
+    WHOLE = %i[jobs processes].freeze
 
     # What to give instead of +value+ for the RUN_SETTINGS +name+d, or
     # nil if it's one that takes.

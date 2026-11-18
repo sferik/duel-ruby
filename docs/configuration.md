@@ -184,13 +184,15 @@ move the branch to accept the regression:
 
 The settings that `duel`'s options set can be set in `.duel.rb` too, so
 that a run in CI, where the workflow runs `duel` with no options, uses
-them. An option given still wins: `duel --limit 1.1` runs with 1.1,
+them. An option given still wins, and so does its variable (`DUEL_` and
+its name): `duel --limit 1.1`, or `DUEL_LIMIT=1.1 duel`, runs with 1.1,
 whatever `c.limit` says.
 
 ```ruby
 Duel.configure do |c|
   c.limit = 1.05         # --limit: the ratio above which a timing is slower (default: 1.02)
   c.confidence = 0.995   # --confidence: of every interval (default: 0.99)
+  c.jobs = 2             # --jobs: benchmarks measured at once (default: one for every two CPUs, as many as fit)
   c.processes = 6        # --processes: workers of each version (default: 12, 8 on JRuby, as many as fit)
   c.timeout = 120        # --timeout: seconds a worker may take to load or answer (default: 60, 300 on JRuby)
   c.time_limit = 3600    # --time-limit: seconds a run measures for (default: 7200)

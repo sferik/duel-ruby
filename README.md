@@ -210,16 +210,22 @@ second run fails and names the process that's running the first. A run
 that crashes leaves nothing behind that blocks the next run.
 
 Where it's hard to pass options, such as behind a Rake task or in a CI
-expression, set these environment variables instead:
+expression, set environment variables instead. Each is `DUEL_` and the
+option's name, for `--base`, `--filter`, `--ruby`, and each option that
+`.duel.rb` can set too (see
+[Set a run's settings](docs/configuration.md#set-a-runs-settings)):
 
 | Variable | Option |
 |---|---|
 | `DUEL_BASE` | `--base` |
 | `DUEL_FILTER` | `--filter` |
-| `DUEL_FORCE=1` | `--force` |
+| `DUEL_RUBY` | `--ruby` |
+| `DUEL_LIMIT`, `DUEL_CONFIDENCE`, `DUEL_JOBS`, `DUEL_PROCESSES`, `DUEL_TIMEOUT`, `DUEL_TIME_LIMIT`, `DUEL_WARM` | `--limit`, `--confidence`, `--jobs`, `--processes`, `--timeout`, `--time-limit`, `--warm` |
+| `DUEL_FORCE=1` (or `true`) | `--force` (`0` or `false` is off, and anything else fails) |
 
-An option on the command line takes precedence over its variable, and
-an empty variable counts as unset.
+An option on the command line takes precedence over its variable,
+which takes precedence over `.duel.rb`, and an empty variable counts as
+unset.
 
 For where the baseline comes from, how Duel checks it out and builds it,
 and how it compares a project in a subdirectory of its repository, see

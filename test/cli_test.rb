@@ -81,7 +81,7 @@ class CLITest < DuelTest
                                            release tag), or a directory, already built
               --candidate-dir DIR          Candidate tree (default: this one)
               --filter REGEXP              Only benchmarks whose names match
-              --jobs N                     Benchmarks measured at once (default: one for every #{Duel::CPUS_PER_LANE} CPUs, as many as fit in memory)
+              --jobs N                     Benchmarks measured at once (default: c.jobs, or one for every #{Duel::CPUS_PER_LANE} CPUs, as many as fit)
               --processes N                Worker processes per version (default: c.processes, or #{Duel::PROCESSES}, as many as fit in memory)
               --timeout SECONDS            Most a worker may take to load or answer (default: c.timeout, or #{Duel::TIMEOUT.round})
               --time-limit SECONDS         Most a run measures for, then fails what's unmeasured or looks worse (default: c.time_limit, or 7200)
@@ -144,10 +144,12 @@ class CLITest < DuelTest
     end
   end
 
-  # Each version's Ruby: its version file's, or a path.
+  # Each version's Ruby: its version file's (version-file, or
+  # version_file), or a path.
   def test_ruby
-    assert_equal [:version_file, "/rubies/3.4/bin/ruby", nil],
-      [cli("--ruby", "version-file").parse.ruby, cli("--ruby", "/rubies/3.4/bin/ruby").parse.ruby, cli.parse.ruby]
+    assert_equal [:version_file, :version_file, "/rubies/3.4/bin/ruby", "/my_rubies/version-file", nil],
+      [cli("--ruby", "version-file").parse.ruby, cli("--ruby", "version_file").parse.ruby, cli("--ruby", "/rubies/3.4/bin/ruby").parse.ruby,
+        cli("--ruby", "/my_rubies/version-file").parse.ruby, cli.parse.ruby]
   end
 
   # When the workflow comments on a pull request: a mode by its name, or
@@ -224,14 +226,27 @@ class CLITest < DuelTest
     assert_equal [nil, tmpdir], cli(env: {"DUEL_BASE" => tmpdir}).parse.then { |t| [t.base, t.base_dir] }
   end
 
+  # Each of --base, --filter, --ruby, and the options .duel.rb can set
+  # too, as DUEL_ and its name: under an option given.
   def test_the_environment
-    env = {"DUEL_BASE" => "v1", "DUEL_FILTER" => "run", "DUEL_FORCE" => "1"}
+    env = {"DUEL_BASE" => "v1", "DUEL_FILTER" => "run", "DUEL_FORCE" => "1", "DUEL_RUBY" => "version-file", "DUEL_LIMIT" => "1.05",
+           "DUEL_CONFIDENCE" => "0.995", "DUEL_JOBS" => "3", "DUEL_PROCESSES" => "7", "DUEL_TIMEOUT" => "30", "DUEL_TIME_LIMIT" => "60",
+           "DUEL_WARM" => "2"}
     s = cli(env: env).parse
 
-    assert_equal ["v1", /run/, true], [s.base, s.filter, s.force]
-    assert_equal Duel::PROCESSES, cli(env: {"DUEL_PROCESSES" => "7"}).parse.processes, "only those three"
-    assert_equal "v2", cli("--base", "v2", env: env).parse.base, "options win"
+    assert_equal ["v1", /run/, true, :version_file, 1.05, 0.995, 3, 7, 30.0, 60.0, 2.0],
+      [s.base, s.filter, s.force, s.ruby, s.limit, s.confidence, s.jobs, s.processes, s.timeout, s.time_limit, s.warm]
+    assert_equal ["v2", 8], cli("--base", "v2", "--processes", "8", env: env).parse.then { |t| [t.base, t.processes] }, "options win"
     assert_nil cli(env: {"DUEL_BASE" => ""}).parse.base, "empty is unset"
+  end
+
+  # DUEL_FORCE is 1 or true, or 0 or false: anything else is a mistake,
+  # not --force.
+  def test_duel_force
+    assert_equal [true, true, false, false], %w[1 TRUE 0 false].map { |value| cli(env: {"DUEL_FORCE" => value}).parse.force }
+    error = assert_raises(OptionParser::InvalidArgument) { cli(env: {"DUEL_FORCE" => "yes"}).parse }
+
+    assert_includes error.message, "DUEL_FORCE=yes (give 1 or true, or 0 or false)"
   end
 
   def test_defaults
@@ -251,13 +266,13 @@ class CLITest < DuelTest
 
   # A run, with the runner faked: what it's given, and what its verdict
   # makes the exit status.
-  def run_with(passed, *argv, dir:)
+  def run_with(passed, *argv, dir:, env: {"X" => "1"})
     made = []
     runner = Object.new
     runner.define_singleton_method(:run) { [:results] }
     runner.define_singleton_method(:passed?) { |results| results == [:results] && passed }
     status = stub(Duel::Runner, :new, ->(*args, **options) { (made << [*args, options]) && runner }) do
-      Dir.chdir(dir) { cli(*argv, env: {"X" => "1"}).run }
+      Dir.chdir(dir) { cli(*argv, env: env).run }
     end
     [status, *made.first]
   end
@@ -277,9 +292,9 @@ class CLITest < DuelTest
     assert_equal 1, run_with(false, "--base", base, dir: candidate).first, "slower"
   end
 
-  # .duel.rb's run settings (c.limit, c.timeout, c.time_limit, c.warm),
-  # but each one's option where it's given, and Duel's own defaults where
-  # neither is.
+  # .duel.rb's run settings (c.limit, c.jobs, c.timeout...), but each
+  # one's option, or variable, where it's given, and Duel's own defaults
+  # where none is.
   def test_run_settings_from_the_config_file
     base = FileUtils.mkdir_p(File.join(tmpdir, "base")).first
     candidate = FileUtils.mkdir_p(File.join(tmpdir, "candidate")).first
@@ -290,6 +305,12 @@ class CLITest < DuelTest
     assert_equal [1.05, 0.995, 6, 90.0, 600.0, 4.0, [:jobs]],
       [settings.limit, settings.confidence, settings.processes, settings.timeout, settings.time_limit, settings.warm, settings.fit],
       "c.processes: that many, not as many as fit"
+    File.write(File.join(candidate, ".duel.rb"), "Duel.configure { |c| c.jobs = 2; c.limit = 1.05 }")
+    settings = run_with(true, "--base", base, dir: candidate, env: {"DUEL_LIMIT" => "1.2"})[2]
+
+    assert_equal [2, 1.2, [:processes]], [settings.jobs, settings.limit, settings.fit], "c.jobs, and DUEL_LIMIT over c.limit"
+    File.write(File.join(candidate, ".duel.rb"),
+      "Duel.configure { |c| c.limit = 1.05; c.confidence = 0.995; c.processes = 6; c.timeout = 90; c.time_limit = 600; c.warm = 4 }")
     settings = run_with(true, "--base", base, "--limit", "1.1", "--confidence", "0.9", "--processes", "3", "--timeout", "5",
       "--time-limit", "60", "--warm", "0", dir: candidate)[2]
 

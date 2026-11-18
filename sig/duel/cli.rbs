@@ -41,11 +41,12 @@ module Duel
     # Where else to write the step's outputs, as variables.
     OUTPUT: String
 
-    # The variables that set options, to their options.
+    # The variables that set options, to their options: DUEL_ and the
+    # option's name.
     ENV_OPTIONS: Hash[String, String]
 
-    # The variables that set a flag by being set at all.
-    ENV_FLAGS: Hash[String, String]
+    # What DUEL_FORCE's values say: to compare whatever changed, or not.
+    FORCE: Hash[String, bool]
 
     @argv: Array[String]
     @env: _Env

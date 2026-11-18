@@ -51,6 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status 2 (couldn't compare), and passed for status 3 (slower, but only
   warned, which GitLab's `allow_failure: exit_codes: [3]` relies on), so
   `rake duel` hid a slowdown that `duel` reported.
+- Each of a run's settings can be set the same three ways: an option, a
+  variable, or `.duel.rb`, in that order of precedence. `c.jobs` sets
+  `--jobs`, and each option `.duel.rb` can set, and `--ruby`, has a
+  variable, `DUEL_` and its name (`DUEL_LIMIT`, `DUEL_TIME_LIMIT`,
+  `DUEL_RUBY`...), as `--base`, `--filter` and `--force` had.
+  `--ruby` takes `version_file` too.
+- `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and
+  anything else fails. Any value forced before, `DUEL_FORCE=0` too.
 
 ### Fixed
 

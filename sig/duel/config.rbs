@@ -34,6 +34,7 @@ module Duel
     @accept_label: String?
     @limit: Float?
     @confidence: Float?
+    @jobs: Integer?
     @processes: Integer?
     @timeout: Float?
     @time_limit: Float?
@@ -105,6 +106,9 @@ module Duel
     # @api private
     RUN_SETTINGS: Hash[Symbol, [String, ^(Numeric) -> bool]]
 
+    # The RUN_SETTINGS that are whole numbers.
+    WHOLE: Array[Symbol]
+
     # The ratio above which a timing is slower (--limit), or nil.
     attr_reader limit: Float?
     def limit=: (Numeric? ratio) -> void
@@ -112,6 +116,10 @@ module Duel
     # The confidence of every interval (--confidence), or nil.
     attr_reader confidence: Float?
     def confidence=: (Numeric? level) -> void
+
+    # The benchmarks measured at once (--jobs), or nil.
+    attr_reader jobs: Integer?
+    def jobs=: (Integer? count) -> void
 
     # The worker processes of each version (--processes), or nil.
     attr_reader processes: Integer?

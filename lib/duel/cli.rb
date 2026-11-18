@@ -60,10 +60,16 @@ module Duel
     # job that `duel init --gitlab` writes lets it fail, as a warning.
     WARNED = 3
 
-    # The variables that set options, to their values, and the one that
-    # sets a flag by being set at all.
-    ENV_OPTIONS = {"DUEL_BASE" => "--base", "DUEL_FILTER" => "--filter"}.freeze
-    ENV_FLAGS = {"DUEL_FORCE" => "--force"}.freeze
+    # The variables that set options, to their values: DUEL_ and the
+    # option's name (DUEL_LIMIT=1.05 is --limit 1.05, DUEL_TIME_LIMIT
+    # --time-limit), for --base, --filter, --ruby, and each option
+    # .duel.rb can set too (Config::RUN_SETTINGS). An option given beats
+    # its variable, which beats .duel.rb.
+    ENV_OPTIONS = [:base, :filter, :ruby, *Config::RUN_SETTINGS.keys].to_h { |name| ["DUEL_#{name.upcase}", "--#{name.to_s.tr("_", "-")}"] }.freeze
+
+    # What DUEL_FORCE's values say: to compare whatever changed
+    # (--force), or not.
+    FORCE = {"1" => true, "true" => true, "0" => false, "false" => false}.freeze
 
     def initialize(argv, env: ENV, out: $stdout, err: $stderr)
       @argv = argv
@@ -479,8 +485,12 @@ module Duel
     # which CI expressions find handy).
     def env_options
       set = variables
-      ENV_OPTIONS.flat_map { |name, option| set.key?(name) ? [option, set.fetch(name)] : [] } +
-        ENV_FLAGS.filter_map { |name, flag| flag if set.key?(name) }
+      force = variable("DUEL_FORCE")
+      if force && !FORCE.key?(force.downcase)
+        raise OptionParser::InvalidArgument, "DUEL_FORCE=#{force} (give 1 or true, or 0 or false)"
+      end
+
+      ENV_OPTIONS.flat_map { |name, option| set.key?(name) ? [option, set.fetch(name)] : [] } + (FORCE[force.to_s.downcase] ? ["--force"] : [])
     end
 
     # The environment's variables that are set (not empty).
@@ -517,8 +527,8 @@ module Duel
         end
         o.on("--candidate-dir DIR", "Candidate tree (default: this one)") { |v| settings.candidate_dir = v }
         o.on("--filter REGEXP", "Only benchmarks whose names match") { |v| settings.filter = CLI.regexp(v) }
-        o.on("--jobs N", Integer, "Benchmarks measured at once (default: one for every #{CPUS_PER_LANE} CPUs, as many as fit in memory)") do |v|
-          set(settings, :jobs, v)
+        o.on("--jobs N", Integer, "Benchmarks measured at once (default: c.jobs, or one for every #{CPUS_PER_LANE} CPUs, as many as fit)") do |v|
+          given(settings, :jobs, v)
         end
         o.on("--processes N", Integer, "Worker processes per version (default: c.processes, or #{PROCESSES}, as many as fit in memory)") do |v|
           given(settings, :processes, v)
@@ -535,7 +545,7 @@ module Duel
           given(settings, :warm, v)
         end
         o.on("--ruby version-file|PATH", "Each version's Ruby: the one its version file names (.ruby-version, say), or a",
-          "path (default: c.ruby, or this one)") { |v| settings.ruby = (v == "version-file") ? :version_file : v }
+          "path (default: c.ruby, or this one)") { |v| settings.ruby = (v.tr("_", "-") == "version-file") ? :version_file : v }
         o.on("--force", "Compare even if nothing watched changed") { settings.force = true }
         o.on("--config PATH", "Config file (default: .duel.rb)") { |v| settings.config_path = v }
         o.on("--markdown PATH", "Also write the report to PATH in Markdown, for a pull request comment (on GitHub",
