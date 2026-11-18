@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow takes `zjit: true` too, as it takes `yjit: true`, and fails
   at once where both are on, as Ruby runs one JIT at most.
 
+### Changed
+
+- The badge links to USERS.md, the list of projects using Duel, in
+  Duel's repository, not to the repository itself: in the README, the
+  guide, and the workflows that `duel init` and `rails generate
+  duel:install` write, whose comments give the badge's Markdown. A
+  pull request adds a project to the list, and AGENT_PROMPT.md's last
+  step has the agent open one for the project it set Duel up in, if
+  that's public.
+
 ### Fixed
 
 - The Perf workflow `duel init --reusable` writes grants

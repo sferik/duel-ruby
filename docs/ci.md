@@ -560,7 +560,7 @@ branch, it writes `badge.svg` to a branch of its own, `duel/badge`, so
 your README can show it:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
 ```
 
 The badge says "perf guarded", in green, when Duel passed the push. It
@@ -600,7 +600,7 @@ keeps `.duel.rb`), or add the job yourself:
   # a run for an older push than the badge's. This job writes the badge,
   # alone, to a branch of its own, which the README shows:
   #
-  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
   #
   # It checks nothing out, runs none of the code, and fetches nothing.
   badge:

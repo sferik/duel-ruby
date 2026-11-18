@@ -383,7 +383,7 @@ its workflow, the badge turns red when Duel fails a push to your default
 branch. Replace `OWNER/REPO` with your repository's:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
 ```
 
 See [Show whether the last push passed](docs/ci.md#show-whether-the-last-push-passed)
@@ -391,8 +391,11 @@ for how the job keeps it. Without the job, such as on GitLab CI, use
 Duel's own badge, which is always green:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
 ```
+
+The badge links to [the projects using Duel](USERS.md). Add yours with a
+pull request.
 
 ## Plugins
 

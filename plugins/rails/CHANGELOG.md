@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The badge's Markdown, in a comment of the Perf workflow that
+  `bin/rails generate duel:install` writes, links to the list of
+  projects using Duel (USERS.md, in Duel's repository), as Duel's own
+  does.
+
 ## [0.2.0] - 2026-11-16
 
 ### Changed
