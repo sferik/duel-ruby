@@ -262,8 +262,7 @@ module Duel
     # can't interrupt a wait on JRuby.)
     def start(command, log, options)
       # (Its own environment, if it's given one, over its version's.)
-      none = {} #: Hash[String, String?]
-      env, *program = command.first.is_a?(Hash) ? command : [none, *command]
+      env, program = Spawn.environment_and(command)
       @starter.logged(@env.merge(env), program, log: log, mode: "a", close_others: true, **options).detach
     end
 

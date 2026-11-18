@@ -91,6 +91,10 @@ module Duel
     # program found.
     def self.open3: (Symbol name, *untyped args, ?jruby_on_windows: bool, **untyped options) ?{ (*untyped) -> untyped } -> untyped
 
+    # A command's environment (none, if it doesn't start with one), and
+    # the rest.
+    def self.environment_and: (Array[untyped] command) -> [Hash[String, String?], Array[untyped]]
+
     # +command+ as Windows runs it, its program found.
     def self.program: (Array[String] command, ?path: String, ?exts: Array[String]) -> Array[String]
 

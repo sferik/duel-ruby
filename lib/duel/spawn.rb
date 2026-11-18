@@ -258,8 +258,7 @@ module Duel
     def self.open3(name, *args, jruby_on_windows: Platform::JRUBY_ON_WINDOWS, **options, &)
       return Open3.public_send(name, *args, **options, &) unless jruby_on_windows
 
-      none = {} #: Hash[String, String?]
-      env, *command = args.first.is_a?(Hash) ? args : [none, *args]
+      env, command = environment_and(args)
       current = ENV.to_h
       under = options[:unsetenv_others] ? current.keys.product([nil]).to_h : current #: Hash[String, String?]
       # (Each given by ENV's name for it, whatever its case: Windows's
@@ -267,6 +266,13 @@ module Duel
       # https://github.com/jruby/jruby/issues/8951.)
       given = env.transform_keys { |var| current.each_key.find { |name| name.casecmp?(var) } || var }
       Open3.public_send(name, under.merge(given), *program(command), **options, &)
+    end
+
+    # +command+ as Process.spawn takes it, split: its environment (none,
+    # if it doesn't start with one), and the rest.
+    def self.environment_and(command)
+      none = {} #: Hash[String, String?]
+      command.first.is_a?(Hash) ? [command.first, command.drop(1)] : [none, command]
     end
 
     # +command+ as Windows runs it: a lone String that a shell runs (with
