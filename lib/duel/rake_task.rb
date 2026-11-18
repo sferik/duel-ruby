@@ -3,7 +3,8 @@
 require "rake"
 
 module Duel
-  # A rake task running `duel` with +args+:
+  # A rake task running `duel` with +args+, which exits as `duel` does:
+  # with its status, where it isn't 0 (see CLI).
   #
   #   require "duel/rake_task"
   #   Duel::RakeTask.new(:perf)
@@ -24,10 +25,8 @@ module Duel
       desc "Fail if this tree is slower than its baseline at any benchmark (duel)"
       task(name) do
         RakeTask.load_duel
-        case CLI.new(args).run
-        when 1 then abort "duel: slower than the baseline"
-        when 2 then abort "duel: couldn't compare"
-        end
+        status = CLI.new(args).run
+        exit(status) unless status.zero?
       end
     end
   end

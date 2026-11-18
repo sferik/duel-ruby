@@ -516,13 +516,14 @@ class RakeTaskTest < DuelTest
     pass "not aborted"
   end
 
-  def test_fails_when_slower_or_unable_to_compare
-    _, err = capture_io { assert_raises(SystemExit) { with_status(1) { task.invoke } } }
+  # Slower, unable to compare, or slower but only warned (on GitLab, for
+  # allow_failure: exit_codes: [3]): with duel's own status.
+  def test_exits_with_duels_status
+    [1, 2, 3].each do |status|
+      exited = assert_raises(SystemExit) { with_status(status) { task.invoke } }
 
-    assert_equal "duel: slower than the baseline\n", err
-    _, err = capture_io { assert_raises(SystemExit) { with_status(2) { task.invoke } } }
-
-    assert_equal "duel: couldn't compare\n", err
+      assert_equal status, exited.status
+    end
   end
 
   def test_the_default_name

@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `around_iteration` hook (the configuration's, or its own), so a
   plugin that added one changed how many times every test's block ran.
   A test that did its `n` iterations in the block does one.
+- A `Duel::RakeTask` exits with `duel`'s own status. It exited 1 for
+  status 2 (couldn't compare), and passed for status 3 (slower, but only
+  warned, which GitLab's `allow_failure: exit_codes: [3]` relies on), so
+  `rake duel` hid a slowdown that `duel` reported.
 
 ### Fixed
 

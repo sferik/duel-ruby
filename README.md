@@ -269,7 +269,8 @@ merge request with the branch it targets and comment on it. See
 [Run Duel on GitLab CI](docs/ci.md#run-duel-on-gitlab-ci).
 
 To run Duel from Rake, define a task with `Duel::RakeTask`. Any
-arguments after the task's name are passed to `duel`:
+arguments after the task's name are passed to `duel`, and the task
+exits with `duel`'s status:
 
 ```ruby
 require "duel/rake_task"
