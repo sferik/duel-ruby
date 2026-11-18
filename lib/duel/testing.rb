@@ -151,8 +151,7 @@ module Duel
       stops = Stops.new
       STOPS[config] = stops
       config.in_workers.each { |block| block.call(stops) }
-      MADE[config] = [config.measures.transform_values(&:dup), Worker.made(config.metrics, config.measures).first]
-      MADE.fetch(config).last
+      (MADE[config] = [config.measures.transform_values(&:dup), Worker.made(config.metrics, config.measures).first]).last
     end
 
     # Runs the block as a worker of +config+ would run (its in_worker
@@ -211,11 +210,12 @@ module Duel
     # version unless they say.
     def compare(base, candidate, **settings)
       config_path = File.join(candidate, ".duel.rb")
+      configured = File.exist?(config_path)
       saved = Duel.config
       begin
-        config = File.exist?(config_path) ? Duel.load_config(config_path) : Config.new(candidate)
+        config = configured ? Duel.load_config(config_path) : Config.new(candidate)
         run = Settings.defaults
-        run.config_path = config_path if File.exist?(config_path)
+        run.config_path = config_path if configured
         run.processes = 2
         # (.duel.rb's run settings, c.limit say, but where one's given, and
         # its processes: a test's are few.)
