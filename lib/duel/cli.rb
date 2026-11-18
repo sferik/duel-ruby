@@ -201,8 +201,7 @@ module Duel
         @accepted = true
         return passing("accepted with the #{label} label", "Accepted with the #{Summary.code(label)} label.")
       end
-      return 1 unless pull_requests_only?(config, settings)
-      return 1 unless outside_pull_request?
+      return 1 unless pull_requests_only?(config, settings) && outside_pull_request?
 
       # (Outside a pull request on CI, so there's one: see #event.)
       run = event #: String
