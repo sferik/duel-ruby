@@ -129,6 +129,11 @@ module Duel
     attr_reader warm: Float?
     def warm=: (Numeric? seconds) -> void
 
+    # +value+ for the setting +name+d, if it's one of +values+, or fails
+    # saying which to give.
+    # @api private
+    def self.one_of: (Symbol name, untyped value, Array[Symbol] values) -> untyped
+
     # +value+ for the RUN_SETTINGS +name+d, as that takes it, or nil, or
     # fails saying what to give.
     # @api private

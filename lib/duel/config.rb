@@ -104,9 +104,7 @@ module Duel
     COMMENTS = %i[always results failures never].freeze #: Array[comment]
 
     def comment=(mode)
-      raise Error, "c.comment = #{mode.inspect}: give #{COMMENTS.map(&:inspect).join(", ")}" unless COMMENTS.include?(mode)
-
-      @comment = mode
+      @comment = Config.one_of(:comment, mode, COMMENTS)
     end
 
     # Which runs a regression fails (`duel --fail-on` overrides it):
@@ -128,9 +126,7 @@ module Duel
     FAIL_ON = %i[every_run pull_requests].freeze #: Array[fail_on]
 
     def fail_on=(runs)
-      raise Error, "c.fail_on = #{runs.inspect}: give #{FAIL_ON.map(&:inspect).join(", ")}" unless FAIL_ON.include?(runs)
-
-      @fail_on = runs
+      @fail_on = Config.one_of(:fail_on, runs, FAIL_ON)
     end
 
     # The settings of a run that .duel.rb can set too, as the options of
@@ -216,6 +212,15 @@ module Duel
       @warm = Config.setting(:warm, seconds)
     end
 
+    # +value+, set as the setting +name+d, if it's one of +values+, the
+    # ones that takes. One that isn't fails, saying which to give.
+    # @api private
+    def self.one_of(name, value, values)
+      raise Error, "c.#{name} = #{value.inspect}: give #{values.map(&:inspect).join(", ")}" unless values.include?(value)
+
+      value
+    end
+
     # +value+, set as the RUN_SETTINGS +name+d, as that takes it (a Float,
     # or an Integer), or nil. One that's neither fails, saying what to
     # give.
@@ -284,9 +289,7 @@ module Duel
     PUSH_BASES = %i[before last_passed].freeze #: Array[push_base]
 
     def push_base=(base)
-      raise Error, "c.push_base = #{base.inspect}: give #{PUSH_BASES.map(&:inspect).join(", ")}" unless PUSH_BASES.include?(base)
-
-      @push_base = base
+      @push_base = Config.one_of(:push_base, base, PUSH_BASES)
     end
 
     # The metrics #metric added, in order (classes: a Duel::Metric
