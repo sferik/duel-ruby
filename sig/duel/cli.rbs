@@ -158,7 +158,7 @@ module Duel
     def described_baseline: (Config config, Settings settings, Baseline baseline) -> String
 
     # The candidate, in Markdown.
-    def described_candidate: (Config config, Settings settings) -> String
+    def described_candidate: (Config config, Settings settings, Baseline baseline) -> String
 
     def merged: (String dir) -> String?
 
@@ -176,7 +176,10 @@ module Duel
 
     # The candidate, for JSON: its commit, whether it has changes not
     # committed, and its tree.
-    def candidate_json: (Config config, Settings settings) -> Hash[String, String | bool | nil]
+    def candidate_json: (Config config, Settings settings, Baseline baseline) -> Hash[String, String | bool | nil]
+
+    # Whether what's watched has changes not committed in the directory.
+    def uncommitted?: (String dir, Baseline baseline) -> bool
 
     # Git's output, and its status, in +dir+.
     def git: (String dir, *String args) -> [String, Process::Status]

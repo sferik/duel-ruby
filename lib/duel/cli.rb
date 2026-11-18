@@ -179,11 +179,11 @@ module Duel
         passed ? "passed" : "failed",
         -> {
           Summary.new(runner, results, settings: settings, baseline: described_baseline(config, settings, baseline),
-            candidate: described_candidate(config, settings), note: @note, accepted: @accepted).markdown
+            candidate: described_candidate(config, settings, baseline), note: @note, accepted: @accepted).markdown
         },
         ->(comment) {
           JSONReport.new(runner, results, settings: settings, exit: status, comment: comment,
-            baseline: baseline_json(config, settings, baseline, base_root), candidate: candidate_json(config, settings)).to_h
+            baseline: baseline_json(config, settings, baseline, base_root), candidate: candidate_json(config, settings, baseline)).to_h
         }
       )
       status
@@ -398,13 +398,12 @@ module Duel
     # The candidate, in Markdown: its directory, or its commit, bare (see
     # #described_baseline), and whether what's watched (Baseline#watched)
     # has changes not committed.
-    def described_candidate(config, settings)
+    def described_candidate(config, settings, baseline)
       dir = settings.candidate_dir || config.root
       head, found = git(dir, "rev-parse", "--short", "HEAD")
       return Summary.code(dir) unless found.success?
 
-      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
-      return "#{head.chomp} (with changes not committed)" unless clean.success?
+      return "#{head.chomp} (with changes not committed)" if uncommitted?(dir, baseline)
 
       merged(dir) || head.chomp
     end
@@ -457,13 +456,19 @@ module Duel
     # The candidate, for JSON: its commit, and whether what's watched
     # (Baseline#watched) has changes not committed (each nil outside a
     # repository), and its tree.
-    def candidate_json(config, settings)
+    def candidate_json(config, settings, baseline)
       dir = File.expand_path(settings.candidate_dir || config.root)
       head, found = git(dir, "rev-parse", "HEAD")
       return {"commit" => nil, "uncommitted_changes" => nil, "root" => dir} unless found.success?
 
-      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *Baseline.new(config, settings).watched)
-      {"commit" => head.chomp, "uncommitted_changes" => !clean.success?, "root" => dir}
+      {"commit" => head.chomp, "uncommitted_changes" => uncommitted?(dir, baseline), "root" => dir}
+    end
+
+    # Whether what +baseline+ watches (Baseline#watched) has changes not
+    # committed in +dir+, a repository.
+    def uncommitted?(dir, baseline)
+      _, clean = git(dir, "diff", "--quiet", "HEAD", "--", *baseline.watched)
+      !clean.success?
     end
 
     # Git's output, and its status, in +dir+.

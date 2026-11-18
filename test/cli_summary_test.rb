@@ -513,7 +513,10 @@ class CLISummaryTest < DuelTest
   def test_the_candidate_for_json
     repo = git_repo
     config = Duel::Config.new(repo)
-    described = ->(**overrides) { cli.send(:candidate_json, config, settings(**overrides)) }
+    described = lambda do |**overrides|
+      given = settings(**overrides)
+      cli.send(:candidate_json, config, given, Duel::Baseline.new(config, given))
+    end
 
     File.write(File.join(repo, "notes.txt"), "x")
     @git.call("add", "notes.txt")
@@ -543,7 +546,10 @@ class CLISummaryTest < DuelTest
   def test_the_candidate_described
     repo = git_repo
     config = Duel::Config.new(repo)
-    described = ->(**overrides) { cli.send(:described_candidate, config, settings(**overrides)) }
+    described = lambda do |**overrides|
+      given = settings(**overrides)
+      cli.send(:described_candidate, config, given, Duel::Baseline.new(config, given))
+    end
 
     assert_equal short(repo), described.call, "bare, so GitHub links it"
     File.write(File.join(repo, "notes.txt"), "x")
@@ -579,7 +585,7 @@ class CLISummaryTest < DuelTest
     event = File.join(tmpdir, "event.json")
     described = lambda do |pull, name: "pull_request"|
       File.write(event, JSON.generate(pull))
-      cli(env: {"GITHUB_EVENT_NAME" => name, "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings)
+      cli(env: {"GITHUB_EVENT_NAME" => name, "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings, Duel::Baseline.new(config, settings))
     end
     pull = {"pull_request" => {"head" => {"sha" => head}, "base" => {"ref" => "main"}}}
 
@@ -595,9 +601,9 @@ class CLISummaryTest < DuelTest
     assert_equal short(repo), described.call([])
     File.write(event, "{")
 
-    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings)
-    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => tmpdir}).send(:described_candidate, config, settings)
-    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request"}).send(:described_candidate, config, settings)
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => event}).send(:described_candidate, config, settings, Duel::Baseline.new(config, settings))
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request", "GITHUB_EVENT_PATH" => tmpdir}).send(:described_candidate, config, settings, Duel::Baseline.new(config, settings))
+    assert_equal short(repo), cli(env: {"GITHUB_EVENT_NAME" => "pull_request"}).send(:described_candidate, config, settings, Duel::Baseline.new(config, settings))
     @git.call("checkout", "-q", "topic")
 
     assert_equal short(repo), described.call(pull), "not a merge"
@@ -615,7 +621,7 @@ class CLISummaryTest < DuelTest
     @git.call("merge", "-q", "--no-ff", "-m", "merge", "topic")
     merged = {"GITLAB_CI" => "true", "CI_PIPELINE_SOURCE" => "merge_request_event", "CI_MERGE_REQUEST_SOURCE_BRANCH_SHA" => head,
               "CI_MERGE_REQUEST_TARGET_BRANCH_NAME" => "main"}
-    described = ->(env) { cli(env: env).send(:described_candidate, config, settings) }
+    described = ->(env) { cli(env: env).send(:described_candidate, config, settings, Duel::Baseline.new(config, settings)) }
 
     assert_equal "#{head[0, base.size]} (merged with `main`)", described.call(merged)
     assert_equal short(repo), described.call(merged.except("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA")), "not merged results"
