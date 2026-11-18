@@ -1,11 +1,8 @@
 # frozen_string_literal: true
 
-require "json"
-require "net/http"
-require "open3"
 require "optparse"
 require "uri"
-require_relative "spawn"
+require_relative "forge"
 
 module Duel
   # `duel comment`: what the Perf comment workflow runs, once the Perf
@@ -22,25 +19,29 @@ module Duel
   # collapses, so the newest is the one in view. It talks to GitHub with
   # gh, which GH_TOKEN signs in, in GITHUB_REPOSITORY.
   #
-  # With --gitlab, it's what the GitLab CI jobs' comment job runs, on a
-  # merge request: what Duel said is the Duel job's dotenv report's
-  # (DUEL_COMMENT and DUEL_STATUS), it talks to GitLab's API
+  # On GitLab CI (GITLAB_CI), it's what the GitLab CI jobs' comment job
+  # runs, on a merge request: what Duel said is the Duel job's dotenv
+  # report's (DUEL_COMMENT and DUEL_STATUS), it talks to GitLab's API
   # (CI_API_V4_URL) with DUEL_COMMENT_TOKEN, and it hides nothing, as only
   # a Developer can resolve a thread, and a merge request's token is a
-  # Reporter's.
+  # Reporter's. With --commit, it signs in with DUEL_TOKEN.
   # @api private
   class Comment
-    USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT]\n\n" \
+    include Forge
+
+    USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT]\n" \
+      "       duel comment --report DIR --commit SHA [--marker TEXT]\n\n" \
       "Comments on a pull request with the report a Perf run kept in DIR, when Duel said to, and only if the pull\n" \
       "request's head is still SHA: what the Perf comment workflow runs (or on GitLab CI, where GITLAB_CI is set,\n" \
-      "on a merge request, with DUEL_COMMENT_TOKEN: the comment job).\n\n"
+      "on a merge request, with DUEL_COMMENT_TOKEN: the comment job). With --commit, on the pushed commit SHA, as\n" \
+      "DUEL_COMMENT and DUEL_STATUS say: what the Comment on the commit job runs.\n\n"
 
-    # The first release of Duel whose `duel comment` the Perf comment
-    # workflow that this one writes can run (0.2.0's merges the reports
-    # of a workflow that called Duel's reusable one more than once): it
-    # installs the newest release of the same minor version (~>), so a
-    # fix comes with one.
-    SINCE = "0.2.0"
+    # The first release of Duel whose `duel comment`, `duel mark-passed`
+    # and `duel badge` the workflows that this one writes can run (0.2.1's
+    # comments on a pushed commit, and has the other two): they install
+    # the newest release of the same minor version (~>), so a fix comes
+    # with one.
+    SINCE = "0.2.1"
 
     # Where GitLab CI has what Duel said (comment.env's, on GitHub): the
     # merge request's, and the Duel job's dotenv report's.
@@ -97,7 +98,9 @@ module Duel
       rest = catch(:help) { parser.parse(@argv - ["--gitlab"]) } or return 0
       raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
       report = @report
-      raise OptionParser::MissingArgument, "--report and --head are required" unless report && @head
+      commit = @commit
+      return commit_comment(report, commit) if report && commit
+      raise OptionParser::MissingArgument, "--report, and --head or --commit, are required" unless report && @head
 
       comment(report)
     rescue OptionParser::ParseError => e
@@ -107,15 +110,12 @@ module Duel
 
     private
 
-    # Whether it runs on GitLab CI (GITLAB_CI, set and not empty): then it
-    # comments on a merge request.
-    def gitlab? = !@env["GITLAB_CI"].to_s.empty?
-
     def parser
       OptionParser.new do |o|
         o.banner = USAGE
         o.on("--report DIR", "The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)") { |v| @report = v }
         o.on("--head SHA", "The commit the run compared, the pull request's head") { |v| @head = v }
+        o.on("--commit SHA", "Comment on this pushed commit instead") { |v| @commit = v }
         o.on("--marker TEXT", "What marks Duel's comments (default: duel)") { |v| @marker = v }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
@@ -144,6 +144,52 @@ module Duel
       @out.puts "duel comment: commented on #{gitlab? ? "merge request !" : "pull request "}#{pr}"
       ours.reject { |earlier| earlier.fetch("hidden") }.each { |earlier| hide(earlier.fetch("id")) } unless gitlab?
       0
+    end
+
+    # Comments on the pushed commit +sha+ with the report in +dir+, where
+    # Duel said to (DUEL_COMMENT and DUEL_STATUS, the Duel job's outputs):
+    # a new comment, which notifies its author, where it says to post, and
+    # otherwise only where the last comment's status isn't this run's.
+    # Its last comment is the last one on any commit (on GitLab, on the
+    # commit before, CI_COMMIT_BEFORE_SHA).
+    def commit_comment(dir, sha)
+      mode, status = %w[comment status].map { |name| @env[GITLAB.fetch(name)].to_s[SAID.fetch(name)] }
+      return quiet("Duel said not to") unless mode && status
+
+      report = File.join(dir, "duel.md")
+      return quiet("no report: the Duel job failed before it compared") unless File.file?(report)
+
+      marked = (gitlab? ? commit_notes : commit_comments) or return 1
+      last = marked.reverse.find { |first| first.start_with?("#{marker} status=") }
+      stale = last && !last.eql?("#{marker} status=#{status} -->")
+      return quiet("the last comment says #{status} already") unless mode == "post" || stale
+
+      body = "#{marker} status=#{status} -->\n#{File.read(report)}"
+      posted = gitlab? ? gitlab(:Post, "#{project}/repository/commits/#{sha}/comments", {"note" => body}) :
+        gh("repos/#{repository}/commits/#{sha}/comments", "--method", "POST", "-f", "body=#{body}")
+      return 1 unless posted
+
+      @out.puts "duel comment: commented on commit #{sha}"
+      0
+    end
+
+    # The markers (first lines) of GitHub Actions' comments on the
+    # repository's commits, oldest first, or nil where GitHub wouldn't
+    # list them.
+    def commit_comments
+      listed = gh("--paginate", "repos/#{repository}/comments", "--jq",
+        '.[] | select(.user.login == "github-actions[bot]") | .body | split("\n")[0] | rtrimstr("\r")') or return
+      listed.lines(chomp: true)
+    end
+
+    # The markers of the token's comments on the commit before the push
+    # (CI_COMMIT_BEFORE_SHA), oldest first, or nil where GitLab wouldn't
+    # list them.
+    def commit_notes
+      me = gitlab(:Get, "/user") or return
+      before = @env.fetch("CI_COMMIT_BEFORE_SHA")
+      comments = gitlab(:Get, "#{project}/repository/commits/#{before}/comments?per_page=100") or return
+      comments.select { |comment| comment.dig("author", "id") == me.fetch("id") }.map { |comment| comment.fetch("note").lines.first.to_s.chomp }
     end
 
     # Posts +body+ as a new comment on the pull request (or merge request)
@@ -247,46 +293,6 @@ module Duel
       gh("graphql", "-f", "query=#{query}", "-f", "id=#{id}") || @err.puts("duel comment: couldn't hide an earlier comment")
     end
 
-    # What gh api prints, given +args+, or nil where it fails (or isn't
-    # there), which it says why.
-    def gh(*args)
-      out, err, status = Spawn.open3(:capture3, "gh", "api", *args)
-      return out if status.success?
-
-      @err.puts "duel comment: gh api #{args.first}: #{err.strip}"
-    rescue SystemCallError => e
-      @err.puts "duel comment: gh: #{e}"
-    end
-
-    # What GitLab's API says to +verb+ (:Get or :Post) +path+ (under
-    # CI_API_V4_URL), given +body+ (as JSON), signed in with
-    # DUEL_COMMENT_TOKEN, or nil where it fails, which it says why. With
-    # +pages+, that and the next page's number (X-Next-Page), if there's
-    # one.
-    def gitlab(verb, path, body = nil, pages: false)
-      uri = URI("#{@env.fetch("CI_API_V4_URL")}#{path}")
-      request = Net::HTTP.const_get(verb).new(uri)
-      request["PRIVATE-TOKEN"] = @env.fetch("DUEL_COMMENT_TOKEN")
-      request["Content-Type"] = "application/json"
-      request.body = JSON.generate(body) if body
-      http = connection(uri)
-      http.use_ssl = uri.scheme == "https"
-      response = http.request(request)
-      unless response.is_a?(Net::HTTPSuccess)
-        return @err.puts("duel comment: GitLab: #{verb.upcase} #{path}: #{[response.code, response.body.to_s.strip].reject(&:empty?).join(" ")}")
-      end
-
-      parsed = JSON.parse(response.body)
-      pages ? [parsed, response["X-Next-Page"].to_s[/\A[0-9]+\z/]] : parsed
-    rescue SystemCallError, IOError, Timeout::Error, JSON::ParserError, Net::HTTPBadResponse, OpenSSL::SSL::SSLError => e
-      @err.puts "duel comment: GitLab: #{verb.upcase} #{path}: #{e}"
-    end
-
-    # A connection to +uri+'s host, not yet started.
-    # mutant:disable -- a nil host is Net::HTTP's localhost, where the
-    # tests' server is, so only another host could tell them apart
-    def connection(uri) = Net::HTTP.new(uri.host.to_s, uri.port)
-
     # Says why it doesn't comment, and returns 0.
     def quiet(why)
       @out.puts "duel comment: no comment (#{why})"
@@ -295,9 +301,12 @@ module Duel
 
     def marker = "<!-- #{@marker}"
 
-    def repository = @env.fetch("GITHUB_REPOSITORY")
+    # (For Forge.)
+    def command = "duel comment"
 
-    # The project's path in GitLab's API.
-    def project = "/projects/#{@env.fetch("CI_PROJECT_ID")}"
+    # (A merge request's comment signs in with a token of its own, which
+    # an unprotected pipeline has: a Reporter's. A push's, with the
+    # Developer's that moves the branches.)
+    def gitlab_token = @commit ? "DUEL_TOKEN" : "DUEL_COMMENT_TOKEN"
   end
 end

@@ -1,0 +1,51 @@
+module Duel
+  # duel badge BRANCH --status STATUS --result RESULT: writes Duel's
+  # badge, as the push left it, to its branch, on GitHub.
+  # @api private
+  class Badge
+    include Forge
+
+    USAGE: String
+
+    # Each state's words, width, colors and right edge, by name.
+    STATES: Hash[String, [String, Integer, String, String, String]]
+
+    # The badge's image, to format.
+    SVG: String
+
+    # What its commit says, before the push it names.
+    MESSAGE: String
+
+    @argv: Array[String]
+    @status: String?
+    @result: String?
+
+    def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
+
+    # Returns the exit status: 0 written (or left), 1 GitHub wouldn't
+    # take it, 2 a bad option.
+    def run: () -> Integer
+
+    # What the badge says, given the Duel job's status and result.
+    def self.state: (String? status, String? result) -> String
+
+    # The badge's image, saying a state.
+    def self.svg: (String state) -> String
+
+    private
+
+    def parser: () -> OptionParser
+
+    # Whether the badge on the branch is a newer push's.
+    def newer?: (String branch, String sha) -> bool
+
+    # Writes the image, alone, to the branch, in a commit naming the push.
+    def write: (String branch, String svg, String sha) -> Integer
+
+    def left: (String branch) -> Integer
+
+    def command: () -> String
+
+    def gitlab_token: () -> String
+  end
+end

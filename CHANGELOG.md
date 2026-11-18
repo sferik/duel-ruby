@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow takes the JIT to turn on as one input, `jit:` (`none`,
   `yjit` or `zjit`, as Ruby runs one at most), in place of its `yjit:
   true`.
+- `duel comment --commit SHA` comments on a pushed commit, as Duel's
+  outputs say (`DUEL_COMMENT` and `DUEL_STATUS`), on GitHub or GitLab.
+  `duel mark-passed BRANCH` moves the branch that marks the last commit
+  Duel passed forward to a push, or makes it, and `duel badge BRANCH`
+  writes Duel's badge to its branch, on GitHub. The Comment on the
+  commit, Mark the commit passed and Update the badge jobs that
+  `duel init` writes (and Duel's reusable Perf workflow) run them,
+  installed from RubyGems as the comment workflow's `duel comment` is,
+  in place of the shell, `curl` and `jq` that they ran. So a fix to one
+  comes with a release of Duel, without a change to the workflow.
 
 ### Changed
 

@@ -8,6 +8,7 @@ require "socket"
 # a Perf run's report, and what it asks GitHub for.
 class CommentTest < DuelTest
   cover "Duel::Comment*"
+  cover "Duel::Forge*"
 
   ENV_TEXT = "pr=12\ncomment=post\nstatus=failed\n"
 
@@ -38,6 +39,91 @@ class CommentTest < DuelTest
       end
     end
     [command.run, calls]
+  end
+
+  # Runs `duel comment --commit def`, on a report of +markdown+ (nil for
+  # none), with what Duel said in the environment (+said+), and gh faked:
+  # GitHub Actions' comments on the repository's commits are +listed+
+  # (their first lines). Returns its exit status, and the calls to gh.
+  def commit_comment(said = {"DUEL_COMMENT" => "post", "DUEL_STATUS" => "failed"}, listed: [], failing: [], markdown: "**Slower**\n")
+    FileUtils.rm_f(File.join(report, "duel.md"))
+    File.write(File.join(report, "duel.md"), markdown) if markdown
+    calls = []
+    command = Duel::Comment.new(["--report", report, "--commit", "def"], env: {"GITHUB_REPOSITORY" => "me/my_gem"}.merge(said),
+      out: (@out = StringIO.new), err: (@err = StringIO.new))
+    command.define_singleton_method(:gh) do |*args|
+      calls << args
+      next if failing.any? { |arg| args.include?(arg) }
+
+      args.include?("--paginate") ? listed.map { |line| "#{line}\n" }.join : "{}"
+    end
+    [command.run, calls]
+  end
+
+  # On a pushed commit (--commit), as DUEL_COMMENT and DUEL_STATUS say:
+  # a new comment where Duel says to post, and otherwise only where the
+  # last comment's status (on any commit) isn't this run's.
+  def test_a_commit_comment
+    status, calls = commit_comment
+
+    assert_equal 0, status
+    assert_equal [["--paginate", "repos/me/my_gem/comments", "--jq",
+      '.[] | select(.user.login == "github-actions[bot]") | .body | split("\n")[0] | rtrimstr("\r")'],
+      ["repos/me/my_gem/commits/def/comments", "--method", "POST", "-f", "body=<!-- duel status=failed -->\n**Slower**\n"]], calls
+    assert_equal "duel comment: commented on commit def\n", @out.string
+    changed = {"DUEL_COMMENT" => "change", "DUEL_STATUS" => "passed"}
+
+    assert_equal 1, posted(commit_comment(changed, listed: ["<!-- duel status=failed -->", "<!-- other status=passed -->"]).last).size
+    assert_empty posted(commit_comment(changed, listed: ["<!-- duel status=passed -->", "<!-- other status=failed -->"]).last), "the same as the last"
+    assert_empty posted(commit_comment(changed, listed: ["<!-- duel status=failed -->", "<!-- duel status=passed -->"]).last), "the last"
+    assert_empty posted(commit_comment(changed).last), "none before"
+    assert_equal "duel comment: no comment (the last comment says passed already)\n", @out.string
+    assert_equal [0, []], commit_comment({"DUEL_COMMENT" => "none", "DUEL_STATUS" => "failed"}), "Duel said not to"
+    assert_equal "duel comment: no comment (Duel said not to)\n", @out.string
+    assert_equal [0, []], commit_comment({"DUEL_STATUS" => "failed"}), "nothing said"
+    assert_equal [0, []], commit_comment({"DUEL_COMMENT" => "post"}), "no status"
+    assert_equal [0, []], commit_comment(markdown: nil), "no report"
+    assert_equal "duel comment: no comment (no report: the Duel job failed before it compared)\n", @out.string
+  end
+
+  # Where GitHub won't list the comments, or take one, it fails.
+  def test_a_commit_comment_github_wont_take
+    assert_equal 1, commit_comment(failing: ["--paginate"]).first, "GitHub wouldn't list them"
+    assert_equal 1, commit_comment(failing: ["POST"]).first, "or take it"
+  end
+
+  # On GitLab CI, a pushed commit's comment's last is the commit before's:
+  # the token's own, whose first line is its marker. Returns its exit
+  # status, and the calls to GitLab's API, with those in +failing+ failing.
+  def gitlab_commit_comment(notes, status: "failed", failing: [])
+    File.write(File.join(report, "duel.md"), "**Slower**\n")
+    calls = []
+    command = Duel::Comment.new(["--report", report, "--commit", "def"],
+      env: GITLAB_ENV.except("DUEL_COMMENT_TOKEN").merge("DUEL_TOKEN" => "t", "CI_COMMIT_BEFORE_SHA" => "abc", "DUEL_COMMENT" => "change",
+        "DUEL_STATUS" => status),
+      out: (@out = StringIO.new), err: StringIO.new)
+    command.define_singleton_method(:gitlab) do |verb, path, body = nil|
+      calls << [verb, path, body].compact
+      next if failing.include?(path)
+
+      case path
+      when "/user" then {"id" => 5}
+      when %r{commits/abc/comments} then notes
+      else {}
+      end
+    end
+    [command.run, calls]
+  end
+
+  def test_a_gitlab_commit_comment
+    notes = [{"author" => {"id" => 5}, "note" => "<!-- duel status=passed -->\nOld"}, {"author" => {"id" => 6}, "note" => "<!-- duel status=failed -->"},
+      {"author" => {"id" => 5}, "note" => ""}, {"note" => "<!-- duel status=failed -->, by no one"}]
+
+    assert_equal [0, [[:Get, "/user"], [:Get, "/projects/7/repository/commits/abc/comments?per_page=100"],
+      [:Post, "/projects/7/repository/commits/def/comments", {"note" => "<!-- duel status=failed -->\n**Slower**\n"}]]], gitlab_commit_comment(notes)
+    assert_equal 2, gitlab_commit_comment(notes, status: "passed").last.size, "the token's last says so: another's doesn't count"
+    assert_equal 1, gitlab_commit_comment(notes, failing: ["/user"]).first
+    assert_equal 1, gitlab_commit_comment(notes, failing: ["/projects/7/repository/commits/abc/comments?per_page=100"]).first
   end
 
   # The comments it posted: their bodies.
@@ -239,6 +325,8 @@ class CommentTest < DuelTest
       assert_equal "api a b\n", command.send(:gh, "a", "b")
       assert_nil command.send(:gh, "a", "fail")
       assert_equal "duel comment: gh api a: no\n", err.string
+      assert_nil command.send(:gh, "a", "fail", quiet: true)
+      assert_equal "duel comment: gh api a: no\n", err.string, "quiet"
     end
     with_path(File.join(tmpdir, "nothing")) { assert_nil command.send(:gh, "a") }
     assert_match(/\Aduel comment: gh: No such file or directory/, err.string.lines.last)
@@ -374,7 +462,7 @@ class CommentTest < DuelTest
   def test_gitlabs_api
     answers = [["200 OK", {"X-Next-Page" => "12"}, %([{"id": 1}])], ["200 OK", {"X-Next-Page" => ""}, "[]"], ["201 Created", {}, %({"id": 3})],
       ["404 Not Found", {}, %( {"message": "404 Not found"}  \n)], ["404 Not Found", {}, ""], ["200 OK", {}, "{"], ["200 OK", {}, "[]"],
-      ["304 Not Modified", {}, ""]]
+      ["304 Not Modified", {}, ""], ["404 Not Found", {}, ""], ["204 No Content", {}, ""]]
     http_server(answers) do |url, got|
       command = Duel::Comment.new([], env: GITLAB_ENV.merge("CI_API_V4_URL" => url), out: StringIO.new, err: (err = StringIO.new))
 
@@ -386,6 +474,8 @@ class CommentTest < DuelTest
       assert_nil command.send(:gitlab, :Get, "/user")
       assert_equal [[], nil], command.send(:gitlab, :Get, "/projects/7/x?page=3", pages: true), "no X-Next-Page"
       assert_nil command.send(:gitlab, :Get, "/user"), "no body"
+      assert_equal [nil, {}], [command.send(:gitlab, :Get, "/user", quiet: true), command.send(:gitlab, :Delete, "/projects/7/x")],
+        "quiet, and nothing, as a deletion says"
       said = err.string.lines(chomp: true)
 
       assert_equal ["duel comment: GitLab: GET /user: 404 {\"message\": \"404 Not found\"}", "duel comment: GitLab: GET /user: 404"], said.first(2)
@@ -447,23 +537,40 @@ class CommentTest < DuelTest
     ENV["PATH"] = original
   end
 
+  # A merge request's comment signs in to GitLab with DUEL_COMMENT_TOKEN,
+  # and a push's with DUEL_TOKEN.
+  def test_the_gitlab_token
+    tokens = [[], ["--commit", "def"]].map do |argv|
+      command = Duel::Comment.new(["--report", report, *argv], env: {}, out: StringIO.new, err: StringIO.new)
+      command.run
+      command.send(:gitlab_token)
+    end
+
+    assert_equal %w[DUEL_COMMENT_TOKEN DUEL_TOKEN], tokens
+  end
+
   def test_options
     assert_equal 0, Duel::Comment.new(["--help"], env: {}, out: (out = StringIO.new), err: StringIO.new).run
     assert_equal <<~HELP, out.string
       Usage: duel comment --report DIR --head SHA [--marker TEXT]
+             duel comment --report DIR --commit SHA [--marker TEXT]
 
       Comments on a pull request with the report a Perf run kept in DIR, when Duel said to, and only if the pull
       request's head is still SHA: what the Perf comment workflow runs (or on GitLab CI, where GITLAB_CI is set,
-      on a merge request, with DUEL_COMMENT_TOKEN: the comment job).
+      on a merge request, with DUEL_COMMENT_TOKEN: the comment job). With --commit, on the pushed commit SHA, as
+      DUEL_COMMENT and DUEL_STATUS say: what the Comment on the commit job runs.
 
               --report DIR                 The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)
               --head SHA                   The commit the run compared, the pull request's head
+              --commit SHA                 Comment on this pushed commit instead
               --marker TEXT                What marks Duel's comments (default: duel)
           -h, --help                       Print this help
     HELP
     assert_equal 0, Duel::Comment.new(["-h"], env: {}, out: StringIO.new, err: StringIO.new).run
-    {[] => "missing argument: --report and --head are required", %w[--report x] => "missing argument: --report and --head are required",
-     %w[--head x] => "missing argument: --report and --head are required", %w[--report x --head y z w] => "needless argument: z",
+    {[] => "missing argument: --report, and --head or --commit, are required",
+     %w[--report x] => "missing argument: --report, and --head or --commit, are required",
+     %w[--head x] => "missing argument: --report, and --head or --commit, are required",
+     %w[--commit x] => "missing argument: --report, and --head or --commit, are required", %w[--report x --head y z w] => "needless argument: z",
      ["--nope"] => "invalid option: --nope"}.each do |argv, said|
       assert_equal 2, Duel::Comment.new(argv, env: {}, out: StringIO.new, err: (err = StringIO.new)).run
       assert_equal "duel comment: #{said}\n", err.string

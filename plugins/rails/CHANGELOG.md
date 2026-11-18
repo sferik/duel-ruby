@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than going to the plugin, or with `:sqlite`, nowhere. And
   `query_time:` is duel-activerecord's alone: to time queries,
   `c.use :activerecord, query_time: true` before `c.use :rails`.
+- The Perf workflow that `bin/rails generate duel:install` writes
+  comments on a pushed commit, marks a push passed, and updates the
+  badge with Duel 0.2.1's `duel comment --commit`, `duel mark-passed`
+  and `duel badge`, from RubyGems, as Duel's own does, in place of the
+  shell they ran. Its comment workflow installs Duel 0.2.1 or later
+  (`~> 0.2.1`).
 
 ## [0.2.0] - 2026-11-16
 

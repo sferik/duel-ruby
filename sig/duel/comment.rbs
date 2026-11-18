@@ -3,6 +3,8 @@ module Duel
   # pull request with Duel's report.
   # @api private
   class Comment
+    include Forge
+
     USAGE: String
 
     # The first release whose `duel comment` the workflow can run.
@@ -33,6 +35,7 @@ module Duel
     @marker: String
     @report: String?
     @head: String?
+    @commit: String?
 
     def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
 
@@ -42,13 +45,19 @@ module Duel
 
     private
 
-    # Whether it runs on GitLab CI.
-    def gitlab?: () -> bool
-
     def parser: () -> OptionParser
 
     # Comments, if Duel said to, and the pull request's head is still the
     # run's.
+    # Comments on a pushed commit with the report, where Duel said to.
+    def commit_comment: (String dir, String sha) -> Integer
+
+    # The markers of GitHub Actions' comments on the repository's commits.
+    def commit_comments: () -> Array[String]?
+
+    # The markers of the token's comments on the commit before the push.
+    def commit_notes: () -> Array[String]?
+
     def comment: (String dir) -> Integer
 
     # The reports' directories in +dir+.
@@ -75,25 +84,16 @@ module Duel
     # The token's notes on the merge request, or nil.
     def notes: (String pr) -> Array[Hash[String, untyped]]?
 
-    # What GitLab's API says, or nil.
-    def gitlab: (Symbol verb, String path, ?Hash[String, String]? body, ?pages: bool) -> untyped
-
-    # A connection to +uri+'s host, not yet started.
-    def connection: (URI::Generic uri) -> Net::HTTP
-
     # Hides an earlier comment as outdated.
     def hide: (String id) -> void
-
-    # What gh api prints, or nil where it fails.
-    def gh: (*String args) -> String?
 
     # Says why it doesn't comment, and returns 0.
     def quiet: (String why) -> Integer
 
     def marker: () -> String
 
-    def repository: () -> String
+    def command: () -> String
 
-    def project: () -> String
+    def gitlab_token: () -> String
   end
 end

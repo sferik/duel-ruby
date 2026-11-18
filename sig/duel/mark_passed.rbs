@@ -1,0 +1,39 @@
+module Duel
+  # duel mark-passed BRANCH: moves the branch that marks the last commit
+  # Duel passed forward to the pushed commit, on GitHub or GitLab.
+  # @api private
+  class MarkPassed
+    include Forge
+
+    USAGE: String
+
+    @argv: Array[String]
+
+    def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
+
+    # Returns the exit status: 0 moved (or left), 1 it couldn't, 2 a bad
+    # option.
+    def run: () -> Integer
+
+    private
+
+    def parser: () -> OptionParser
+
+    # Moves the branch to the commit on GitHub.
+    def on_github: (String branch, String sha) -> Integer
+
+    # How the branch's commit compares with the push's, as GitHub says.
+    def compared: (String sha, String at) -> String
+
+    # Moves the branch to the commit on GitLab.
+    def on_gitlab: (String branch, String sha) -> Integer
+
+    def moved: (String branch, String sha) -> Integer
+
+    def left: (String branch) -> Integer
+
+    def command: () -> String
+
+    def gitlab_token: () -> String
+  end
+end

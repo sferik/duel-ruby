@@ -139,8 +139,9 @@ class InitTest < DuelTest
     jobs = YAML.safe_load(workflow).fetch("jobs")
 
     assert_equal %w[duel commit-comment passed], jobs.keys
-    assert_equal [%w[Get Comment], %w[Move]], %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step.fetch("name").split.first } }
-    assert_equal 1, workflow.scan(%(marker="<!-- duel"\n)).size, "the Comment on the commit job's"
+    assert_equal [["actions/download-artifact@v8", "ruby/setup-ruby@v1", "Comment"], ["ruby/setup-ruby@v1", "Move"]],
+      %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step["uses"] || step.fetch("name").split.first } }
+    assert_equal 1, workflow.scan(%(--commit "$GITHUB_SHA" --marker 'duel'\n)).size, "the Comment on the commit job's"
     assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
   end
 
@@ -156,7 +157,7 @@ class InitTest < DuelTest
 
       assert_equal %w[duel commit-comment passed], jobs.keys, config
       assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed != '' }}", jobs.dig("passed", "if")
-      assert_equal "${{ needs.duel.outputs.passed }}", jobs.dig("passed", "steps", 0, "env", "BRANCH"), "the branch Duel names"
+      assert_equal "${{ needs.duel.outputs.passed }}", jobs.dig("passed", "steps", 1, "env", "BRANCH"), "the branch Duel names"
     end
   end
 
@@ -244,7 +245,7 @@ class InitTest < DuelTest
     assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
     assert_equal ["steps.report.outcome == 'success'"] * 2, [ruby, post].map { |step| step.fetch("if") }
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "HEAD_SHA" => "${{ github.event.workflow_run.head_sha }}"}, post.fetch("env"))
-    assert_equal "gem install duel --version '~> 0.2.0' --no-document\n" \
+    assert_equal "gem install duel --version '~> 0.2.1' --no-document\n" \
       "duel comment --report \"$RUNNER_TEMP/report\" --head \"$HEAD_SHA\" --marker 'duel'\n", post.fetch("run")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
@@ -394,7 +395,7 @@ class InitTest < DuelTest
     init.run
     jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     passed = jobs.fetch("passed")
-    step = passed.dig("steps", 0)
+    ruby, step = passed.fetch("steps")
 
     assert_equal "${{ steps.compare.outputs.passed }}", jobs.dig("duel", "outputs", "passed")
     assert_equal ["duel", {"contents" => "write"}, "Mark the commit passed"], passed.values_at("needs", "permissions", "name")
@@ -404,114 +405,9 @@ class InitTest < DuelTest
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "${{ needs.duel.outputs.passed }}"}, step.fetch("env"), "the branch Duel names")
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
-    assert_equal 1, passed.fetch("steps").size
-  end
-
-  # What the step that marks a push passed asks gh, with gh stubbed: for
-  # a push (abc) whose fast-forward GitHub refuses (+refused+), where the
-  # branch is +at+ (nil, missing), and compared with the push +compared+
-  # (or not, where gh fails with +compare_error+). A branch named +blocker+
-  # keeps it from making the branch. Where +made+, something else made the
-  # branch first, there (+ahead+ of the push, or not), so making it fails.
-  def passed_run(refused: false, at: nil, compared: nil, compare_error: nil, blocker: nil, made: nil, ahead: false, success: true)
-    gem
-    push_settings
-    init.run
-    run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "passed", "steps", 0, "run")
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
-    FileUtils.rm_f(File.join(tmpdir, "made"))
-    File.write(File.join(bin, "gh"), <<~SH)
-      #!/bin/bash
-      echo "gh $*" >> #{log}
-      case "$*" in
-        *"force=true"*) ;;
-        *"--method PATCH"*) if [ -f "$MADE_IT" ]; then [ -z "$AHEAD" ]; else [ -z "$REFUSED" ]; fi ;;
-        *"--method POST"*) if [ -n "$MADE" ]; then touch "$MADE_IT" && exit 1; fi; [ -z "$BLOCKER" ] ;;
-        *"/git/ref/heads/"*"--jq"*) if [ -f "$MADE_IT" ]; then echo "$MADE"; elif [ -n "$AT" ]; then echo "$AT"; else exit 1; fi ;;
-        *"/git/ref/heads/"*) [ "${2##*/git/ref/heads/}" = "$BLOCKER" ] ;;
-        *"/compare/"*) [ -z "$COMPARE_ERROR" ] || { echo "$COMPARE_ERROR" >&2; exit 1; }; echo "$COMPARED" ;;
-      esac
-    SH
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
-    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_SHA" => "abc", "BRANCH" => "duel/passed/main",
-           "REFUSED" => (refused ? "1" : nil), "AT" => at, "COMPARED" => compared, "COMPARE_ERROR" => compare_error,
-           "BLOCKER" => blocker, "MADE" => made, "AHEAD" => (ahead ? "1" : nil), "MADE_IT" => File.join(tmpdir, "made")}
-
-    assert_equal success, shell(env, run, out: (@said = File.join(tmpdir, "said")))
-    File.readlines(log, chomp: true).map { |call| call.delete_prefix("gh api ").sub("repos/me/my_gem/", "") }
-  end
-
-  def test_marking_a_push_passed_moves_the_branch_forward
-    assert_equal ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc"], passed_run, "no force"
-  end
-
-  def test_marking_a_push_passed_makes_the_branch
-    assert_equal ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc", "git/ref/heads/duel/passed/main --jq .object.sha",
-      "--method POST git/refs -f ref=refs/heads/duel/passed/main -f sha=abc"], passed_run(refused: true)
-  end
-
-  # A run that finishes after a newer push's (or this push's, run again)
-  # leaves the branch where that one moved it, never back.
-  def test_marking_a_push_passed_after_a_newer_one
-    %w[ahead identical].each do |compared|
-      calls = passed_run(refused: true, at: "def", compared: compared)
-
-      assert_equal "compare/abc...def --jq .status", calls.last, compared
-      assert_empty calls.grep(/force|POST/), compared
-    end
-  end
-
-  # Where history was rewritten (a force push), it's moved anyway.
-  def test_marking_a_push_passed_after_a_rewrite
-    %w[diverged behind].each do |compared|
-      assert_equal "--method PATCH git/refs/heads/duel/passed/main -f sha=abc -F force=true",
-        passed_run(refused: true, at: "def", compared: compared).last, compared
-    end
-  end
-
-  # Where history was replaced, GitHub can't compare the commits (they
-  # have no history in common), and it's moved anyway.
-  def test_marking_a_push_passed_after_history_was_replaced
-    assert_equal "--method PATCH git/refs/heads/duel/passed/main -f sha=abc -F force=true",
-      passed_run(refused: true, at: "def", compare_error: "gh: No common ancestor between abc and def. (HTTP 404)").last
-  end
-
-  # A branch whose name is a folder of the branch's keeps it from being
-  # made (Git can't have both), and the error names that branch.
-  def test_marking_a_push_passed_where_a_branch_blocks_it
-    %w[duel duel/passed].each do |blocker|
-      calls = passed_run(refused: true, blocker: blocker, success: false)
-
-      assert_equal ["git/ref/heads/duel/passed", "git/ref/heads/duel"], calls.last(2), blocker
-      assert_equal "::error::The branch #{blocker} keeps Duel from making duel/passed/main, as Git can't have both. " \
-        "Delete it (git push origin --delete #{blocker}), or rename it.\n", File.read(@said), blocker
-    end
-  end
-
-  # Where making the branch fails as something else made it first (a
-  # push of it, say), it moves it forward from there, or leaves it where
-  # that's ahead of the push.
-  def test_marking_a_push_passed_where_something_else_made_the_branch
-    make = ["--method PATCH git/refs/heads/duel/passed/main -f sha=abc", "git/ref/heads/duel/passed/main --jq .object.sha",
-      "--method POST git/refs -f ref=refs/heads/duel/passed/main -f sha=abc"]
-
-    assert_equal [*make, make.first], passed_run(refused: true, made: "old"), "forward from there"
-    calls = passed_run(refused: true, made: "def", ahead: true, compared: "ahead")
-
-    assert_equal [*make, *make.first(2), "compare/abc...def --jq .status"], calls, "left ahead"
-    assert_empty File.read(@said)
-  end
-
-  def test_marking_a_push_passed_without_a_comparison
-    assert_equal "compare/abc...def --jq .status", passed_run(refused: true, at: "def", compared: "", success: false).last
-  end
-
-  # Where gh fails to compare them otherwise, the error says why.
-  def test_marking_a_push_passed_where_the_comparison_fails
-    assert_equal "compare/abc...def --jq .status",
-      passed_run(refused: true, at: "def", compare_error: "gh: Server Error (HTTP 500)", success: false).last
-    assert_equal "::error::Couldn't compare duel/passed/main with this push: gh: Server Error (HTTP 500)\n", File.read(@said)
+    assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
+    assert_equal "gem install duel --version '~> 0.2.1' --no-document\nduel mark-passed \"$BRANCH\"\n", step.fetch("run"), "Duel's own code, from RubyGems"
+    refute_includes passed.to_s, "checkout"
   end
 
   # With --badge, a push to the default branch that Duel compared updates
@@ -522,105 +418,18 @@ class InitTest < DuelTest
     gem
     init("--badge").run
     badge = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge")
-    step = badge.dig("steps", 0)
+    ruby, step = badge.fetch("steps")
 
     assert_equal ["duel", {"contents" => "write"}, "Update the badge"], badge.values_at("needs", "permissions", "name")
     assert_equal "${{ !cancelled() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && " \
       "(needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}", badge.fetch("if")
-    assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/badge", "RESULT" => "${{ needs.duel.result }}",
-                  "STATUS" => "${{ needs.duel.outputs.status }}"},
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "RESULT" => "${{ needs.duel.result }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
       step.fetch("env"))
+    assert_equal ["ruby/setup-ruby@v1", "gem install duel --version '~> 0.2.1' --no-document\nduel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], [ruby.fetch("uses"), step.fetch("run")],
+      "Duel's own code, from RubyGems"
     refute badge.key?("defaults"), "nothing checked out"
-    assert_equal 1, badge.fetch("steps").size
     assert_equal({"group" => "${{ github.workflow }}-badge", "cancel-in-progress" => false}, badge.fetch("concurrency"),
       "one at a time, so an older push's run can't write over a newer one's")
-  end
-
-  # The badge's script, with gh stubbed, and a curl that fails: [what it
-  # ran (gh's calls, and curl's, if any), the tree it made, or nil] for a
-  # run with +env+.
-  def badge_run(env)
-    gem
-    init("--badge").run
-    run = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge", "steps", 0, "run")
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
-    tree = File.join(tmpdir, "tree.json")
-    File.write(File.join(bin, "gh"), <<~SH)
-      #!/bin/bash
-      echo "gh $*" >> #{log}
-      case "$*" in
-        *"/commits/duel/badge --jq .commit.message") [ -n "$LAST" ] && echo "$LAST" || { echo '{"message":"Not Found"}'; exit 1; } ;;
-        *"/compare/"*) echo "$COMPARED" ;;
-        *"git/trees"*) cat > #{tree}; echo tree1 ;;
-        *"git/commits"*) echo commit1 ;;
-        *"--method PATCH"*) [ -z "$NO_BRANCH" ] ;;
-      esac
-    SH
-    File.write(File.join(bin, "curl"), %(#!/bin/bash\necho "curl $*" >> #{log}\nexit 1\n))
-    FileUtils.chmod(0o755, Dir[File.join(bin, "*")])
-    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "RUNNER_TEMP" => tmpdir, "GITHUB_REPOSITORY" => "me/my_gem", "GITHUB_REF_NAME" => "main",
-           "GITHUB_SHA" => "abc", "BRANCH" => "duel/badge", "LAST" => nil, "COMPARED" => nil,
-           "NO_BRANCH" => nil}.merge(env)
-
-    assert shell(env, run)
-    calls = File.exist?(log) ? File.readlines(log, chomp: true) : []
-    [calls, (JSON.parse(File.read(tree)) if File.exist?(tree))]
-  end
-
-  # Each version of the badge's image, as the job writes it.
-  def image(name) = {"tree" => [{"path" => "badge.svg", "mode" => "100644", "type" => "blob",
-                                 "content" => repo_file("assets/#{name}.svg")}]}
-
-  def test_a_green_badge
-    calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed")
-
-    assert_equal image("badge"), tree, "written as it is in assets/"
-    assert_empty calls.grep(/\Acurl /), "fetched from nowhere"
-    assert_includes calls, %(gh api --method POST repos/me/my_gem/git/commits -f message=Duel's badge, for abc -f tree=tree1 --jq .sha)
-    assert_equal ["gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"], calls.grep(/refs/),
-      "the branch moved"
-  end
-
-  def test_a_red_badge_for_a_regression
-    calls, tree = badge_run("RESULT" => "success", "STATUS" => "failed", "NO_BRANCH" => "1")
-
-    assert_equal image("badge-regressed"), tree, "red, though the job passed (c.fail_on)"
-    assert_equal "gh api --method POST repos/me/my_gem/git/refs -f ref=refs/heads/duel/badge -f sha=commit1", calls.last, "the branch made"
-  end
-
-  # A job that failed before Duel said whether the push passed (its
-  # runner lost, say) measured nothing.
-  def test_a_grey_badge_for_a_failed_job
-    _, tree = badge_run("RESULT" => "failure", "STATUS" => "")
-
-    assert_equal image("badge-not-measured"), tree
-  end
-
-  # A step that failed after Duel passed the push leaves the badge green.
-  def test_a_green_badge_for_a_job_that_failed_after_duel_passed
-    _, tree = badge_run("RESULT" => "failure", "STATUS" => "passed")
-
-    assert_equal image("badge"), tree
-  end
-
-  # A newer push's badge replaces an older push's (or the same push's,
-  # run again), whatever it says.
-  def test_a_badge_for_a_newer_push
-    calls, tree = badge_run("RESULT" => "success", "STATUS" => "passed", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "behind")
-
-    assert_equal image("badge"), tree
-    assert_includes calls, "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status", "the badge's push, from its commit"
-    assert_includes calls, "gh api --method PATCH repos/me/my_gem/git/refs/heads/duel/badge -f sha=commit1 -F force=true"
-  end
-
-  # A run that finishes after a newer push's leaves that push's badge.
-  def test_a_badge_for_an_older_push
-    calls, tree = badge_run("RESULT" => "failure", "STATUS" => "", "LAST" => "Duel's badge, for 0123abcd", "COMPARED" => "ahead")
-
-    assert_nil tree, "the newer push's run has the say"
-    assert_equal ["gh api repos/me/my_gem/commits/duel/badge --jq .commit.message", "gh api repos/me/my_gem/compare/abc...0123abcd --jq .status"],
-      calls
   end
 
   # The red badge is the green one, wider for its words.
@@ -655,14 +464,14 @@ class InitTest < DuelTest
     assert_equal ["duel", {"contents" => "write"}, "Comment on the commit"], comment.values_at("needs", "permissions", "name")
     assert_equal "${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || " \
       "needs.duel.outputs.comment == 'change') }}", comment.fetch("if")
-    assert_equal({"COMMENT" => "${{ needs.duel.outputs.comment }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
-      comment.dig("steps", 1, "env").slice("COMMENT", "STATUS"))
-    run = comment.dig("steps", 1, "run")
+    get, ruby, post = comment.fetch("steps")
 
-    assert_equal ["POST"], run.scan(/--method (\w+)/).flatten, "a new comment, never an edit"
-    assert_includes run, %("repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments")
-    assert_includes run, %("repos/$GITHUB_REPOSITORY/comments"), "the last on any commit"
-    assert_equal [true, {"name" => "duel-report", "path" => "${{ runner.temp }}/report"}], comment.fetch("steps").first.values_at("continue-on-error", "with")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "DUEL_COMMENT" => "${{ needs.duel.outputs.comment }}", "DUEL_STATUS" => "${{ needs.duel.outputs.status }}"},
+      post.fetch("env"))
+    assert_equal ["ruby/setup-ruby@v1", ["steps.report.outcome == 'success'"] * 2], [ruby.fetch("uses"), [ruby, post].map { |step| step.fetch("if") }]
+    assert_equal "gem install duel --version '~> 0.2.1' --no-document\nduel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", post.fetch("run"),
+      "Duel's own code, from RubyGems"
+    assert_equal [true, {"name" => "duel-report", "path" => "${{ runner.temp }}/report"}], get.values_at("continue-on-error", "with")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
   end
@@ -958,13 +767,13 @@ class InitTest < DuelTest
 
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: gems/parser\n    steps:\n"
     assert_includes workflow, "        with:\n          working-directory: gems/parser\n          ruby-version:"
-    assert_includes workflow, %(marker="<!-- duel gems/parser"\n)
+    assert_includes workflow, %(--commit "$GITHUB_SHA" --marker 'duel gems/parser'\n)
     comments = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
 
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [YAML.safe_load(workflow).fetch("name"), comments.dig(true, "workflow_run", "workflows")],
       "a workflow of its own, and its comments"
     assert_includes comments.dig("jobs", "comment", "steps", 2, "run"), %(--marker 'duel gems/parser'\n)
-    assert_equal "duel/badge-gems-parser", YAML.safe_load(workflow).dig("jobs", "badge", "steps", 0, "env", "BRANCH"), "a badge of its own"
+    assert_includes YAML.safe_load(workflow).dig("jobs", "badge", "steps", 1, "run"), "duel badge duel/badge-gems-parser ", "a badge of its own"
     assert_includes workflow, "https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg"
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
@@ -1031,62 +840,26 @@ class InitTest < DuelTest
       assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
-    assert_equal ["ruby:slim", ["gem install duel --version '~> 0.2.0' --no-document",
-      %(duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
+    gem = "gem install duel --version '~> 0.2.1' --no-document"
+
+    assert_equal ["ruby:slim", [gem, %(duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
       jobs.fetch("duel:comment").values_at("image", "script"), "Duel's own code, from RubyGems"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
     assert_equal "duel/passed", jobs.dig("duel:passed", "resource_group"), "one at a time"
   end
 
-  # What GitLab's job that marks a push passed asks its API, with curl
-  # stubbed: for a push (abc) where the branch is +at+ (nil, missing),
-  # whose merge base with the push is +base+.
-  # A branch named +blocker+ keeps it from making the branch.
-  def gitlab_passed_run(at: nil, base: nil, blocker: nil, success: true)
+  # The GitLab CI jobs for a push run Duel's own code, from RubyGems,
+  # signed in with DUEL_TOKEN: none of the push's.
+  def test_gitlabs_jobs_for_a_push
     gem
     init("--gitlab").run
-    script = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml")).dig("duel:passed", "script", 1)
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    log = File.join(tmpdir, "log").tap { |path| File.write(path, "") }
-    File.write(File.join(bin, "curl"), <<~SH)
-      #!/bin/sh
-      url=$(for arg; do last=$arg; done; echo "$last")
-      method=GET
-      case "$*" in *"-X DELETE"*) method=DELETE ;; *"--data-urlencode"*) method=POST ;; esac
-      echo "$method ${url#https://gitlab/api/v4/projects/7/}" >> #{log}
-      case "$method $url" in
-        "GET "*/merge_base*) echo "{\\"id\\":\\"$BASE\\"}" ;;
-        "GET "*/branches/duel%2Fpassed%2Fmain) [ -n "$AT" ] && echo "{\\"commit\\":{\\"id\\":\\"$AT\\"}}" || exit 22 ;;
-        "GET "*/branches/*) [ "${url##*/branches/}" = "$BLOCKER" ] || exit 22 ;;
-        "POST "*) [ -z "$BLOCKER" ] || exit 22 ;;
-      esac
-    SH
-    FileUtils.chmod(0o755, File.join(bin, "curl"))
-    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "DUEL_PASSED" => "duel/passed/main", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
-           "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base, "BLOCKER" => blocker}
+    jobs = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml"))
+    gem = "gem install duel --version '~> 0.2.1' --no-document"
 
-    assert_equal success, shell(env, "set -o pipefail\n#{script}", shell: "sh", out: (@said = File.join(tmpdir, "said")))
-    File.readlines(log, chomp: true)
-  end
-
-  def test_gitlab_marking_a_push_passed
-    moved = ["DELETE repository/branches/duel%2Fpassed%2Fmain", "POST repository/branches"]
-
-    assert_equal ["GET repository/branches/duel%2Fpassed%2Fmain", *moved], gitlab_passed_run, "made"
-    assert_equal moved, gitlab_passed_run(at: "old", base: "old").last(2), "moved forward"
-    assert_equal moved, gitlab_passed_run(at: "def", base: "123").last(2), "moved anyway, after a rewrite"
-    assert_equal "GET repository/merge_base?refs%5B%5D=abc&refs%5B%5D=def", gitlab_passed_run(at: "def", base: "abc").last,
-      "left where a newer push's job moved it"
-    assert_equal "GET repository/merge_base?refs%5B%5D=abc&refs%5B%5D=def", gitlab_passed_run(at: "def", base: "", success: false).last,
-      "no comparison"
-  end
-
-  def test_gitlab_marking_a_push_passed_where_a_branch_blocks_it
-    calls = gitlab_passed_run(blocker: "duel", success: false)
-
-    assert_equal ["GET repository/branches/duel%2Fpassed", "GET repository/branches/duel"], calls.last(2)
-    assert_equal "The branch duel keeps Duel from making duel/passed/main, as Git can't have both. " \
-      "Delete it (git push origin --delete duel), or rename it.\n", File.read(@said)
+    assert_equal ["ruby:slim", [gem, %(duel comment --report . --commit "$CI_COMMIT_SHA" --marker 'duel')]],
+      jobs.fetch("duel:commit-comment").values_at("image", "script")
+    assert_equal ["ruby:slim", ['[ -n "$DUEL_PASSED" ] || exit 0', gem, %(duel mark-passed "$DUEL_PASSED")]], jobs.fetch("duel:passed").values_at("image", "script")
+    assert_includes jobs.dig("duel:commit-comment", "rules", 0, "if"), "$DUEL_TOKEN"
   end
 
   # For a project in a subdirectory, its own jobs, file, and branch, and
@@ -1103,9 +876,9 @@ class InitTest < DuelTest
     assert_equal ["duel:gems/parser", "duel:gems/parser:comment", "duel:gems/parser:commit-comment", "duel:gems/parser:passed"], jobs.keys
     assert_equal ["ruby:#{ruby_version}", "cd gems/parser"], [jobs.dig("duel:gems/parser", "image"), jobs.dig("duel:gems/parser", "before_script", 0)]
     assert_equal ["gems/parser/duel.md", "gems/parser/duel.env"], jobs.dig("duel:gems/parser", "artifacts").values_at("paths", "reports").map { |v| v.is_a?(Array) ? v.first : v.fetch("dotenv") }
-    assert_includes text, %(marker="<!-- duel gems/parser"\n)
+    assert_includes text, %(--report gems/parser --commit "$CI_COMMIT_SHA" --marker 'duel gems/parser'\n)
     assert_includes text, %(--report gems/parser --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel gems/parser'\n)
-    assert_includes text, %(branch=$DUEL_PASSED\n), "the branch Duel names"
+    assert_includes text, %(duel mark-passed "$DUEL_PASSED"\n), "the branch Duel names"
     assert_equal "duel/gems/parser/passed", jobs.dig("duel:gems/parser:passed", "resource_group"), "its own, with no colon, which GitLab doesn't take"
   end
 
@@ -1518,13 +1291,13 @@ class InitTest < DuelTest
   # in a subdirectory, its path's, as Init names them.
   def test_the_reusable_workflows_names
     jobs = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml")).fetch("jobs")
-    named = jobs.dig("badge", "steps", 0, "run")[/^BRANCH=duel\/badge\n.*?\n/m]
+    named = jobs.dig("badge", "steps", 1, "run")[/^branch=duel\/badge\n.*?\n/m]
     out = File.join(tmpdir, "out")
-    branch = ->(directory) { shell({"DIRECTORY" => directory}, "#{named}echo \"$BRANCH\"", out: out) && File.read(out).chomp }
+    branch = ->(directory) { shell({"DIRECTORY" => directory}, "#{named}echo \"$branch\"", out: out) && File.read(out).chomp }
 
     assert_equal %w[duel/badge duel/badge-gems-parser], %w[. gems/parser].map(&branch)
     assert_equal "${{ inputs.working-directory == '.' && 'duel' || format('duel {0}', inputs.working-directory) }}",
-      jobs.dig("commit-comment", "steps", 1, "env", "MARKER")
+      jobs.dig("commit-comment", "steps", 2, "env", "MARKER")
   end
 
   # A project in a subdirectory: its directory, from which the reusable

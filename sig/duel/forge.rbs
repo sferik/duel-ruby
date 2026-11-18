@@ -1,0 +1,42 @@
+module Duel
+  # What the commands that run in CI's jobs of their own share: GitHub's
+  # API, through gh, and GitLab's, over HTTP.
+  # @api private
+  module Forge
+    @env: CLI::_Env
+    @err: _Output
+    @out: _Output
+
+    private
+
+    # The command it's for, as its messages say (the includer's).
+    def command: () -> String
+
+    # The variable of the token GitLab's API is signed in with (the
+    # includer's).
+    def gitlab_token: () -> String
+
+    # What gh api prints, or nil where it fails.
+    def gh: (*String args, ?quiet: bool) -> String?
+
+    # What GitLab's API says, or nil.
+    def gitlab: (Symbol verb, String path, ?Hash[String, String]? body, ?pages: bool, ?quiet: bool) -> untyped
+
+    # Names the branch that keeps Git from making this one, and returns 1.
+    def blocked: (String branch) { (String prefix) -> untyped } -> Integer
+
+    # A connection to +uri+'s host, not yet started.
+    def connection: (URI::Generic uri) -> Net::HTTP
+
+    # Whether it runs on GitLab CI.
+    def gitlab?: () -> bool
+
+    def repository: () -> String
+
+    # The project's path in GitLab's API.
+    def project: () -> String
+
+    # A branch's name, as a path of GitLab's API takes it.
+    def encoded: (String ref) -> String
+  end
+end

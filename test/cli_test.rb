@@ -68,6 +68,27 @@ class CLITest < DuelTest
     ENV["PATH"] = path
   end
 
+  # `duel mark-passed` is MarkPassed's, given the environment.
+  def test_the_mark_passed_and_badge_commands
+    {Duel::MarkPassed => "mark-passed", Duel::Badge => "badge"}.each do |command, name|
+      given = nil
+      ran = Struct.new(:run).new(3)
+
+      stub(command, :new, ->(argv, env:, out:, err:) { (given = [argv, env, out, err]) && ran }) do
+        assert_equal 3, cli(name, "b", env: {"GITHUB_SHA" => "abc"}).run
+      end
+      assert_equal [["b"], {"GITHUB_SHA" => "abc"}, @out, @err], given
+    end
+    %w[mark-passed badge].each do |name|
+      assert_equal 2, cli(name, env: {"GITHUB_SHA" => "abc"}).run
+      assert_equal "duel #{name}: missing argument: BRANCH\n", @err.string
+      assert_equal 0, cli(name, "--help").run
+      assert_includes @out.string, "Usage: duel #{name} BRANCH"
+    rescue SystemExit
+      flunk "duel's own --help exits"
+    end
+  end
+
   def test_help
     assert_equal <<~HELP, cli.send(:parser, Duel::Settings.defaults).help
       Usage: duel [options]
@@ -75,10 +96,12 @@ class CLITest < DuelTest
              duel init [options]
              duel clean [--config PATH]
              duel comment [options]
+             duel mark-passed BRANCH
+             duel badge BRANCH [options]
 
       Fails if this tree is slower than a baseline at any benchmark. `duel base` prints the commit it would compare
       with, `duel init` sets Duel up in a project, `duel clean` removes tmp/duel and the baseline's git worktree,
-      and `duel comment` is what its Perf comment workflow runs.
+      and `duel comment`, `duel mark-passed` and `duel badge` are what the workflows it writes run.
 
               --base REF|DIR               Baseline: a commit (default: where HEAD left the main branch), last-release (the newest
                                            release tag), or a directory, already built

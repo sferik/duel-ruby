@@ -155,29 +155,29 @@ jobs:
         with:
           name: duel-report
           path: ${{ runner.temp }}/report
+      - uses: ruby/setup-ruby@v1
+        if: steps.report.outcome == 'success'
+        with:
+          ruby-version: ruby
+      # Duel's own code, from RubyGems (none of the push's).
       - name: Comment on the commit
         if: steps.report.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-          COMMENT: ${{ needs.duel.outputs.comment }}
-          STATUS: ${{ needs.duel.outputs.status }}
+          DUEL_COMMENT: ${{ needs.duel.outputs.comment }}
+          DUEL_STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          marker="<!-- duel"
-          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\") | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(startswith(\"$marker status=\"))" | tail -n 1)
-          if [ "$COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$STATUS -->" ]; }; then
-            { echo "$marker status=$STATUS -->"; cat "$RUNNER_TEMP/report/duel.md"; } > "$RUNNER_TEMP/comment.md"
-            gh api --method POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@"$RUNNER_TEMP/comment.md" > /dev/null
-          fi
+          gem install duel --version '~> 0.2.1' --no-document
+          duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker 'duel'
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
   # the last commit Duel passed, which a branch marks (each branch pushed
   # has its own), so slowdowns too small for any one push to fail add up
   # until they fail one. This job moves the branch (as Duel names it) to
-  # a push that passed (or makes it), but never back: where a newer push's run moved it
-  # first, it stays. It checks nothing out and runs none of the code. To
-  # accept a regression, move the branch yourself (for main, git push
-  # origin main:duel/passed/main).
+  # a push that passed (or makes it), but never back: where a newer
+  # push's run moved it first, it stays. It checks nothing out and runs
+  # none of the code. To accept a regression, move the branch yourself
+  # (for main, git push origin main:duel/passed/main).
   passed:
     name: Mark the commit passed
     needs: duel
@@ -193,45 +193,17 @@ jobs:
     permissions:
       contents: write # to move the branch
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ruby
+      # Duel's own code, from RubyGems (none of the push's).
       - name: Move the branch to the commit
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
-          # (Git can't make a branch where another's name is a folder of its
-          # name: a branch named duel blocks duel/passed/main. If one does,
-          # this names it.)
-          blocked() {
-            prefix=$BRANCH
-            while [ "${prefix%/*}" != "$prefix" ]; do
-              prefix=${prefix%/*}
-              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
-                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
-              fi
-            done
-            exit 1
-          }
-          # (Forward: GitHub moves it only where it's behind the push. Where
-          # there's no branch, and making it fails, it looks once more, as
-          # something else may have made it: a push of it, say.)
-          for _ in 1 2; do
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null 2>&1 && exit 0
-            at=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha 2>/dev/null) || at=
-            [ -n "$at" ] && break
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null && exit 0
-          done
-          [ -n "$at" ] || blocked
-          compared=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$at" --jq .status 2>&1) || case "$compared" in
-            # (GitHub can't compare commits with no history in common.)
-            *"No common ancestor"*) compared=unrelated ;;
-          esac
-          case "$compared" in
-            # (A newer push's run moved it, or this one's did, run again.)
-            ahead | identical) ;;
-            # (History rewritten, a force push's, say, or replaced: moved anyway.)
-            diverged | behind | unrelated) gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$GITHUB_SHA" -F force=true > /dev/null ;;
-            *) echo "::error::Couldn't compare $BRANCH with this push: $compared" && exit 1 ;;
-          esac
+          gem install duel --version '~> 0.2.1' --no-document
+          duel mark-passed "$BRANCH"
 ```
 
 A newer push to a pull request cancels the pull request's run, if it's
@@ -321,8 +293,9 @@ the Perf workflow completes (`workflow_run`), with your repository's
 own copy of the workflow and a token that can write, so a pull request
 from a fork gets a comment too. It checks nothing out and runs none of
 the pull request's code. It installs Duel from RubyGems (the newest
-0.2 release, 0.2.0 or later) and runs `duel comment`, so a fix to how it comments comes
-with a release of Duel, without a change to the workflow. The pull
+0.2 release, 0.2.1 or later) and runs `duel comment`, so a fix to how
+it comments comes with a release of Duel, without a change to the
+workflow. The pull
 request's code ran in the Duel job, and could have written anything
 into the artifact, so `duel comment` trusts only what Duel could have
 said there: a number that names the pull request whose head the run
@@ -397,7 +370,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gem install duel --version '~> 0.2.0' --no-document
+          gem install duel --version '~> 0.2.1' --no-document
           duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel'
 
   again:
@@ -443,6 +416,11 @@ By default, a push gets no comment: Duel sets the `comment` output to
 `none`, and a regression fails the push's check instead. The Comment on
 the commit job checks nothing out either, and it alone gets the
 `contents: write` permission that a commit comment takes.
+
+Like the comment workflow, the jobs for a push run Duel's own code,
+from RubyGems: `duel comment --commit`, `duel mark-passed` and
+`duel badge`. So a fix to one comes with a release of Duel, and none of
+them runs the push's code.
 
 The workflow that `duel init` writes has the Comment on the commit job
 whatever `.duel.rb` says, as the job only runs where Duel says to
@@ -598,88 +576,18 @@ keeps `.duel.rb`), or add the job yourself:
     permissions:
       contents: write # to move the badge's branch
     steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ruby
+      # Duel's own code, from RubyGems (none of the push's).
       - name: Update the badge
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: duel/badge
           RESULT: ${{ needs.duel.result }}
           STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          # (Git can't make a branch where another's name is a folder of its
-          # name: a branch named duel blocks duel/passed/main. If one does,
-          # this names it.)
-          blocked() {
-            prefix=$BRANCH
-            while [ "${prefix%/*}" != "$prefix" ]; do
-              prefix=${prefix%/*}
-              if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$prefix" > /dev/null 2>&1; then
-                echo "::error::The branch $prefix keeps Duel from making $BRANCH, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
-              fi
-            done
-            exit 1
-          }
-          # (Where the badge is a newer push's, that push's run has the say.
-          # Its commit names the push.)
-          last=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq .commit.message 2>/dev/null | sed -n 's/^Duel.s badge, for \([0-9a-f]*\)$/\1/p') || true
-          if [ -n "$last" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$last" --jq .status 2>/dev/null)" = ahead ]; then exit 0; fi
-          # (Its image, written here rather than fetched from anywhere: green,
-          # red where Duel failed the push or found a regression, or grey
-          # where the Duel job failed before Duel said either.)
-          state="perf guarded" width=133 top="#34D058" bottom="#28A745" right="76.939C78.629 0 80 1.343 80"
-          if [ "$STATUS" = failed ]; then
-            state="perf regressed" width=142 top="#EA4A5A" bottom="#D73A49" right="85.939C87.629 0 89 1.343 89"
-          elif [ "$RESULT" = failure ] && [ "$STATUS" != passed ]; then
-            state="not measured" width=138 top="#959DA5" bottom="#6A737D" right="81.939C83.629 0 85 1.343 85"
-          fi
-          cat > "$RUNNER_TEMP/badge.svg" <<SVG
-          <svg xmlns="http://www.w3.org/2000/svg" width="$width" height="20">
-            <title>Duel - $state</title>
-            <defs>
-              <linearGradient id="duel-fill" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop stop-color="#444D56" offset="0%"></stop>
-                <stop stop-color="#24292E" offset="100%"></stop>
-              </linearGradient>
-              <linearGradient id="state-fill" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop stop-color="$top" offset="0%"></stop>
-                <stop stop-color="$bottom" offset="100%"></stop>
-              </linearGradient>
-            </defs>
-            <g fill="none" fill-rule="evenodd">
-              <g font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
-                <path d="M0,3 C0,1.3431 1.3552,0 3.02702703,0 L53,0 L53,20 L3.02702703,20 C1.3552,20 0,18.6569 0,17 L0,3 Z" fill="url(#duel-fill)" fill-rule="nonzero"></path>
-                <text fill="#010101" fill-opacity=".3">
-                  <tspan x="22.1981982" y="15" aria-hidden="true">Duel</tspan>
-                </text>
-                <text fill="#FFFFFF">
-                  <tspan x="22.1981982" y="14">Duel</tspan>
-                </text>
-              </g>
-              <g transform="translate(53)" font-family="'DejaVu Sans',Verdana,Geneva,sans-serif" font-size="11">
-                <path d="M0 0h$right 3v14c0 1.657-1.37 3-3.061 3H0V0z" fill="url(#state-fill)" fill-rule="nonzero"></path>
-                <text fill="#010101" fill-opacity=".3" aria-hidden="true">
-                  <tspan x="4" y="15">$state</tspan>
-                </text>
-                <text fill="#FFFFFF">
-                  <tspan x="4" y="14">$state</tspan>
-                </text>
-              </g>
-              <g fill="#959DA5">
-                <path d="M4.6 3.6L6.9 4.5L14.3 11.9L12.9 13.3L5.5 5.9Z M17.4 3.6L15.1 4.5L7.7 11.9L9.1 13.3L16.5 5.9Z"></path>
-                <circle cx="16.6" cy="15.6" r="1.1"></circle>
-                <circle cx="5.4" cy="15.6" r="1.1"></circle>
-              </g>
-              <g stroke="#959DA5" stroke-linecap="round">
-                <path d="M12.1 14.5L15.5 11.1 M9.9 14.5L6.5 11.1" stroke-width="1.6"></path>
-                <path d="M13.8 12.8L16 15 M8.2 12.8L6 15" stroke-width="1.8"></path>
-              </g>
-            </g>
-          </svg>
-          SVG
-          tree=$(jq -n --rawfile svg "$RUNNER_TEMP/badge.svg" '{tree: [{path: "badge.svg", mode: "100644", type: "blob", content: $svg}]}' |
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
-          commit=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" -f message="Duel's badge, for $GITHUB_SHA" -f tree="$tree" --jq .sha)
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" -f sha="$commit" -F force=true > /dev/null 2>&1 ||
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$commit" > /dev/null || blocked
+          gem install duel --version '~> 0.2.1' --no-document
+          duel badge duel/badge --status "$STATUS" --result "$RESULT"
 ```
 
 ## Guard other branches
@@ -1005,7 +913,7 @@ duel:comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '~> 0.2.0' --no-document
+    - gem install duel --version '~> 0.2.1' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
     - duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
@@ -1013,9 +921,10 @@ duel:comment:
 # The report, as a new comment on a pushed commit, when Duel says to, as
 # for a merge request: only where a regression in a push passes (see
 # c.fail_on), so the comment says what the check doesn't. Its last comment
-# is the commit before's.
+# is the commit before's. It runs `duel comment`, from RubyGems, signed in
+# with DUEL_TOKEN.
 duel:commit-comment:
-  image: alpine:3
+  image: ruby:slim
   stage: .post
   needs: [duel]
   rules:
@@ -1024,32 +933,19 @@ duel:commit-comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl jq
-    - |
-      case "$DUEL_COMMENT" in post|change) ;; *) exit 0 ;; esac
-      report=duel.md
-      [ -f "$report" ] || exit 0
-      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
-      token="PRIVATE-TOKEN: $DUEL_TOKEN"
-      marker="<!-- duel"
-      me=$(curl -sf -H "$token" "$CI_API_V4_URL/user" | jq .id)
-      last=$(curl -sf -H "$token" "$api/repository/commits/$CI_COMMIT_BEFORE_SHA/comments?per_page=100" |
-        jq -r --argjson me "$me" --arg marker "$marker status=" '.[] | select(.author.id == $me) | .note | split("\n")[0] | rtrimstr("\r") | select(startswith($marker))' | tail -n 1)
-      if [ "$DUEL_COMMENT" = post ] || { [ -n "$last" ] && [ "$last" != "$marker status=$DUEL_STATUS -->" ]; }; then
-        { echo "$marker status=$DUEL_STATUS -->"; cat "$report"; } | jq -Rs '{note: .}' |
-          curl -sf -H "$token" -H "Content-Type: application/json" --data @- "$api/repository/commits/$CI_COMMIT_SHA/comments" > /dev/null
-      fi
+    - gem install duel --version '~> 0.2.1' --no-document
+    - duel comment --report . --commit "$CI_COMMIT_SHA" --marker 'duel'
 
 # With c.push_base = :last_passed in .duel.rb, a push is compared with the
 # last commit Duel passed, which a branch marks (duel/passed/main for
 # main), so slowdowns too small for any one push to fail add up until they
 # fail one. This job moves the branch (as Duel names it, DUEL_PASSED) to a
 # push that passed (or makes it), but never back: where a newer push's job
-# moved it first, it stays. To
-# accept a regression, move the branch yourself (for main, git push
-# origin main:duel/passed/main).
+# moved it first, it stays. It runs `duel mark-passed`, from RubyGems,
+# signed in with DUEL_TOKEN. To accept a regression, move the branch
+# yourself (for main, git push origin main:duel/passed/main).
 duel:passed:
-  image: alpine:3
+  image: ruby:slim
   stage: .post
   needs: [duel]
   # One at a time, as each deletes the branch and makes it again: two at
@@ -1060,32 +956,9 @@ duel:passed:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - apk add --no-cache --quiet curl jq
-    - |
-      [ -n "$DUEL_PASSED" ] || exit 0
-      api="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
-      token="PRIVATE-TOKEN: $DUEL_TOKEN"
-      branch=$DUEL_PASSED
-      at=$(curl -sf -H "$token" "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')" | jq -r '.commit.id // empty') || at=
-      if [ -n "$at" ]; then
-        base=$(curl -sf -H "$token" "$api/repository/merge_base?refs%5B%5D=$CI_COMMIT_SHA&refs%5B%5D=$at" | jq -r '.id // empty') || base=
-        [ -n "$base" ] || { echo "Couldn't compare $branch with this push" && exit 1; }
-        # (A newer push's job moved it, or this one's did, run again.)
-        [ "$base" = "$CI_COMMIT_SHA" ] && exit 0
-      fi
-      curl -s -o /dev/null -H "$token" -X DELETE "$api/repository/branches/$(echo "$branch" | sed 's|/|%2F|g')"
-      curl -sf -o /dev/null -H "$token" --data-urlencode "branch=$branch" --data-urlencode "ref=$CI_COMMIT_SHA" "$api/repository/branches" && exit 0
-      # (Git can't make a branch where another's name is a folder of its
-      # name: a branch named duel blocks duel/passed/main. If one does,
-      # this names it.)
-      prefix=$branch
-      while [ "${prefix%/*}" != "$prefix" ]; do
-        prefix=${prefix%/*}
-        if curl -sf -o /dev/null -H "$token" "$api/repository/branches/$(echo "$prefix" | sed 's|/|%2F|g')"; then
-          echo "The branch $prefix keeps Duel from making $branch, as Git can't have both. Delete it (git push origin --delete $prefix), or rename it."
-        fi
-      done
-      exit 1
+    - '[ -n "$DUEL_PASSED" ] || exit 0'
+    - gem install duel --version '~> 0.2.1' --no-document
+    - duel mark-passed "$DUEL_PASSED"
 ```
 
 ## Run each version on its own Ruby on CI

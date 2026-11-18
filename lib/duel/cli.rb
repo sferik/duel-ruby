@@ -11,11 +11,14 @@ require_relative "summary"
 require_relative "json_report"
 require_relative "init"
 require_relative "comment"
+require_relative "mark_passed"
+require_relative "badge"
 require_relative "spawn"
 
 module Duel
-  # The `duel` command (and `duel init` and `duel comment`: see Init and
-  # Comment). What a run behind a rake task or a CI expression can't pass
+  # The `duel` command (and `duel init`, `duel comment`,
+  # `duel mark-passed` and `duel badge`: see Init, Comment, MarkPassed
+  # and Badge). What a run behind a rake task or a CI expression can't pass
   # as an option can be set in the environment (DUEL_BASE, DUEL_FILTER,
   # DUEL_FORCE...: see ENV_OPTIONS), and options win. On CI, the baseline
   # is what the run's event says (see #event_base), unless one of them
@@ -30,10 +33,10 @@ module Duel
   # @api private
   class CLI
     USAGE = "Usage: duel [options]\n       duel base [options]\n       duel init [options]\n       duel clean [--config PATH]\n" \
-      "       duel comment [options]\n\n" \
+      "       duel comment [options]\n       duel mark-passed BRANCH\n       duel badge BRANCH [options]\n\n" \
       "Fails if this tree is slower than a baseline at any benchmark. `duel base` prints the commit it would compare\n" \
       "with, `duel init` sets Duel up in a project, `duel clean` removes tmp/duel and the baseline's git worktree,\n" \
-      "and `duel comment` is what its Perf comment workflow runs.\n\n"
+      "and `duel comment`, `duel mark-passed` and `duel badge` are what the workflows it writes run.\n\n"
 
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY = "GITHUB_STEP_SUMMARY"
@@ -88,6 +91,8 @@ module Duel
     def run
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
       return Comment.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "comment"
+      return MarkPassed.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "mark-passed"
+      return Badge.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "badge"
       return clean(@argv.drop(1)) if @argv.first == "clean"
       return show_base(@argv.drop(1)) if @argv.first == "base"
 

@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "generators/duel/install/install_generator"
+require "duel/comment" # (for the templates' Duel::Comment::SINCE)
 require "yaml"
 
 # `rails generate duel:install`, in a directory of the test's own, for the
@@ -167,7 +168,6 @@ class GeneratorTest < PluginTest
     generate
     workflow = read(".github/workflows/perf.yml")
     duel = YAML.safe_load(workflow).dig("jobs", "duel")
-    require "duel/comment" # (for the template's Duel::Comment::SINCE)
 
     assert_includes workflow, %(        run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"\n)
     assert_equal({"contents" => "read", "pull-requests" => "read"}, YAML.safe_load(workflow).fetch("permissions"))
@@ -192,16 +192,22 @@ class GeneratorTest < PluginTest
       workflow[/^concurrency:\n.*?^\n/m], "Duel's own"
     assert_equal own("perf.yml")[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
       workflow[/^      - name: Say whether to comment\n.*?^      - name: Keep/m], "Duel's own"
-    assert_equal own("perf.yml")[/^  commit-comment:\n.*?^          marker=/m],
-      workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
-    assert_equal own("perf.yml")[/^  passed:\n.*?^          BRANCH:/m],
-      workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
-    assert_equal "${{ needs.duel.outputs.passed }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "the branch Duel names"
+    %w[commit-comment passed badge].each do |job|
+      assert_equal own("perf.yml")[/^  #{job}:\n.*?^        run: \|\n/m], workflow[/^  #{job}:\n.*?^        run: \|\n/m], "Duel's own job, #{job}"
+    end
+    jobs = YAML.safe_load(workflow).fetch("jobs")
+    gem = "gem install duel --version '~> 0.2.1' --no-document\n"
+
+    assert_equal ["#{gem}duel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", "#{gem}duel mark-passed \"$BRANCH\"\n",
+      "#{gem}duel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], %w[commit-comment passed badge].map { |job| jobs.dig(job, "steps").last.fetch("run") }
     # (Its whole workflow's, without the reusable one's.)
     badge = own("perf.yml")[/^  # Duel's badge.*\z/m].gsub(/<% if reusable\? -%>\n.*?<% else -%>\n(.*?)<% end -%>\n/m, '\\1')
       .gsub(/<% if reusable\? -%>\n.*?<% end -%>\n/m, "")
 
-    assert_equal badge.gsub("<%= badge_branch %>", "duel/badge").delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
+    badge = badge.gsub("<%= badge_branch %>", "duel/badge").gsub(%(<%= reusable? ? '"$branch"' : badge_branch %>), "duel/badge")
+      .gsub("<%= Duel::Comment::SINCE %>", Duel::Comment::SINCE)
+
+    assert_equal badge.delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
   end
 
   # With --badge, the workflow keeps a badge for the README, by a job
@@ -266,10 +272,11 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: ${{ needs.duel.outputs.passed }}",
-      "          BRANCH: duel/badge-apps-blog", %(          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel apps/blog')],
-      (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|--marker |BRANCH: /).uniq,
-      "comments, and a branch, of its own"
+    assert_equal [%(          duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker 'duel apps/blog'),
+      %(          duel badge duel/badge-apps-blog --status "$STATUS" --result "$RESULT"),
+      %(          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel apps/blog')],
+      (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/--marker |duel badge /),
+      "comments, and a badge, of its own"
     assert_equal [{"run" => {"working-directory" => "apps/blog"}}, nil],
       YAML.safe_load(workflow).fetch("jobs").values_at("duel", "commit-comment").map { |job| job["defaults"] }, "none where nothing's checked out"
     assert_path_exists File.join(app, ".duel.rb")
