@@ -112,7 +112,7 @@ module Release
     status, = git(root, "status", "--porcelain")
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").first.strip
     head = git(root, "rev-parse", "HEAD").first.strip
-    local_tags, = git(root, "tag", "--list")
+    local_tags = git(root, "tag", "--list").first.lines.map(&:strip)
     remote, ok = git(root, "ls-remote", REMOTE, "refs/heads/#{BRANCH}", "refs/tags/*")
     refs = ok ? remote.lines.to_h { |line| line.split("\t").map(&:strip).reverse } : {}
     remote_main = refs["refs/heads/#{BRANCH}"]
@@ -123,7 +123,7 @@ module Release
       ("HEAD is on #{branch}, not #{BRANCH}" unless branch == BRANCH),
       ("#{REMOTE} has no #{BRANCH} branch" if ok && !remote_main),
       ("HEAD (#{head[0, 7]}) isn't #{REMOTE}/#{BRANCH} (#{remote_main[0, 7]}): pull or push first" if remote_main && remote_main != head),
-      *tags.select { |tag| local_tags.lines.map(&:strip).include?(tag) }.map { |tag| "the tag #{tag} exists already here" },
+      *(tags & local_tags).map { |tag| "the tag #{tag} exists already here" },
       *tags.select { |tag| refs.key?("refs/tags/#{tag}") }.map { |tag| "the tag #{tag} exists already on #{REMOTE}" }
     ].compact
   end
@@ -142,8 +142,8 @@ module Release
 
     spec = Gem::Package.new(path).spec
     tracked, = git(root, "ls-files", "-z", "--", component.dir)
-    own = tracked.split("\0").reject { |file| component.core? && file.start_with?("plugins/") }
-      .map { |file| component.core? ? file : file.delete_prefix("#{component.dir}/") }
+    files = tracked.split("\0")
+    own = component.core? ? files.reject { |file| file.start_with?("plugins/") } : files.map { |file| file.delete_prefix("#{component.dir}/") }
     foreign = spec.files - own
     siblings = spec.runtime_dependencies.select { |dependency| components.any? { |other| other.name == dependency.name } }
     [
@@ -167,8 +167,7 @@ module Release
     end
 
     components = components(root)
-    head, = git(root, "rev-parse", "HEAD")
-    head = head.strip
+    head = git(root, "rev-parse", "HEAD").first.strip
     tags = components.map { |component| component.tag(version) }
     output.puts "Every check passes for #{version} (#{components.size} gems, at #{head[0, 7]}, dated #{date})."
     if dry_run
