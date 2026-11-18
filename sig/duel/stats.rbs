@@ -36,6 +36,9 @@ module Duel
     def self.difference_interval: (Array[Metric::value] bases, Array[Metric::value] candidates, Float confidence) -> [Metric::value, Metric::value]?
 
     # Each of +candidates+ over each of +bases+, sorted.
+    # The rth least and most of the sorted values the block gives, or nil.
+    def self.rank_interval: [T] (Array[Metric::value] bases, Array[Metric::value] candidates, Float confidence) { () -> Array[T] } -> [T, T]?
+
     def self.cross_ratios: (Array[Metric::value] bases, Array[Metric::value] candidates) -> Array[Float]
 
     def self.median: (Array[Float] samples) -> Float

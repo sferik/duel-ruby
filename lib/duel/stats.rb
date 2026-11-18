@@ -93,13 +93,7 @@ module Duel
       # [low, high] bounds of the +confidence+ interval for the ratio of
       # +candidates+ (a version's samples) to +bases+ (the other's), or nil
       # (see #shift_rank).
-      def shift_interval(bases, candidates, confidence)
-        r = shift_rank(bases.size, candidates.size, confidence)
-        return unless r
-
-        ratios = cross_ratios(bases, candidates)
-        [ratios.fetch(r - 1), ratios.fetch(-r)]
-      end
+      def shift_interval(bases, candidates, confidence) = rank_interval(bases, candidates, confidence) { cross_ratios(bases, candidates) }
 
       # The ratio of +candidates+ to +bases+ the interval is for: the
       # median of the cross ratios (the Hodges-Lehmann estimate).
@@ -109,11 +103,19 @@ module Duel
       # +candidates+ (a version's samples) are than +bases+ (the other's),
       # as #shift_interval's are for how many times as much, or nil.
       def difference_interval(bases, candidates, confidence)
+        rank_interval(bases, candidates, confidence) { candidates.flat_map { |c| bases.map { |b| c - b } }.sort }
+      end
+
+      # The bounds #shift_interval and #difference_interval take, of the
+      # sorted values the block gives (one for each pair of a candidate's
+      # and a base's): the rth least and the rth most (see #shift_rank),
+      # or nil, without asking for the values.
+      def rank_interval(bases, candidates, confidence)
         r = shift_rank(bases.size, candidates.size, confidence)
         return unless r
 
-        differences = candidates.flat_map { |c| bases.map { |b| c - b } }.sort
-        [differences.fetch(r - 1), differences.fetch(-r)]
+        sorted = yield
+        [sorted.fetch(r - 1), sorted.fetch(-r)]
       end
 
       # Each of +candidates+ over each of +bases+, sorted.
