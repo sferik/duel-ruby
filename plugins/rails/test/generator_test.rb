@@ -44,7 +44,7 @@ class GeneratorTest < PluginTest
   end
 
   # How .duel.rb ends: when the workflow comments, which runs a regression
-  # fails, the label that accepts one (set), and what a push is compared
+  # fails, the label that accepts one, and what a push is compared
   # with, the defaults shown.
   ENDING = "\n  # When the workflow comments on a pull request with the report: :always,\n" \
     "  # :results (passed or failed), :failures (failed, or couldn't compare),\n  # or :never.\n  # c.comment = :failures\n" \
@@ -52,7 +52,7 @@ class GeneratorTest < PluginTest
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
     "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
-    "\n  # A label that accepts a regression in a pull request, for a change\n  # that's slower on purpose (nil for none).\n  c.accept_label = \"duel: accept\"\n" \
+    "\n  # A label that accepts a regression in a pull request, for a change\n  # that's slower on purpose (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
     "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \

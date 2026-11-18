@@ -34,7 +34,7 @@ Duel.configure do |c|
 
   # A label that accepts a regression in a pull request, for a change
   # that's slower on purpose (nil for none).
-  c.accept_label = "duel: accept"
+  # c.accept_label = "duel: accept"
 
   # What the workflow compares a push with: :before (the commit before it),
   # or :last_passed (the last commit Duel passed, which a branch,

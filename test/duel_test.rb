@@ -220,19 +220,22 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::FAIL_ON, :frozen?
   end
 
-  # The label that accepts a regression: none unless set, and only a
-  # name.
+  # The label that accepts a regression: "duel: accept" unless set, nil
+  # for none, and only a name.
   def test_accept_label
     config = Duel::Config.new
 
-    assert_nil config.accept_label
-    config.accept_label = "duel: accept"
-
     assert_equal "duel: accept", config.accept_label
+    config.accept_label = nil
+
+    assert_nil config.accept_label
+    config.accept_label = "perf: accept"
+
+    assert_equal "perf: accept", config.accept_label
     error = assert_raises(Duel::Error) { config.accept_label = :accept }
 
     assert_equal "c.accept_label = :accept: give a label's name, or nil", error.message
-    assert_equal "duel: accept", config.accept_label, "unchanged"
+    assert_equal "perf: accept", config.accept_label, "unchanged"
     config.accept_label = nil
 
     assert_nil config.accept_label

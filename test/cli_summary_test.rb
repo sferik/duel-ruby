@@ -253,9 +253,10 @@ class CLISummaryTest < DuelTest
       {"PULL_REQUESTS" => Duel::CLI::PULL_REQUESTS, "frozen" => Duel::CLI::PULL_REQUESTS.frozen?})
   end
 
-  # A pull request labeled as c.accept_label says (DUEL_LABELS) passes a
-  # regression, with a warning, and a note in the report. Without the
-  # setting, or the label, it fails.
+  # A pull request labeled as c.accept_label says (DUEL_LABELS: "duel:
+  # accept" by default) passes a regression, with a warning, and a note
+  # in the report. With c.accept_label = nil, or without the label, it
+  # fails.
   def test_accepting_a_regression_with_a_label
     outcome = lambda do |labels, env: {}|
       run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => labels, "GITHUB_EVENT_NAME" => "pull_request"}.merge(env))
@@ -263,10 +264,13 @@ class CLISummaryTest < DuelTest
     end
     accepted = ["Accepted with the `duel: accept` label.", true, "::warning::Duel: slower, but accepted with the duel: accept label\n"]
 
-    assert_equal 1, run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => %(["duel: accept"])}), "without c.accept_label"
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = nil }\n))
+
+    assert_equal 1, run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => %(["duel: accept"])}), "with c.accept_label = nil"
     assert_nil @summarized.first.last.fetch(:note)
+    File.delete(File.join(tmpdir, ".duel.rb"))
+
     assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[null]"}), "no label isn't one"
-    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
 
     assert_equal 0, run_faked(passed: false, env: {"DUEL_LABELS" => %(["bug", "duel: accept"])})
     assert_equal accepted, outcome.call(%(["bug", "duel: accept"]))

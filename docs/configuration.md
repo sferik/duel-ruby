@@ -19,7 +19,7 @@ Duel.configure do |c|
   c.comment = :results                   # when CI comments on a pull request (default: :failures)
   c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
   c.push_base = :last_passed             # what CI compares a push with (default: :before)
-  c.accept_label = "duel: accept"        # a pull request label that accepts a regression
+  c.accept_label = "perf: accept"        # a pull request label that accepts a regression (default: "duel: accept")
   c.limit = 1.05                         # a run's settings, as their options (see Set a run's settings)
   c.use :redis                           # a plugin (see Use plugins)
 
@@ -128,12 +128,13 @@ always fails.
 ## Accept a regression with a label
 
 Sometimes a change is slower on purpose: it's correct where the old
-code wasn't, say. To let a pull request through anyway, name a label
-that accepts its regression:
+code wasn't, say. To let a pull request through anyway, label it
+`duel: accept`, the label that accepts its regression by default. To
+name another, or none:
 
 ```ruby
 Duel.configure do |c|
-  c.accept_label = "duel: accept"
+  c.accept_label = "perf: accept" # or nil, so that nothing can let a regression through
 end
 ```
 
@@ -152,10 +153,8 @@ the merged regression becomes the commit that later pushes are compared
 with. On a schedule, Duel compares with the last commit since your last
 release that merged a pull request with the label, instead of the
 release, so a slowdown you accepted doesn't fail every night until
-your next release. Duel's default is no such label, but the `.duel.rb` that
-`duel init` writes (and duel-rails's generator) names `duel: accept`.
-Create the label in your repository to use it, or set
-`c.accept_label = nil` so that nothing can let a regression through.
+your next release. Create the label in your repository to use it
+(`duel init` does, where `gh` can).
 
 ## Compare a push with the last commit that passed
 

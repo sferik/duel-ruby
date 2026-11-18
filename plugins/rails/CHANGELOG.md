@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bin/rails generate duel:install` writes, links to the list of
   projects using Duel (USERS.md, in Duel's repository), as Duel's own
   does.
+- The `.duel.rb` that `bin/rails generate duel:install` writes shows
+  `c.accept_label = "duel: accept"` commented out, now that it's Duel's
+  default.
 
 ## [0.2.0] - 2026-11-16
 

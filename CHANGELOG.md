@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything runs. The first three were given the benchmark if they took
   a parameter, which nothing needed. Only `around_iteration` takes one:
   its iteration.
+- `c.accept_label` is `"duel: accept"` by default, the label that the
+  `.duel.rb` `duel init` writes named, so a project set up by hand
+  accepts a regression as one set up by `duel init` does. Set it to
+  `nil` for no such label. That `.duel.rb` shows the label, and the
+  build of a project with `ext/` (`bundle exec rake compile`, Duel's
+  default there already), commented out, as the defaults they are.
 
 ### Fixed
 

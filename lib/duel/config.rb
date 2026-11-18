@@ -263,10 +263,10 @@ module Duel
     # @api private
     def run_settings = RUN_SETTINGS.to_h { |name| [name, public_send(name)] }.compact
 
-    # The name of a label that accepts a regression in a pull request
-    # (or nil, the default, for none): on GitHub Actions, the workflow
-    # that `duel init` writes passes Duel the pull request's labels
-    # (DUEL_LABELS), and with this one, a regression passes, with a
+    # The name of a label that accepts a regression in a pull request:
+    # "duel: accept" by default, or nil for none. On GitHub Actions, the
+    # workflow that `duel init` writes passes Duel the pull request's
+    # labels (DUEL_LABELS), and with this one, a regression passes, with a
     # warning, and the report says it was accepted. For a push, it's the
     # labels of the pull request that merged it, so where #push_base is
     # :last_passed, the push is marked passed too. The labels are read
@@ -336,6 +336,7 @@ module Duel
       @comment = :failures
       @fail_on = :every_run
       @push_base = :before
+      @accept_label = "duel: accept"
       @prepares = SCOPES.to_h { |scope| [scope, []] }
       @metrics = []
       @in_workers = []
