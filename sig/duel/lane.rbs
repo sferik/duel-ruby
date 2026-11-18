@@ -165,6 +165,9 @@ module Duel
     # Whether one version's samples are above a spec's floors.
     def above_floors?: (Array[Hash[String, Metric::value]] samples, Metric::spec spec) -> bool
 
+    # Each pair's ratio: the candidate's value over the baseline's (at least 1).
+    def ratios: (Array[[Metric::value, Metric::value]] pairs) -> Array[Float]
+
     def limit: (Metric::spec spec) -> Float
 
     def verdict: (Array[Float] ratios, Metric::spec spec) -> Stats::verdict

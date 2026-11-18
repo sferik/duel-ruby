@@ -442,7 +442,6 @@ module Duel
       end
       return judge_processes(name, n, judged, result) if by_process?(name)
 
-      ratios = judged.to_h { |spec| [spec.fetch("name"), []] }
       # @type var raw: Hash[String, Array[[Metric::value, Metric::value]]]
       raw = judged.to_h { |spec| [spec.fetch("name"), []] }
       pending = judged.dup
@@ -452,18 +451,14 @@ module Duel
 
         base, candidate = pair(name, n, i)
         result.note(base, candidate)
-        ratios.each do |metric, list|
-          values = [base.fetch("timed").fetch(metric), candidate.fetch("timed").fetch(metric)] #: [Metric::value, Metric::value]
-          raw.fetch(metric) << values
-          list << values.last.fdiv([values.first, 1].max)
-        end
+        raw.each { |metric, pairs| pairs << [base.fetch("timed").fetch(metric), candidate.fetch("timed").fetch(metric)] }
         round = ((i + 1) % STEP).zero?
         next unless round || every
 
-        pending.reject! { |spec| decided?(verdict(ratios.fetch(spec.fetch("name")), spec), round) }
+        pending.reject! { |spec| decided?(verdict(ratios(raw.fetch(spec.fetch("name"))), spec), round) }
       end
       judged.each do |spec|
-        list = ratios.fetch(spec.fetch("name"))
+        list = ratios(raw.fetch(spec.fetch("name")))
         medians = raw.fetch(spec.fetch("name")).transpose.map { |values| Stats.median(values) }
         result.timed[spec.fetch("name")] = {"median" => Stats.median(list), "limit" => limit(spec), "across" => spec.fetch("across"),
                                             "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural"),
@@ -558,6 +553,10 @@ module Duel
       median = Stats.median(values)
       median >= spec.fetch("floor") && median * spec.fetch("unit_ns") >= spec.fetch("cpu_floor") * Stats.median(cpu)
     end
+
+    # Each of +pairs+' ratio: the candidate's value over the baseline's
+    # (at least 1).
+    def ratios(pairs) = pairs.map { |base, candidate| candidate.fdiv([base, 1].max) }
 
     def limit(spec) = spec.fetch("limit") || @settings.limit
 
