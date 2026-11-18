@@ -331,7 +331,7 @@ module Duel
       # mutant:disable -- kept only so as not to open it again: it's the
       # same reader however often it's opened
       def self.opened_reader
-        return @reader if defined?(@reader)
+        return @reader if instance_variable_defined?(:@reader)
 
         @reader = (MacOS.memory || Windows.open if FIDDLE)
       end
