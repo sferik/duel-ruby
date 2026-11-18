@@ -133,9 +133,11 @@ class SpawnTest < DuelTest
   end
 
   # What it says is in the log as it runs, for what waits on it to see.
+  # (Within a minute: a JVM on a busy runner, JRuby's on macOS say, can
+  # take more than ten seconds to start.)
   def test_logged_through_open3_as_it_runs
     child = Duel::Spawn::ThroughOpen3.logged(env, ruby("$stdout.sync = true; puts :ready; sleep"), log: @log, mode: "w")
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 60
     sleep 0.01 until File.read(@log).include?("ready") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
 
     assert_includes File.read(@log), "ready", "while it runs"
