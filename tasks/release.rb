@@ -25,9 +25,6 @@ module Release
   # A gemspec's dependency on a gem of this repository.
   DEPENDENCY_LINE = /^(\s*spec\.add_(?:runtime_)?dependency\s+"(duel(?:-[\w-]+)?)",\s+")([^"]*)(")/
   UNRELEASED = "Unreleased"
-  # A changelog's Unreleased section, up to the next section or the links
-  # at the bottom.
-  UNRELEASED_SECTION = /^## \[Unreleased\][^\n]*\n.*?(?=^## |^\[[^\]\n]+\]: |\z)/m
   # A changelog's link to what's changed since the last release.
   UNRELEASED_LINK = %r{^\[Unreleased\]: (?<base>\S+)/compare/(?<from>\S+)\.\.\.HEAD$}
   # What a changelog says of a release with nothing of its own in it.
@@ -106,7 +103,10 @@ module Release
 
   # The body of a changelog's section (nil if it has none), up to the
   # next section or the links at the bottom.
-  def section(text, title) = text[/^## \[#{Regexp.escape(title)}\][^\n]*\n(.*?)(?=^## |^\[[^\]\n]+\]: |\z)/m, 1]
+  def section(text, title) = text[section_pattern(title), 1]
+
+  # A changelog's section titled +title+, its body captured.
+  def section_pattern(title) = /^## \[#{Regexp.escape(title)}\][^\n]*\n(.*?)(?=^## |^\[[^\]\n]+\]: |\z)/m
 
   def check_git(root, components, version)
     status, = git(root, "status", "--porcelain")
@@ -230,7 +230,7 @@ module Release
   def bump_changelog(text, component, previous, version, date)
     entries = section(text, UNRELEASED).to_s.strip
     entries = NO_CHANGES if entries.empty?
-    text = text.sub(UNRELEASED_SECTION) do
+    text = text.sub(section_pattern(UNRELEASED)) do
       "## [#{UNRELEASED}]\n\n## [#{version}] - #{date}\n\n#{entries}\n\n"
     end
     text.sub(UNRELEASED_LINK) do
