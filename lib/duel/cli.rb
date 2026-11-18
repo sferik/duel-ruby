@@ -124,13 +124,6 @@ module Duel
       COMMENTED.fetch(mode).include?(status) ? "post" : "change"
     end
 
-    # Which of +values+ (symbols) an option's argument names, or an
-    # invalid argument.
-    def self.named(name, values)
-      values.find { |value| value.to_s == name } or
-        raise OptionParser::InvalidArgument, "#{name} (give #{values.join(", ")})"
-    end
-
     # The settings, from the environment and then the options.
     def parse
       @given = [] # (the RUN_SETTINGS options given: see Config)
@@ -222,7 +215,7 @@ module Duel
       runner = Runner.new(config, settings, base_root, out: @out)
       results = runner.run
       passed = runner.passed?(results)
-      status = passed ? 0 : slower(config, settings)
+      status = passed ? 0 : slower(config)
       @passed = (baseline.passed_branch if (passed || accepted?(config)) && marks_passed?(config, settings))
       publish(
         passed ? "passed" : "failed",
@@ -241,9 +234,9 @@ module Duel
     # The exit status of a run that was slower (or whose benchmark
     # failed): 1, or 0 where the pull request's label accepts it
     # (Config#accept_label), or on GitHub Actions outside a pull request,
-    # where c.fail_on (or --fail-on) says only a pull request fails, with
+    # where c.fail_on says only a pull request fails, with
     # a warning that says so, and a note in the report.
-    def slower(config, settings)
+    def slower(config)
       if accepted?(config)
         # (Set: see #accepted?.)
         label = config.accept_label #: String
@@ -251,7 +244,7 @@ module Duel
         @passed_anyway = "accept_label"
         return passing("accepted with the #{label} label", "Accepted with the #{Summary.code(label)} label.")
       end
-      return 1 unless pull_requests_only?(config, settings) && outside_pull_request?
+      return 1 unless pull_requests_only?(config) && outside_pull_request?
 
       # (Outside a pull request on CI, so there's one: see #event.)
       run = event #: String
@@ -295,9 +288,8 @@ module Duel
     # says to compare a push with that commit.
     def marks_passed?(config, settings) = !settings.pushed.nil? && config.push_base == :last_passed
 
-    # Whether a regression fails only a pull request (--fail-on, or else
-    # Config#fail_on).
-    def pull_requests_only?(config, settings) = (settings.fail_on || config.fail_on) == :pull_requests
+    # Whether a regression fails only a pull request (Config#fail_on).
+    def pull_requests_only?(config) = config.fail_on == :pull_requests
 
     # What a run on CI is for, as GitHub Actions names it
     # (GITHUB_EVENT_NAME): push, pull_request, schedule, say. On GitLab
@@ -373,20 +365,18 @@ module Duel
 
     # What the workflow does about its comment on a pull request, or on
     # a pushed commit (see .comment), for a run whose +status+ is the
-    # JSON report's: as --comment says, or else the configuration, or the
-    # default where the configuration didn't load. It comments on a push
+    # JSON report's: as the configuration says (Config#comment), or the
+    # default where it didn't load. It comments on a push
     # only where a regression in one passes (Config#fail_on), so the
     # comment says what the check doesn't. A regression the label
     # accepts (Config#accept_label) is commented on as a run that passed
     # would be: whoever added the label knows, so by default it posts
     # only where the last comment's status isn't its own.
     def commenting(status)
-      # (Parsed, so set: see #run.)
-      settings = @settings #: Settings
       config = @config || Config.new
-      return "none" if pushed? && !pull_requests_only?(config, settings)
+      return "none" if pushed? && !pull_requests_only?(config)
 
-      CLI.comment(settings.comment || config.comment, @accepted ? "passed" : status)
+      CLI.comment(config.comment, @accepted ? "passed" : status)
     end
 
     # Writes the reports of a run whose +status+ is the JSON report's
@@ -627,10 +617,6 @@ module Duel
         o.on("--markdown PATH", "Also write the report to PATH in Markdown, for a pull request comment (on GitHub",
           "Actions, it's added to the job's summary too)") { |v| @markdown = v }
         o.on("--json PATH", "Also write the report to PATH as JSON, for a program to read") { |v| @json = v }
-        o.on("--comment MODE", "When the workflow comments on a pull request: always, results (passed or failed),",
-          "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.named(v, Config::COMMENTS) }
-        o.on("--fail-on RUNS", "Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another",
-          "warns and passes) (default: c.fail_on, or every_run)") { |v| settings.fail_on = CLI.named(v, Config::FAIL_ON) }
         o.on("-v", "--version", "Print the version") do
           @out.puts "duel #{VERSION}"
           throw :version

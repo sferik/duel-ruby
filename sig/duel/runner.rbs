@@ -42,7 +42,7 @@ module Duel
 
   # How a run is set up (see Duel::CLI for where each comes from).
   # @api private
-  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | Config::comment | Config::fail_on | nil]
+  class Settings < Struct[String | Regexp | Integer | Float | bool | Config::ruby | nil]
     attr_accessor base: String?
     attr_accessor base_dir: String?
     attr_accessor candidate_dir: String?
@@ -59,13 +59,8 @@ module Duel
     attr_accessor time_limit: Float
     # Each version's Ruby (--ruby), over Config#ruby.
     attr_accessor ruby: Config::ruby
-    # When the workflow comments on a pull request (--comment), over
-    # Config#comment.
-    attr_accessor comment: Config::comment?
-    # Which runs a regression fails (--fail-on), over Config#fail_on.
-    attr_accessor fail_on: Config::fail_on?
     # The branch pushed, where #base is the push's, the commit before it,
-    # on GitHub Actions (DUEL_BASE): see Baseline#ref.
+    # as its event says: see Baseline#ref.
     attr_accessor pushed: String?
     # The branch a pull request targets, on GitHub Actions
     # (GITHUB_BASE_REF), on origin: see Baseline#main_branch.
@@ -84,13 +79,11 @@ module Duel
 
     def self.new: (?String? base, ?String? base_dir, ?String? candidate_dir, ?Regexp filter, ?Integer jobs,
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
-                   ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment,
-                   ?Config::fail_on? fail_on, ?String? pushed,
+                   ?Float timeout, ?Config::ruby ruby, ?String? pushed,
                    ?String? target, ?Float time_limit, ?String? accepted, ?String? repository, ?Array[:jobs | :processes] fit) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
-                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?,
-                   ?fail_on: Config::fail_on?, ?pushed: String?,
+                   ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?pushed: String?,
                    ?target: String?, ?time_limit: Float, ?accepted: String?, ?repository: String?, ?fit: Array[:jobs | :processes]) -> instance
 
     def self.defaults: () -> Settings

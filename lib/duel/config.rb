@@ -86,7 +86,7 @@ module Duel
     attr_accessor :ruby
 
     # When the workflow that `duel init` writes comments on a pull request
-    # with the report (`duel --comment` overrides it):
+    # with the report:
     #
     # - :always, on every run
     # - :results, when a run passed or failed, but not with nothing
@@ -113,7 +113,7 @@ module Duel
       @comment = Config.one_of(:comment, mode, COMMENTS)
     end
 
-    # Which runs a regression fails (`duel --fail-on` overrides it):
+    # Which runs a regression fails:
     #
     # - :every_run (the default)
     # - :pull_requests, only a pull request's (or a merge queue's), and a

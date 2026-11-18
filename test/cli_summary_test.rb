@@ -103,6 +103,9 @@ class CLISummaryTest < DuelTest
     assert_empty @reported
   end
 
+  # Writes a .duel.rb, in the directory runs run in, of +settings+.
+  def configure(settings) = File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure do |c|\n  #{settings}\nend\n")
+
   def git_repo
     repo = FileUtils.mkdir_p(File.join(tmpdir, "repo")).first
     FileUtils.mkdir_p(File.join(repo, "lib"))
@@ -179,7 +182,6 @@ class CLISummaryTest < DuelTest
   # would be: by default, only where the last comment's status isn't its
   # own, since whoever added the label knows.
   def test_commenting_on_an_accepted_regression
-    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
     output = File.join(tmpdir, "output")
     outputs = lambda do |*argv, labels:|
       File.write(output, "")
@@ -189,12 +191,16 @@ class CLISummaryTest < DuelTest
 
     assert_equal "comment=change\nstatus=failed\n", outputs.call(labels: %(["duel: accept"]))
     assert_equal "comment=post\nstatus=failed\n", outputs.call(labels: %(["bug"])), "not accepted"
-    assert_equal "comment=post\nstatus=failed\n", outputs.call("--comment", "results", labels: %(["duel: accept"])), "as a pass would be"
-    assert_equal "comment=none\nstatus=failed\n", outputs.call("--comment", "never", labels: %(["duel: accept"]))
+    configure("c.comment = :results")
+
+    assert_equal "comment=post\nstatus=failed\n", outputs.call(labels: %(["duel: accept"])), "as a pass would be"
+    configure("c.comment = :never")
+
+    assert_equal "comment=none\nstatus=failed\n", outputs.call(labels: %(["duel: accept"]))
   end
 
   # On GitHub Actions, the step's outputs say whether the workflow
-  # comments, and the run's status, as --comment says, or c.comment.
+  # comments, and the run's status, as c.comment says.
   def test_the_step_outputs
     output = File.join(tmpdir, "output")
     File.write(output, "before=1\n")
@@ -203,22 +209,24 @@ class CLISummaryTest < DuelTest
     assert_equal "before=1\ncomment=change\nstatus=passed\n", File.read(output), "added to"
     assert_equal [true, 0, nil], @reported.first.last.values_at(:passed, :exit, :passed_anyway), "the JSON report's"
     File.write(output, "")
-    run_faked("--comment", "always", env: {"GITHUB_OUTPUT" => output})
+    configure("c.comment = :always")
+    run_faked(env: {"GITHUB_OUTPUT" => output})
     run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
 
     assert_equal "comment=post\nstatus=passed\ncomment=post\nstatus=failed\n", File.read(output)
-    File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.comment = :never }\n")
+    configure("c.comment = :never")
     File.write(output, "")
     run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
-    run_faked("--comment", "results", passed: false, env: {"GITHUB_OUTPUT" => output})
+    configure("c.comment = :results")
+    run_faked(passed: false, env: {"GITHUB_OUTPUT" => output})
 
-    assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "--comment over c.comment"
+    assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "as c.comment says"
     run_faked(env: {"GITHUB_OUTPUT" => ""})
 
     assert_equal "comment=none\nstatus=failed\ncomment=post\nstatus=failed\n", File.read(output), "nowhere: not on GitHub Actions"
   end
 
-  # Where only a pull request fails (c.fail_on, or --fail-on), a
+  # Where only a pull request fails (c.fail_on), a
   # regression on GitHub Actions outside one passes, with a warning, and
   # a push's commit gets the comment that c.comment says. Elsewhere, and
   # by default, it fails, and a push gets no comment.
@@ -232,23 +240,22 @@ class CLISummaryTest < DuelTest
     warning = "::warning::Duel: slower, but only a pull request fails (c.fail_on), so this push passes\n"
 
     assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call, "by default"
-    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call("--fail-on", "pull_requests")
-    assert_equal [0, "comment=change\nstatus=passed\n", 0, ""], outcome.call("--fail-on", "pull_requests", passed: true)
-    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "pull_request")
-    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "pull_request_target")
-    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: "merge_group")
-    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning.sub("push", "schedule")],
-      outcome.call("--fail-on", "pull_requests", event: "schedule")
-    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "pull_requests", event: ""),
-      "not on GitHub Actions"
-    outcome.call("--fail-on", "pull_requests", "--markdown", markdown)
+    configure("c.fail_on = :pull_requests")
+
+    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call
+    assert_equal [0, "comment=change\nstatus=passed\n", 0, ""], outcome.call(passed: true)
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call(event: "pull_request")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call(event: "pull_request_target")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call(event: "merge_group")
+    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning.sub("push", "schedule")], outcome.call(event: "schedule")
+    assert_equal [1, "comment=post\nstatus=failed\n", 1, ""], outcome.call(event: ""), "not on GitHub Actions"
+    outcome.call("--markdown", markdown)
 
     assert_equal "Only a pull request fails (`c.fail_on`), so this push passes.", @summarized.first.last.fetch(:note)
     assert_equal [false, "fail_on"], @reported.first.last.values_at(:passed, :passed_anyway), "the JSON report's, of why"
-    File.write(File.join(tmpdir, ".duel.rb"), "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+    configure("c.fail_on = :every_run")
 
-    assert_equal [0, "comment=post\nstatus=failed\n", 0, warning], outcome.call, "c.fail_on"
-    assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call("--fail-on", "every_run"), "--fail-on over c.fail_on"
+    assert_equal [1, "comment=none\nstatus=failed\n", 1, ""], outcome.call, "every run"
     assert_equal({"PULL_REQUESTS" => %w[pull_request pull_request_target merge_group], "frozen" => true},
       {"PULL_REQUESTS" => Duel::CLI::PULL_REQUESTS, "frozen" => Duel::CLI::PULL_REQUESTS.frozen?})
   end
@@ -268,9 +275,8 @@ class CLISummaryTest < DuelTest
 
     assert_equal 1, run_faked("--markdown", markdown, passed: false, env: {"DUEL_LABELS" => %(["duel: accept"])}), "with c.accept_label = nil"
     assert_nil @summarized.first.last.fetch(:note)
+    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[null]"}), "with c.accept_label = nil, a null label isn't one"
     File.delete(File.join(tmpdir, ".duel.rb"))
-
-    assert_equal 1, run_faked(passed: false, env: {"DUEL_LABELS" => "[null]"}), "no label isn't one"
 
     assert_equal 0, run_faked("--json", json, passed: false, env: {"DUEL_LABELS" => %(["bug", "duel: accept"])})
     assert_equal [false, 0, "accept_label"], @reported.first.last.values_at(:passed, :exit, :passed_anyway), "the JSON report's"
@@ -291,10 +297,11 @@ class CLISummaryTest < DuelTest
   # regression, and the outputs are written as variables to DUEL_OUTPUT.
   def test_on_gitlab
     output = File.join(tmpdir, "duel.env")
+    configure("c.fail_on = :pull_requests")
     gitlab = lambda do |source, *argv, passed: false, env: {}|
       File.write(output, "")
       File.write(output, "BEFORE=1\n") if env.key?("BEFORE")
-      exit = run_faked("--fail-on", "pull_requests", *argv, passed: passed,
+      exit = run_faked(*argv, passed: passed,
         env: {"GITLAB_CI" => "true", "CI_PIPELINE_SOURCE" => source, "DUEL_OUTPUT" => output}.merge(env))
       [exit, File.read(output), @out.string.lines.grep(/slower, but/).join]
     end
@@ -304,11 +311,13 @@ class CLISummaryTest < DuelTest
     assert_equal [3, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", warned], gitlab.call("push")
     assert_equal [3, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", warned.sub("push", "schedule")], gitlab.call("schedule")
     assert_equal [0, "DUEL_COMMENT=change\nDUEL_STATUS=passed\n", ""], gitlab.call("push", passed: true)
-    assert_equal [1, "DUEL_COMMENT=none\nDUEL_STATUS=failed\n", ""], gitlab.call("push", "--fail-on", "every_run")
     assert_equal [1, "DUEL_COMMENT=post\nDUEL_STATUS=failed\n", ""], gitlab.call("push", env: {"GITLAB_CI" => ""}), "not GitLab CI"
     assert_equal 1, gitlab.call("", env: {"CI_PIPELINE_SOURCE" => ""}).first, "no pipeline source: not CI"
     assert_equal "BEFORE=1\nDUEL_COMMENT=change\nDUEL_STATUS=passed\n", gitlab.call("push", passed: true, env: {"BEFORE" => "1"})[1], "added to"
-    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.accept_label = "duel: accept" }\n))
+    configure("c.fail_on = :every_run")
+
+    assert_equal [1, "DUEL_COMMENT=none\nDUEL_STATUS=failed\n", ""], gitlab.call("push")
+    configure("c.fail_on = :pull_requests")
     labeled = {"CI_MERGE_REQUEST_LABELS" => "bug,duel: accept"}
 
     assert_equal 0, gitlab.call("merge_request_event", env: labeled).first, "accepted, by the merge request's labels"
@@ -327,7 +336,9 @@ class CLISummaryTest < DuelTest
     assert_equal "comment=none\nstatus=failed\n", File.read(output)
     File.write(output, "")
 
-    assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", "--fail-on", "pull_requests", env: env).run }
+    File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+
+    assert_equal 2, Dir.chdir(repo) { cli("--base", "nope", "--force", env: env).run }
     assert_equal "comment=post\nstatus=failed\n", File.read(output)
   end
 
@@ -345,8 +356,9 @@ class CLISummaryTest < DuelTest
     Dir.chdir(repo) { cli("--base", "nope", "--force", "--json", json, env: env).run }
 
     assert_equal ["comment=post\nstatus=failed\n", "error"], [File.read(output), written.fetch("status")]
+    File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.comment = :always }\n")
     File.write(output, "")
-    Dir.chdir(repo) { cli("--base", "last-release", "--comment", "always", env: env).run }
+    Dir.chdir(repo) { cli("--base", "last-release", env: env).run }
 
     assert_equal "comment=post\nstatus=neutral\n", File.read(output)
     File.write(File.join(repo, ".duel.rb"), "Duel.configure { |c| c.comment = :sometimes }\n")

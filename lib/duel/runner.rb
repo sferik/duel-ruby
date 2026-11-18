@@ -74,7 +74,7 @@ module Duel
   # the memory available (see Runner#fit): the defaults, but not what
   # an option set.
   Settings = Struct.new(:base, :base_dir, :candidate_dir, :filter, :jobs, :processes, :limit, :confidence, :warm, :force,
-    :config_path, :timeout, :ruby, :comment, :fail_on, :pushed, :target, :time_limit, :accepted, :repository, :fit) do
+    :config_path, :timeout, :ruby, :pushed, :target, :time_limit, :accepted, :repository, :fit) do
     # @type self: singleton(Settings)
     def self.defaults = new(filter: //, jobs: 1, processes: PROCESSES, limit: 1.02, confidence: 0.99, warm: nil, force: false,
       timeout: TIMEOUT, time_limit: TIME_LIMIT, fit: [])

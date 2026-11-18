@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the last change a label accepted since the last release itself, with
   `gh` (`DUEL_ACCEPTED` still names one), which the workflow's labels
   step did, with `c.accept_label` and `c.release_tags` copied into it.
+- `--comment` and `--fail-on` are gone: when the workflow comments, and
+  which runs a regression fails, are `.duel.rb`'s to say (`c.comment`,
+  `c.fail_on`), as the workflow passes neither, and outside CI, they
+  changed nothing.
 - `duel` fails on an argument that isn't an option (`duel v1.2.0`, say,
   for `duel --base v1.2.0`), which it ignored.
 - `duel clean` removes `tmp/duel` and the baseline's git worktree, as

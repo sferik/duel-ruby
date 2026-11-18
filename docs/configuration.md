@@ -65,7 +65,7 @@ end
 
 The [GitHub Actions workflow](ci.md#comment-on-a-pull-request) that
 `duel init` writes comments on a pull request with Duel's report.
-`c.comment` chooses when, and `duel --comment` overrides it:
+`c.comment` chooses when:
 
 | Value | When the workflow comments |
 |---|---|
@@ -100,8 +100,7 @@ says which values it takes.
 By default, a regression fails every run: a pull request's, a push's,
 and the schedule's. In a project where people push to `main` directly,
 a failed push only gets GitHub's email that the run failed. To report a
-regression in a push without failing it, set `c.fail_on`, and
-`duel --fail-on` overrides it:
+regression in a push without failing it, set `c.fail_on`:
 
 | Value | Which runs a regression fails |
 |---|---|

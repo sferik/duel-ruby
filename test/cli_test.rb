@@ -98,10 +98,6 @@ class CLITest < DuelTest
               --markdown PATH              Also write the report to PATH in Markdown, for a pull request comment (on GitHub
                                            Actions, it's added to the job's summary too)
               --json PATH                  Also write the report to PATH as JSON, for a program to read
-              --comment MODE               When the workflow comments on a pull request: always, results (passed or failed),
-                                           failures, or never (default: c.comment, or failures)
-              --fail-on RUNS               Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another
-                                           warns and passes) (default: c.fail_on, or every_run)
           -v, --version                    Print the version
     HELP
   end
@@ -160,20 +156,12 @@ class CLITest < DuelTest
         cli("--ruby", "/my_rubies/version-file").parse.ruby, cli.parse.ruby]
   end
 
-  # When the workflow comments on a pull request: a mode by its name, or
-  # c.comment's (nil), and a name that isn't one fails.
-  def test_comment
-    assert_equal [:always, :results, :failures, :never, nil], [*%w[always results failures never].map { |mode| cli("--comment", mode).parse.comment }, cli.parse.comment]
-    assert_equal 2, cli("--comment", "failure").run
-    assert_equal "duel: invalid argument: --comment failure (give always, results, failures, never)\n", @err.string
-  end
-
-  # Which runs a regression fails: by name, or c.fail_on's (nil), and a
-  # name that isn't one fails.
-  def test_fail_on
-    assert_equal [:every_run, :pull_requests, nil], [*%w[every_run pull_requests].map { |runs| cli("--fail-on", runs).parse.fail_on }, cli.parse.fail_on]
-    assert_equal 2, cli("--fail-on", "pushes").run
-    assert_equal "duel: invalid argument: --fail-on pushes (give every_run, pull_requests)\n", @err.string
+  # When the workflow comments, and which runs a regression fails, are
+  # .duel.rb's alone (c.comment, c.fail_on), not options.
+  def test_no_comment_or_fail_on_options
+    assert_equal 2, cli("--comment", "always").run
+    assert_equal "duel: invalid option: --comment\n", @err.string
+    assert_equal 2, cli("--fail-on", "pull_requests").run
   end
 
   # A file of a GitHub Actions event, +payload+ (as JSON).

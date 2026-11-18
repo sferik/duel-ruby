@@ -80,9 +80,6 @@ module Duel
     # or "none".
     def self.comment: (Config::comment mode, String status) -> String
 
-    # Which of +values+ an option's argument names, or an invalid
-    # argument.
-    def self.named: [T < Symbol] (String name, Array[T] values) -> T
 
     def parse: () -> Settings
 
@@ -99,7 +96,7 @@ module Duel
 
     # The exit status of a run that was slower: 1, or 0 where only a pull
     # request fails, outside one.
-    def slower: (Config config, Settings settings) -> Integer
+    def slower: (Config config) -> Integer
 
     # Passes a run that was slower, with a warning and a note.
     def passing: (String why, String note, ?Integer exit) -> Integer
@@ -126,7 +123,7 @@ module Duel
     def variable: (*String names) -> String?
 
     # Whether a regression fails only a pull request.
-    def pull_requests_only?: (Config config, Settings settings) -> bool
+    def pull_requests_only?: (Config config) -> bool
 
     # Whether this is a run on GitHub Actions for something other than a
     # pull request.
