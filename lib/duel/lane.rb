@@ -146,7 +146,7 @@ module Duel
         begin
           measure(name, result)
         ensure
-          each_worker { |worker| worker.request("teardown", name) }
+          every_worker.each { |worker| worker.request("teardown", name) }
         end
       end
       result.seconds = monotonic - started
@@ -252,7 +252,8 @@ module Duel
     # mutant:disable -- CRuby's Array#<< is atomic anyway, and JRuby's isn't
     def keep(list, item) = @lock.synchronize { list << item }
 
-    def each_worker(&) = (@bases + @candidates).each(&)
+    # Each version's workers, the baseline's first.
+    def every_worker = @bases + @candidates
 
     # Sets the benchmark up in every worker, the first candidate first (a
     # benchmark that fails there is broken) and the first baseline next
@@ -365,7 +366,7 @@ module Duel
     # #steady), for JIT_WARM's or CRUBY_JIT_WARM's seconds at most.
     def warm(name, n)
       warm_until = monotonic + @warm
-      in_parallel(@bases + @candidates) do |worker|
+      in_parallel(every_worker) do |worker|
         2.times { worker.sample(name, n) }
         if @settings.warm
           worker.sample(name, n) until monotonic > warm_until

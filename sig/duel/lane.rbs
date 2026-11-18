@@ -100,7 +100,8 @@ module Duel
     # in an installed gem.
     def inside?: (String path, String side, WorkerProcess worker) -> bool
 
-    def each_worker: () { (WorkerProcess worker) -> void } -> void
+    # Each version's workers, the baseline's first.
+    def every_worker: () -> Array[WorkerProcess]
 
     def set_up: (String name, Result result) -> void
 
