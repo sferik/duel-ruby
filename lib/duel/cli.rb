@@ -62,10 +62,10 @@ module Duel
 
     # The variables that set options, to their values: DUEL_ and the
     # option's name (DUEL_LIMIT=1.05 is --limit 1.05, DUEL_TIME_LIMIT
-    # --time-limit), for --base, --filter, --ruby, and each option
-    # .duel.rb can set too (Config::RUN_SETTINGS). An option given beats
-    # its variable, which beats .duel.rb.
-    ENV_OPTIONS = [:base, :filter, :ruby, *Config::RUN_SETTINGS.keys].to_h { |name| ["DUEL_#{name.upcase}", "--#{name.to_s.tr("_", "-")}"] }.freeze
+    # --time-limit), for --base, --candidate, --filter, --ruby, and each
+    # option .duel.rb can set too (Config::RUN_SETTINGS). An option given
+    # beats its variable, which beats .duel.rb.
+    ENV_OPTIONS = [:base, :candidate, :filter, :ruby, *Config::RUN_SETTINGS.keys].to_h { |name| ["DUEL_#{name.upcase}", "--#{name.to_s.tr("_", "-")}"] }.freeze
 
     # What DUEL_FORCE's values say: to compare whatever changed
     # (--force), or not.
@@ -525,7 +525,7 @@ module Duel
           settings.base = (v unless directory)
           settings.base_dir = (v if directory)
         end
-        o.on("--candidate-dir DIR", "Candidate tree (default: this one)") { |v| settings.candidate_dir = v }
+        o.on("--candidate DIR", "Candidate: a directory, already built (default: this tree)") { |v| settings.candidate_dir = v }
         o.on("--filter REGEXP", "Only benchmarks whose names match") { |v| settings.filter = CLI.regexp(v) }
         o.on("--jobs N", Integer, "Benchmarks measured at once (default: c.jobs, or one for every #{CPUS_PER_LANE} CPUs, as many as fit)") do |v|
           given(settings, :jobs, v)

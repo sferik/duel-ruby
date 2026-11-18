@@ -195,6 +195,7 @@ duel --base v1.4.0         # against any git ref
 duel --base last-release   # against the newest release tag before HEAD
 duel --filter "^parse:"    # only benchmarks whose names match (a regular expression)
 duel --base ../old         # against a tree on disk, already built
+duel --candidate ../new    # a tree on disk, already built, against the baseline
 ```
 
 To see every option, such as `--processes`, `--timeout`, and `--limit`,
@@ -211,13 +212,14 @@ that crashes leaves nothing behind that blocks the next run.
 
 Where it's hard to pass options, such as behind a Rake task or in a CI
 expression, set environment variables instead. Each is `DUEL_` and the
-option's name, for `--base`, `--filter`, `--ruby`, and each option that
-`.duel.rb` can set too (see
+option's name, for `--base`, `--candidate`, `--filter`, `--ruby`, and
+each option that `.duel.rb` can set too (see
 [Set a run's settings](docs/configuration.md#set-a-runs-settings)):
 
 | Variable | Option |
 |---|---|
 | `DUEL_BASE` | `--base` |
+| `DUEL_CANDIDATE` | `--candidate` |
 | `DUEL_FILTER` | `--filter` |
 | `DUEL_RUBY` | `--ruby` |
 | `DUEL_LIMIT`, `DUEL_CONFIDENCE`, `DUEL_JOBS`, `DUEL_PROCESSES`, `DUEL_TIMEOUT`, `DUEL_TIME_LIMIT`, `DUEL_WARM` | `--limit`, `--confidence`, `--jobs`, `--processes`, `--timeout`, `--time-limit`, `--warm` |

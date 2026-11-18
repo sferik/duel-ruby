@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variable, `DUEL_` and its name (`DUEL_LIMIT`, `DUEL_TIME_LIMIT`,
   `DUEL_RUBY`...), as `--base`, `--filter` and `--force` had.
   `--ruby` takes `version_file` too.
+- `--candidate-dir` is `--candidate`, as `--base` names the baseline,
+  and `DUEL_CANDIDATE` sets it.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and
   anything else fails. Any value forced before, `DUEL_FORCE=0` too.
 - A `setup`, `teardown`, `before_sample` or `after_iterations` hook

@@ -21,7 +21,7 @@ That means two things above all:
   ignore it, which is worse than no guard. A change that makes Duel
   decide faster, but fail on identical code even rarely, isn't an
   improvement. Show it holds up: run identical trees against each other
-  (`--base` and `--candidate-dir` pointing at copies of one tree)
+  (`--base` and `--candidate` pointing at copies of one tree)
   many times over, under load, and report what you saw.
   `ruby tasks/bias_check.rb 10` compares HEAD with itself ten times and
   sums up every benchmark's ratios across the runs, as the nightly bias

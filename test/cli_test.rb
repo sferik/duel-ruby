@@ -79,7 +79,7 @@ class CLITest < DuelTest
 
               --base REF|DIR               Baseline: a commit (default: where HEAD left the main branch), last-release (the newest
                                            release tag), or a directory, already built
-              --candidate-dir DIR          Candidate tree (default: this one)
+              --candidate DIR              Candidate: a directory, already built (default: this tree)
               --filter REGEXP              Only benchmarks whose names match
               --jobs N                     Benchmarks measured at once (default: c.jobs, or one for every #{Duel::CPUS_PER_LANE} CPUs, as many as fit)
               --processes N                Worker processes per version (default: c.processes, or #{Duel::PROCESSES}, as many as fit in memory)
@@ -124,7 +124,7 @@ class CLITest < DuelTest
   end
 
   def test_options
-    s = cli("--base", "v1", "--candidate-dir", "c", "--filter", "push", "--jobs", "3", "--limit", "1.05",
+    s = cli("--base", "v1", "--candidate", "c", "--filter", "push", "--jobs", "3", "--limit", "1.05",
       "--warm", "2", "--force", "--config", "x.rb", "--processes", "4", "--timeout", "9", "--time-limit", "600", "--confidence", "0.95").parse
 
     assert_equal ["v1", nil, "c", /push/, 3, 1.05, 2.0, true, File.expand_path("x.rb"), 4, 9.0, 600.0, 0.95, []],
@@ -229,13 +229,13 @@ class CLITest < DuelTest
   # Each of --base, --filter, --ruby, and the options .duel.rb can set
   # too, as DUEL_ and its name: under an option given.
   def test_the_environment
-    env = {"DUEL_BASE" => "v1", "DUEL_FILTER" => "run", "DUEL_FORCE" => "1", "DUEL_RUBY" => "version-file", "DUEL_LIMIT" => "1.05",
+    env = {"DUEL_BASE" => "v1", "DUEL_CANDIDATE" => "new", "DUEL_FILTER" => "run", "DUEL_FORCE" => "1", "DUEL_RUBY" => "version-file", "DUEL_LIMIT" => "1.05",
            "DUEL_CONFIDENCE" => "0.995", "DUEL_JOBS" => "3", "DUEL_PROCESSES" => "7", "DUEL_TIMEOUT" => "30", "DUEL_TIME_LIMIT" => "60",
            "DUEL_WARM" => "2"}
     s = cli(env: env).parse
 
-    assert_equal ["v1", /run/, true, :version_file, 1.05, 0.995, 3, 7, 30.0, 60.0, 2.0],
-      [s.base, s.filter, s.force, s.ruby, s.limit, s.confidence, s.jobs, s.processes, s.timeout, s.time_limit, s.warm]
+    assert_equal ["v1", "new", /run/, true, :version_file, 1.05, 0.995, 3, 7, 30.0, 60.0, 2.0],
+      [s.base, s.candidate_dir, s.filter, s.force, s.ruby, s.limit, s.confidence, s.jobs, s.processes, s.timeout, s.time_limit, s.warm]
     assert_equal ["v2", 8], cli("--base", "v2", "--processes", "8", env: env).parse.then { |t| [t.base, t.processes] }, "options win"
     assert_nil cli(env: {"DUEL_BASE" => ""}).parse.base, "empty is unset"
   end
@@ -343,7 +343,7 @@ class CLITest < DuelTest
     assert_equal 0, status
     assert_equal [[File.realpath(tmpdir), "the candidate"]], @built.map { |dir, what| [File.realpath(dir), what] }
     candidate = FileUtils.mkdir_p(File.join(tmpdir, "c")).first
-    run_against(ref: "abc", unchanged: false, argv: ["--candidate-dir", candidate], root: File.join(tmpdir, "b").tap { |b| FileUtils.mkdir_p(b) })
+    run_against(ref: "abc", unchanged: false, argv: ["--candidate", candidate], root: File.join(tmpdir, "b").tap { |b| FileUtils.mkdir_p(b) })
 
     assert_equal [[candidate, "the candidate"]], @built
     status, runner = run_against(ref: "abc", unchanged: false, build: -> { raise Duel::Error, "building the candidate failed" })
@@ -378,7 +378,7 @@ class CLITest < DuelTest
     # (Off Windows, where the tests' directories are reached through a
     # symlink: see TestDirs.)
     refute_equal File.realpath(tmpdir), tmpdir, "(reached through a symlink)" unless windows?
-    run_against(ref: "abc", unchanged: false, argv: ["--candidate-dir", tmpdir])
+    run_against(ref: "abc", unchanged: false, argv: ["--candidate", tmpdir])
 
     assert_empty @out.string, "resolved, as long"
     run_against(ref: "abc", unchanged: false, root: FileUtils.mkdir_p(File.join(tmpdir, "base")).first)
