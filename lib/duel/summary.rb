@@ -168,7 +168,7 @@ module Duel
         if timed then format("%s %+.1f%%", metric, (timed.fetch("median") - 1) * 100)
         elsif counted
           base, candidate = Result.per_iteration(counted)
-          "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
+          count_change(metric, base, candidate)
         else
           # (Peak memory, which grew too much.)
           memory_change(result)
@@ -250,12 +250,14 @@ module Duel
     # Each counted measure that changed, an iteration, and peak memory
     # that grew too much.
     def counts(result)
-      counted = Summary.changed_counts(result).map do |metric, (base, candidate)|
-        "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
-      end
+      counted = Summary.changed_counts(result).map { |metric, (base, candidate)| count_change(metric, base, candidate) }
       counted << memory_change(result) if result.more_memory?
       counted.join("<br>")
     end
+
+    # How a counted measure (+metric+) changed: each version's count, an
+    # iteration.
+    def count_change(metric, base, candidate) = "#{metric} #{Runner.number(base)} → #{Runner.number(candidate)}"
 
     # How peak memory changed: each version's, in MB.
     def memory_change(result)
