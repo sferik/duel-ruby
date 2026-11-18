@@ -42,15 +42,17 @@ module Duel
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         if tcp
-          # (Its port after OPTIONS' 0, which it takes the place of.)
           port = w.port
-          w.spawn(*[server, "--dir", w.dir, *OPTIONS, "--port", port.to_s, "--bind", "127.0.0.1"] + args)
+          listen = ["--port", port.to_s, "--bind", "127.0.0.1"]
           url = "redis://127.0.0.1:#{port}"
         else
           socket = w.path("redis.sock")
-          w.spawn(*[server, "--unixsocket", socket, "--dir", w.dir, *OPTIONS] + args)
+          listen = ["--unixsocket", socket]
           url = "unix://#{socket}"
         end
+        # (Where it listens after OPTIONS, whose port of 0 a port takes the
+        # place of.)
+        w.spawn(*[server, "--dir", w.dir, *OPTIONS, *listen] + args)
         w.wait_until { Connection.ping(url) }
         ([URL] + env).to_h { |name| [name, url] }
       end
