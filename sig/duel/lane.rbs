@@ -190,6 +190,10 @@ module Duel
     # allocated nothing).
     def most_iterations: (Integer n, Integer heap) -> (Integer | Float)
 
+    # The warm-up's pairs, the floors a benchmark's measures are judged
+    # above.
+    def warm_up_pairs: (String name, Integer n) -> Array[[WorkerProcess::reply, WorkerProcess::reply]]
+
     # The +index+th pair: [baseline's reply, candidate's].
     def pair: (String name, Integer n, Integer index, ?runs: Integer, ?count: bool) -> [WorkerProcess::reply, WorkerProcess::reply]
 

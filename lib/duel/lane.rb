@@ -312,12 +312,12 @@ module Duel
       n = calibrate(name, target, 1)
       warm(name, n)
       n = calibrate(name, target, n) if @warm.positive? # it may have got faster
-      floors = Array.new(WARMUP) { |i| pair(name, n, i) }
+      floors = warm_up_pairs(name, n)
       # (It got faster still, a JIT got to it, say: sized again, unless
       # what it allocates holds it there.)
       if below_cpu_floor?(floors) && (sized = calibrate(name, target, n)) > n
         n = sized
-        floors = Array.new(WARMUP) { |i| pair(name, n, i) }
+        floors = warm_up_pairs(name, n)
       end
       result.n = n
       peak_memory(name, n, result) if benchmark.fetch("peak_memory")
@@ -614,6 +614,10 @@ module Duel
 
       [n * HEAP_CAP / heap, 1].max
     end
+
+    # The warm-up's WARMUP pairs, of +n+ iterations each, the floors a
+    # benchmark's measures are judged above (see #judge).
+    def warm_up_pairs(name, n) = Array.new(WARMUP) { |i| pair(name, n, i) }
 
     # The +index+th pair: a sample (of +n+ iterations) from a baseline
     # worker and from a candidate worker, each pair of workers in turn,
