@@ -253,6 +253,10 @@ class SummaryTest < DuelTest
 
     assert_includes two, "| `a` | error: `first` |\n| `b` | error: `only` |\n\n"
     assert_includes two, "<summary>Details: 2 benchmarks in 1s</summary>\n\n**`a`**\n\n```text\nfirst\nsecond\n```\n\n| Benchmark | Verdict"
+    summary = Duel::Summary.new(runner, [errored("a", "first\nsecond"), errored("b", "only")], settings: settings, baseline: BASELINE,
+      candidate: "def5678")
+
+    assert_equal ["**`a`**\n\n```text\nfirst\nsecond\n```"], summary.send(:errors), "only those of more than a line"
   end
 
   # A run cut short at its time limit says what it left undone, under the

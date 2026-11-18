@@ -294,9 +294,10 @@ module Duel
     # The errors of more than a line, all of them (up to ERROR_LINES):
     # their first lines are in view.
     def errors
-      @failed.select { |r| r.error.to_s.chomp.include?("\n") }.map do |r|
-        error = r.error #: String
-        lines = error.lines
+      @failed.filter_map do |r|
+        lines = r.error.to_s.lines
+        next unless lines.size > 1
+
         cut = "\n(#{Runner.count(lines.size - ERROR_LINES, "more line")} in the job's log)" if lines.size > ERROR_LINES
         "**#{Summary.code(r.name)}**\n\n#{Summary.block(lines.first(ERROR_LINES).join)}#{cut}"
       end
