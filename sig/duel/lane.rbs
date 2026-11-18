@@ -162,8 +162,8 @@ module Duel
     # Whether both versions' CPU time is below its floor.
     def below_cpu_floor?: (Array[[Worker::sampled, Worker::sampled]] floors) -> bool
 
-    # Whether one version's samples are above a spec's floors.
-    def above_floors?: (Array[Hash[String, Metric::value]] samples, Metric::spec spec) -> bool
+    # Whether either version's samples are above a spec's floors.
+    def above_floors?: (Array[[WorkerProcess::reply, WorkerProcess::reply]] floors, Metric::spec spec) -> bool
 
     # Each pair's ratio: the candidate's value over the baseline's (at least 1).
     def ratios: (Array[[Metric::value, Metric::value]] pairs) -> Array[Float]

@@ -438,7 +438,7 @@ module Duel
     def judge(name, n, floors, result)
       judged = metrics.select do |spec|
         floors.flatten.all? { |sample| sample.fetch("timed").key?(spec.fetch("name")) } &&
-          floors.transpose.any? { |side| above_floors?(side.map { |sample| sample.fetch("timed") }, spec) }
+          above_floors?(floors, spec)
       end
       return judge_processes(name, n, judged, result) if by_process?(name)
 
@@ -542,16 +542,20 @@ module Duel
     # it wouldn't be judged at all.
     def below_cpu_floor?(floors)
       cpu = metrics.find { |spec| spec.fetch("name") == "cpu" } #: Metric::spec
-      floors.transpose.none? { |side| above_floors?(side.map { |sample| sample.fetch("timed") }, cpu) }
+      !above_floors?(floors, cpu)
     end
 
-    # Whether +samples+ (one version's timed measures) are above +spec+'s
-    # floors (the median): its own, and its share of CPU time.
-    def above_floors?(samples, spec)
-      values = samples.map { |sample| sample.fetch(spec.fetch("name")) }
-      cpu = samples.map { |sample| sample.fetch("cpu") }
-      median = Stats.median(values)
-      median >= spec.fetch("floor") && median * spec.fetch("unit_ns") >= spec.fetch("cpu_floor") * Stats.median(cpu)
+    # Whether either version's samples in +floors+ (its timed measures)
+    # are above +spec+'s floors (the median): its own, and its share of
+    # CPU time.
+    def above_floors?(floors, spec)
+      floors.transpose.any? do |side|
+        samples = side.map { |sample| sample.fetch("timed") }
+        values = samples.map { |sample| sample.fetch(spec.fetch("name")) }
+        cpu = samples.map { |sample| sample.fetch("cpu") }
+        median = Stats.median(values)
+        median >= spec.fetch("floor") && median * spec.fetch("unit_ns") >= spec.fetch("cpu_floor") * Stats.median(cpu)
+      end
     end
 
     # Each of +pairs+' ratio: the candidate's value over the baseline's
