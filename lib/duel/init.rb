@@ -316,7 +316,7 @@ module Duel
         "Commit and push. On a pull request, the workflow compares the code with the branch it targets, and comments with the " \
           "report when a benchmark fails (c.comment in .duel.rb says when)."
       end
-      "\nNext:\n#{steps.each_with_index.map { |step, i| "  #{i + 1}. #{step}\n" }.join}"
+      "\nNext:\n#{steps.each.with_index(1).map { |step, i| "  #{i}. #{step}\n" }.join}"
     end
 
     # The template +name+, rendered. (Read with LF line endings, as Git
