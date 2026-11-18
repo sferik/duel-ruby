@@ -103,7 +103,10 @@ module Duel
       @settings = settings
       @baseline = baseline
       @candidate = candidate
-      @regressed = results.select { |r| Summary.verdict(r) == "regressed" }
+      # (Each result's verdict, worked out once: rendering again, to fit
+      # LIMIT, asks for them all again.)
+      @verdicts = results.to_h { |r| [r, Summary.verdict(r)] }
+      @regressed = results.select { |r| @verdicts.fetch(r) == "regressed" }
       @failed = @regressed + results.select(&:error)
     end
 
@@ -200,7 +203,7 @@ module Duel
     # benchmark, the verdicts across the board, the Rubies, and how Duel
     # decides.
     def details(explained)
-      unsettled = @results.count { |r| Summary.verdict(r) == "unsettled" }
+      unsettled = @results.count { |r| @verdicts.fetch(r) == "unsettled" }
       title = format("Details: %s in %.0fs%s", Runner.count(@results.size, "benchmark"), @runner.seconds,
         (", #{unsettled} unsettled" if unsettled.positive?))
       body = [*regressions(explained), *errors, table, (UNSETTLED if unsettled.positive?), across(confirmed: false), rubies, decides]
@@ -210,7 +213,7 @@ module Duel
     # The results, in the order of their VERDICTS, and the run's order in
     # each (grouped, not sorted: Ruby's sort isn't stable everywhere).
     def sorted
-      grouped = @results.group_by { |r| Summary.verdict(r) }
+      grouped = @results.group_by { |r| @verdicts.fetch(r) }
       VERDICTS.flat_map { |shown| grouped.fetch(shown, []) }
     end
 
@@ -219,7 +222,7 @@ module Duel
       return if @results.empty?
 
       rows = sorted.map do |r|
-        shown = Summary.verdict(r)
+        shown = @verdicts.fetch(r)
         [Summary.code(cell(r.name)), FAILED.include?(shown) ? "**#{shown}**" : shown, timings(r), counts(r)]
       end
       grid(["Benchmark", "Verdict", "Timings (ratio [interval])", "Counts an iteration"], rows)

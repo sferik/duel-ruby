@@ -33,6 +33,7 @@ module Duel
     @settings: Settings
     @baseline: String
     @candidate: String
+    @verdicts: Hash[Result, String]
     @regressed: Array[Result]
     @failed: Array[Result]
 
