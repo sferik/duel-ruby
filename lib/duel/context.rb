@@ -200,15 +200,15 @@ module Duel
     # iteration: the least of what CALIBRATION samples of STRETCHES empty
     # iterations left.
     def paused(metrics)
-      runs = Array.new(Snapshot::CALIBRATION) do
+      samples = Array.new(Snapshot::CALIBRATION) do
         sample = Sample.new(@definition, metrics, n: STRETCHES)
         sample.start
         sample.between { STRETCHES.times { sample.unpause {} } }
         sample.stop
-        sample.timed.merge(sample.counted)
+        sample
       end
       # (Two stretches more: from the start, and to the stop.)
-      least(runs, STRETCHES + 2)
+      least(samples, STRETCHES + 2)
     end
 
     # What the around_iteration hooks add to each of +metrics+' measures
@@ -220,16 +220,19 @@ module Duel
     def hooked(metrics)
       return NO_LEAK if metrics.empty?
 
-      runs = Array.new(Snapshot::CALIBRATION) do
+      samples = Array.new(Snapshot::CALIBRATION) do
         sample = Sample.new(@definition, metrics, n: HOOKED)
         run(HOOKED, Hooked.new(sample))
-        sample.timed.merge(sample.counted)
+        sample
       end
-      least(runs, HOOKED)
+      least(samples, HOOKED)
     end
 
-    # Each measure's least in +runs+, over +stretches+.
-    def least(runs, stretches) = runs.first.to_h { |name, _| [name, runs.map { |run| run.fetch(name) }.min.fdiv(stretches)] }
+    # Each measure's least in +samples+, over +stretches+.
+    def least(samples, stretches)
+      runs = samples.map { |sample| sample.timed.merge(sample.counted) }
+      runs.first.to_h { |name, _| [name, runs.map { |run| run.fetch(name) }.min.fdiv(stretches)] }
+    end
 
     # Runs +n+ iterations, then its after_iterations hooks, each inside
     # the around_iteration hooks if it has them, with +sample+ paused

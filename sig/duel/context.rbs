@@ -134,8 +134,8 @@ module Duel
     # costly to read), an iteration.
     def hooked: (Array[Metric] metrics) -> Hash[String, Float]
 
-    # Each measure's least in +runs+, over +stretches+.
-    def least: (Array[Hash[String, Metric::value]] runs, Integer stretches) -> Hash[String, Float]
+    # Each measure's least in +samples+, over +stretches+.
+    def least: (Array[Sample] samples, Integer stretches) -> Hash[String, Float]
 
     def iterate: (Integer n, _Sample sample) -> void
 
