@@ -112,14 +112,6 @@ module Duel
       COMMENTED.fetch(mode).include?(status) ? "post" : "change"
     end
 
-    # The mode --comment names (see Config#comment), or an invalid
-    # argument.
-    def self.comment_mode(name) = named(name, Config::COMMENTS)
-
-    # The runs --fail-on names (see Config#fail_on), or an invalid
-    # argument.
-    def self.fail_on(name) = named(name, Config::FAIL_ON)
-
     # Which of +values+ (symbols) an option's argument names, or an
     # invalid argument.
     def self.named(name, values)
@@ -550,9 +542,9 @@ module Duel
           "Actions, it's added to the job's summary too)") { |v| @markdown = v }
         o.on("--json PATH", "Also write the report to PATH as JSON, for a program to read") { |v| @json = v }
         o.on("--comment MODE", "When the workflow comments on a pull request: always, results (passed or failed),",
-          "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.comment_mode(v) }
+          "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.named(v, Config::COMMENTS) }
         o.on("--fail-on RUNS", "Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another",
-          "warns and passes) (default: c.fail_on, or every_run)") { |v| settings.fail_on = CLI.fail_on(v) }
+          "warns and passes) (default: c.fail_on, or every_run)") { |v| settings.fail_on = CLI.named(v, Config::FAIL_ON) }
         o.on("--clean", "Remove tmp/duel, and the baseline's git worktree, and stop") { @clean = true }
         o.on("-v", "--version", "Print the version") do
           @out.puts "duel #{VERSION}"

@@ -76,12 +76,6 @@ module Duel
     # or "none".
     def self.comment: (Config::comment mode, String status) -> String
 
-    # The mode --comment names, or an invalid argument.
-    def self.comment_mode: (String name) -> Config::comment
-
-    # The runs --fail-on names, or an invalid argument.
-    def self.fail_on: (String name) -> Config::fail_on
-
     # Which of +values+ an option's argument names, or an invalid
     # argument.
     def self.named: [T < Symbol] (String name, Array[T] values) -> T
