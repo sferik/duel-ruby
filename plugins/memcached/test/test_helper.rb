@@ -151,7 +151,7 @@ class PluginTest < Minitest::Test
 
         duel "store" do
           once do
-            Duel::Memcached.flush
+            Duel::Memcached.reset
             @cache = Dalli::Client.new(nil, serializer: Dalli::JSONSerializer) # (MEMCACHE_SERVERS)
           end
           Sample.store(@cache)

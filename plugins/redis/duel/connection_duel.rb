@@ -3,7 +3,7 @@
 require_relative "duel_helper"
 
 # The plugin's own connection, for its readings (INFO's bulk reply) and
-# Duel::Redis.flush (FLUSHALL's status), and for benchmarks' setup. Its
+# Duel::Redis.reset (FLUSHALL's status), and for benchmarks' setup. Its
 # time is the socket's, too noisy to judge: these are judged on their
 # allocations.
 setup { connect }

@@ -142,7 +142,7 @@ class PluginTest < Minitest::Test
 
         duel "store" do
           once do
-            Duel::Redis.flush
+            Duel::Redis.reset
             @redis = Duel::Redis::Connection.new(Duel::Redis.url)
           end
           Sample.store(@redis)

@@ -11,7 +11,7 @@ class RedisTest < PluginTest
   # then those on the process's shared server, and those that start
   # servers of their own last.
   if defined?(Mutant)
-    FIRST = %w[test_used_by_name test_a_ping test_a_ping_refused test_a_flush_closes_its_connection test_a_reply_of_another_type test_a_reply_cut_short].freeze
+    FIRST = %w[test_used_by_name test_a_ping test_a_ping_refused test_a_reset_closes_its_connection test_a_reply_of_another_type test_a_reply_cut_short].freeze
     LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
       test_a_server_on_a_port test_on_a_port_on_windows test_its_options test_its_directory test_the_connection].freeze
 
@@ -183,22 +183,22 @@ class RedisTest < PluginTest
 
   # A flush while a benchmark is measured would be counted (a command,
   # and a round trip): it fails, and flushes nothing.
-  def test_a_flush_measured
+  def test_a_reset_measured
     config = self.config
     shared do |env|
       redis = Duel::Redis::Connection.new(env.fetch("REDIS_URL"))
       redis.call("SET", "k", "v")
-      error = assert_raises(Duel::Error) { Duel::Testing.measure(config) { Duel::Redis.flush } }
+      error = assert_raises(Duel::Error) { Duel::Testing.measure(config) { Duel::Redis.reset } }
 
-      assert_equal "Duel::Redis.flush: in setup or untimed only (it would be counted)", error.message
+      assert_equal "Duel::Redis.reset: in setup or untimed only (it would be counted)", error.message
       assert_equal 1, redis.call("DBSIZE")
-      Duel::Testing.measure(config) { |sample| sample.untimed { Duel::Redis.flush } }
+      Duel::Testing.measure(config) { |sample| sample.untimed { Duel::Redis.reset } }
 
       assert_equal 0, redis.call("DBSIZE"), "untimed: flushed"
     end
   end
 
-  # The helpers need only the worker's environment: Duel::Redis.flush
+  # The helpers need only the worker's environment: Duel::Redis.reset
   # opens a connection of its own.
   def test_for_benchmarks
     shared do |env|
@@ -206,14 +206,14 @@ class RedisTest < PluginTest
       redis.call("SET", "k", "v")
 
       assert_equal env.fetch("DUEL_REDIS_URL"), Duel::Redis.url
-      assert_equal "OK", Duel::Redis.flush
+      assert_equal "OK", Duel::Redis.reset
       assert_equal 0, redis.call("DBSIZE")
     end
   end
 
-  def test_a_flush_closes_its_connection
+  def test_a_reset_closes_its_connection
     ENV["DUEL_REDIS_URL"] = "unix://#{File.join(@dir, "fake.sock")}"
-    sent, closed = fake_server("+OK\r\n") { Duel::Redis.flush }
+    sent, closed = fake_server("+OK\r\n") { Duel::Redis.reset }
 
     assert_equal "*1\r\n$8\r\nFLUSHALL\r\n", sent
     assert closed

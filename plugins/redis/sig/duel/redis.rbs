@@ -27,7 +27,7 @@ module Duel
 
     # Empties it, over a connection of its own: in setup or untimed blocks
     # only (it fails while a benchmark is measured).
-    def self.flush: () -> String
+    def self.reset: () -> String
 
     # The least a connection needs to read a server's statistics.
     class Connection

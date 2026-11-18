@@ -16,7 +16,7 @@ module Duel
   #   # .duel.rb
   #   Duel.configure { |c| c.use :redis }
   #
-  # Benchmarks can call Duel::Redis.url and Duel::Redis.flush.
+  # Benchmarks can call Duel::Redis.url and Duel::Redis.reset.
   #
   # The server listens only on a Unix socket in the worker's directory
   # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,
@@ -88,8 +88,8 @@ module Duel
     # socket's is cheap). For setup or untimed blocks only: while a
     # benchmark is measured (Duel.measuring?) it fails, as its FLUSHALL
     # would be counted.
-    def self.flush
-      Duel.unmeasured!("Duel::Redis.flush")
+    def self.reset
+      Duel.unmeasured!("Duel::Redis.reset")
 
       connection = Connection.new(url)
       begin

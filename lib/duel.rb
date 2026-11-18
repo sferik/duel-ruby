@@ -143,8 +143,8 @@ module Duel
     # plugin's helper meant for setting up, +name+d, calls it first, since
     # what it does then would be counted.
     #
-    #   def self.flush
-    #     Duel.unmeasured!("Duel::Redis.flush")
+    #   def self.reset
+    #     Duel.unmeasured!("Duel::Redis.reset")
     #     ...
     def unmeasured!(name)
       raise Error, "#{name}: in setup or untimed only (it would be counted)" if measuring?

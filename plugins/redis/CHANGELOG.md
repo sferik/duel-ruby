@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `Duel::Redis.flush` is `Duel::Redis.reset`, as MySQL's and
+  PostgreSQL's plugins name what empties a worker's server.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

@@ -104,7 +104,7 @@ When you write a plugin, follow these guidelines:
 > [!IMPORTANT]
 > A helper that's meant for setup, such as one that runs a query, must
 > call `Duel.unmeasured!` first, for example
-> `Duel.unmeasured!("Duel::Redis.flush")`. It raises an error during a
+> `Duel.unmeasured!("Duel::Redis.reset")`. It raises an error during a
 > timed stretch (when `Duel.measuring?` is true), where what the helper
 > does would be counted. That includes the block of
 > `Duel::Testing.measure`, but not the block's `untimed` blocks.

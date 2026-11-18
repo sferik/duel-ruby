@@ -11,7 +11,7 @@ class MemcachedTest < PluginTest
   # servers of their own last.
   if defined?(Mutant)
     FIRST = %w[test_used_by_name test_its_cpu_time test_a_value test_a_value_that_isnt_one test_what_a_reading_allocates test_ready test_ready_refused
-      test_a_flush_closes_its_connection test_its_statistics test_its_errors test_its_statistics_errors
+      test_a_reset_closes_its_connection test_its_statistics test_its_errors test_its_statistics_errors
       test_its_statistics_in_pieces].freeze
     LAST = %w[test_the_server_from_the_environment test_a_server_that_doesnt_start test_a_server_of_the_workers_own
       test_a_server_on_a_port test_on_a_port_on_windows test_its_options test_the_connection].freeze
@@ -186,7 +186,7 @@ class MemcachedTest < PluginTest
     measured = shared do
       client = Duel::Memcached::Connection.new(Duel::Memcached.servers)
       Duel::Testing.measure(config) do |sample|
-        sample.untimed { Duel::Memcached.flush } # (not counted)
+        sample.untimed { Duel::Memcached.reset } # (not counted)
         5.times { Duel::Memcached.stats(@connection.value) }
         client.flush_all
       end
@@ -254,7 +254,7 @@ class MemcachedTest < PluginTest
     end
   end
 
-  # The helpers need only the worker's environment: Duel::Memcached.flush
+  # The helpers need only the worker's environment: Duel::Memcached.reset
   # opens a connection of its own.
   def test_for_benchmarks
     shared do |env|
@@ -263,7 +263,7 @@ class MemcachedTest < PluginTest
       cache.gets
 
       assert_equal env.fetch("DUEL_MEMCACHED_SERVERS"), Duel::Memcached.servers
-      assert_equal "OK", Duel::Memcached.flush
+      assert_equal "OK", Duel::Memcached.reset
       cache.write("get k\r\n")
 
       assert_equal "END\r\n", cache.gets, "flushed"
@@ -272,9 +272,9 @@ class MemcachedTest < PluginTest
     end
   end
 
-  def test_a_flush_closes_its_connection
+  def test_a_reset_closes_its_connection
     ENV["DUEL_MEMCACHED_SERVERS"] = File.join(@dir, "fake.sock")
-    sent, closed = fake_server("OK\r\n") { Duel::Memcached.flush }
+    sent, closed = fake_server("OK\r\n") { Duel::Memcached.reset }
 
     assert_equal "flush_all\r\n", sent
     assert closed
@@ -284,15 +284,15 @@ class MemcachedTest < PluginTest
 
   # While a benchmark is measured, a flush would be counted (an
   # operation, and its bytes): it fails, and flushes nothing.
-  def test_a_flush_measured
+  def test_a_reset_measured
     config = self.config
     shared do |env|
       cache = Duel::Memcached::Connection.socket(env.fetch("MEMCACHE_SERVERS"))
       cache.write("set k 0 0 1\r\nv\r\n")
       cache.gets
-      error = assert_raises(Duel::Error) { Duel::Testing.measure(config) { Duel::Memcached.flush } }
+      error = assert_raises(Duel::Error) { Duel::Testing.measure(config) { Duel::Memcached.reset } }
 
-      assert_equal "Duel::Memcached.flush: in setup or untimed only (it would be counted)", error.message
+      assert_equal "Duel::Memcached.reset: in setup or untimed only (it would be counted)", error.message
       cache.write("get k\r\n")
 
       assert_equal "VALUE k 0 1\r\n", cache.gets, "not flushed"

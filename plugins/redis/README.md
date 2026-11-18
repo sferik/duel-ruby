@@ -45,10 +45,10 @@ directory too
 append-only files go there, never in your project. Its URL is in
 `DUEL_REDIS_URL`, and in `REDIS_URL` too, so a client that reads that
 finds it and nothing reaches another Redis. Benchmarks can call
-`Duel::Redis.url` and `Duel::Redis.flush`.
+`Duel::Redis.url` and `Duel::Redis.reset`.
 
 > [!IMPORTANT]
-> `Duel::Redis.flush` is for setting up: call it in a `setup` hook, or
+> `Duel::Redis.reset` is for setting up: call it in a `setup` hook, or
 > a `once` or `untimed` block. While a benchmark is measured (`Duel.measuring?`), it
 > raises `Duel::Error` rather than have its `FLUSHALL` counted.
 
@@ -56,7 +56,7 @@ finds it and nothing reaches another Redis. Benchmarks can call
 # duel/cache_duel.rb
 duel "cache: a hit" do
   once do
-    Duel::Redis.flush                           # empties the worker's server (over a connection of its own)
+    Duel::Redis.reset                           # empties the worker's server (over a connection of its own)
     @cache = MyCache.new(url: Duel::Redis.url)  # its URL
     @cache.write("k", "v")
   end

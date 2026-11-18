@@ -20,7 +20,7 @@ module Duel
   #   Duel.configure { |c| c.use :memcached }
   #
   # Benchmarks can call Duel::Memcached.servers, and
-  # Duel::Memcached.flush in setup (or untimed blocks): while a benchmark
+  # Duel::Memcached.reset in setup (or untimed blocks): while a benchmark
   # is measured, it fails.
   #
   # The server listens only on a Unix socket in the worker's directory
@@ -135,8 +135,8 @@ module Duel
     # socket's is cheap). A flush is an operation, and its bytes count as
     # any client's: so it's for setup or untimed blocks only, and fails
     # while a benchmark is measured (Duel.measuring?).
-    def self.flush
-      Duel.unmeasured!("Duel::Memcached.flush")
+    def self.reset
+      Duel.unmeasured!("Duel::Memcached.reset")
 
       connection = Connection.new(servers)
       begin

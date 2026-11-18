@@ -52,13 +52,13 @@ socket), with 32 MB of memory and one thread. The socket's path (or
 `DUEL_MEMCACHED_SERVERS`, and in `MEMCACHE_SERVERS` too, so a client that
 reads that (Dalli does) finds it and nothing reaches another memcached.
 Benchmarks can call `Duel::Memcached.servers` and
-`Duel::Memcached.flush`:
+`Duel::Memcached.reset`:
 
 ```ruby
 # duel/cache_duel.rb
 duel "cache: a hit" do
   once do
-    Duel::Memcached.flush                                # empties the worker's server (over a connection of its own)
+    Duel::Memcached.reset                                # empties the worker's server (over a connection of its own)
     @cache = Dalli::Client.new(Duel::Memcached.servers) # its socket
     @cache.set("k", "v")
   end
@@ -67,9 +67,9 @@ end
 ```
 
 > [!IMPORTANT]
-> `Duel::Memcached.flush` is for setting up: call it in a `setup` hook,
+> `Duel::Memcached.reset` is for setting up: call it in a `setup` hook,
 > or a `once` or `untimed` block. While a benchmark is measured (`Duel.measuring?`), it
-> raises `Duel::Error` rather than have the flush counted.
+> raises `Duel::Error` rather than have its flush counted.
 
 Options:
 
@@ -86,7 +86,7 @@ The metrics come from the server's `stats`, read over a connection of
 the plugin's own, opened as each worker starts (Duel's `c.in_worker`)
 and closed as it ends. `c.use :memcached` returns it, for a `.duel.rb`
 that reads the server too (`connection.value`, in a worker only).
-`Duel::Memcached.flush` opens a connection of its own, from the worker's
+`Duel::Memcached.reset` opens a connection of its own, from the worker's
 `DUEL_MEMCACHED_SERVERS`: a flush is an operation, and its bytes count
 as any client's (so it fails while a benchmark is measured).
 `memcached_operations` counts keys, not commands: a
