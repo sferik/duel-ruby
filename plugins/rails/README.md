@@ -413,21 +413,18 @@ queries that a request's jobs make count as the request's.
 | `environment:` | The environment that each version boots in, and its processes run in. The default is `"benchmark"`. |
 | `bundle:` | `false` to run every version with the runner's bundle. |
 | `active_record:` | `false` to leave out Active Record's metrics, for an app without Active Record. |
-| `query_time:` | `true` to also judge how long queries took. See [duel-activerecord](https://github.com/sferik/duel-ruby/tree/main/plugins/activerecord). |
+| `database_options:` | Options for the database server's plugin, for example `{sql: File.read("db/structure.sql")}` for duel-mysql or duel-postgresql. |
 
-Any other option goes to the database server's plugin, for example
-`args:` or `sql:` for duel-mysql.
-
-duel-rails uses duel-activerecord, and the database server's plugin,
-with `c.use`. To give one of them options of its own, use it yourself,
-before `c.use :rails`. duel-rails then uses the plugin that you
-configured:
+duel-rails uses duel-activerecord with `c.use`. To give it options of
+its own, such as `query_time: true`, to also judge how long queries
+took, use it yourself, before `c.use :rails`. duel-rails then uses the
+plugin that you configured:
 
 ```ruby
 # .duel.rb
 Duel.configure do |c|
-  c.use :activerecord, ignore: ->(payload) { payload[:sql].include?("pg_catalog") }
-  c.use :rails, database: :postgresql, fixtures: :all
+  c.use :activerecord, query_time: true, ignore: ->(payload) { payload[:sql].include?("pg_catalog") }
+  c.use :rails, database: :postgresql, fixtures: :all, database_options: {sql: File.read("db/structure.sql")}
 end
 ```
 

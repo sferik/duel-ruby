@@ -48,7 +48,8 @@ module Duel
     # Configures Duel for the app (c.use :rails):
     #
     # - +database+: the worker's own database (see Database.configure), or
-    #   nil for none. +database_options+ go to its plugin.
+    #   nil for none. +database_options+ go to its server's plugin
+    #   (sql:, say).
     # - +environment+: what each version boots in (its workers, and its
     #   process benchmarks: RAILS_ENV).
     # - +bundle+: whether each version runs its own bundle (see Bundle).
@@ -61,11 +62,11 @@ module Duel
     # - +jobs+: whether the jobs a benchmark enqueues are performed, and
     #   measured with it (see Jobs).
     # - +active_record+: whether Active Record's queries are counted too
-    #   (c.use :activerecord), and +query_time+ timed.
+    #   (c.use :activerecord: to give it options, use it first).
     #
     # Each version's schema is loaded into its workers' databases.
     def self.configure(config, database: :sqlite, environment: ENVIRONMENT, bundle: true, fixtures: [], seeds: false,
-      seed: SEED, reset: false, jobs: true, active_record: true, query_time: false, **database_options)
+      seed: SEED, reset: false, jobs: true, active_record: true, database_options: {})
       raise ArgumentError, "reset: needs a database to reset" if reset && !database
 
       config.watch = WATCH
@@ -75,16 +76,14 @@ module Duel
       # (What .reset_data loads again.)
       @data = ({fixtures:, seeds:, seed:} if database)
       if database
-        Database.configure(config, database, **database_options)
+        Database.configure(config, database, database_options)
         config.in_worker { load_worker_data(fixtures:, seeds:, seed:) }
         config.before_sample { reset_data } if reset
       end
       Jobs.configure(config) if jobs
-      # (Its options only where they aren't its own defaults: an app's own
-      # c.use :activerecord may have given others.)
-      if active_record
-        query_time ? config.use(:activerecord, query_time: true) : config.use(:activerecord)
-      end
+      # (With no options: an app's own c.use :activerecord, before, gave
+      # its own.)
+      config.use(:activerecord) if active_record
       Counter.configure(config)
     end
 

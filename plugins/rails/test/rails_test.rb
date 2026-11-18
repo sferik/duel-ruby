@@ -59,37 +59,30 @@ class RailsTest < PluginTest
     assert_equal [:rails], c.plugins
   end
 
-  # query_time: for duel-activerecord, and the options it doesn't take
-  # for the database's plugin.
-  def test_use_with_options_for_other_plugins
-    c = config
-    c.use(:rails, bundle: false, query_time: true)
-
-    assert_includes measures(c), "active_record_query_time"
-    assert_equal 1, c.prepares.fetch(:worker).size
+  # database_options: for the database's plugin, and nothing it doesn't
+  # take: a typo fails, not ignored.
+  def test_use_with_options_for_the_databases_plugin
     configured = []
-    stub(Duel::Rails::Database, :configure, ->(_config, database, **options) { configured << [database, options] }) do
-      config.use(:rails, database: :postgresql, bundle: false, active_record: false, version: "16")
+    stub(Duel::Rails::Database, :configure, ->(_config, database, options) { configured << [database, options] }) do
+      config.use(:rails, database: :postgresql, bundle: false, active_record: false, database_options: {sql: "SELECT 1"})
     end
 
-    assert_equal [[:postgresql, {version: "16"}]], configured, "the rest, for the database's plugin"
+    assert_equal [[:postgresql, {sql: "SELECT 1"}]], configured
+    assert_raises(ArgumentError) { config.use(:rails, bundle: false, fixture: :all) }
+    error = assert_raises(ArgumentError) { config.use(:rails, bundle: false, database_options: {sql: "SELECT 1"}) }
+
+    assert_equal "database_options: sql: :sqlite is a file, which takes none", error.message
   end
 
   # An app's own c.use :activerecord, before, with its options: duel-rails
-  # uses it again, without any (or with query_time: true, if it was
-  # given).
+  # uses it again, without any.
   def test_an_apps_own_active_record_options
     c = config
     counter = c.use(:activerecord, query_time: true)
     c.use(:rails, bundle: false)
 
-    assert_includes measures(c), "active_record_query_time"
-    assert_equal %i[activerecord rails], c.plugins
-    c = config
-    c.use(:activerecord, query_time: true)
-    c.use(:rails, bundle: false, query_time: true)
-
     assert_equal 1, measures(c).count("active_record_query_time")
+    assert_equal %i[activerecord rails], c.plugins
     assert_instance_of Duel::ActiveRecord::Counter, counter
   end
 

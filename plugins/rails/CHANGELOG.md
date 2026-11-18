@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default.
 - `duel_request` takes `judge:`, as `duel` does now, in place of `only:`
   and `peak_memory:`.
+- The database server's plugin's options are `database_options:`, a
+  Hash (`database_options: {sql: File.read("db/structure.sql")}`), not
+  every option `c.use :rails` doesn't take, so a misspelled one fails
+  rather than going to the plugin, or with `:sqlite`, nowhere. And
+  `query_time:` is duel-activerecord's alone: to time queries,
+  `c.use :activerecord, query_time: true` before `c.use :rails`.
 
 ## [0.2.0] - 2026-11-16
 

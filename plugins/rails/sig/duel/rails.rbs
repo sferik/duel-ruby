@@ -24,7 +24,7 @@ module Duel
     # options).
     def self.configure: (Config config, ?database: Symbol?, ?environment: String, ?bundle: bool,
                        ?fixtures: Array[Symbol | String] | :all, ?seeds: bool, ?seed: Integer, ?reset: bool, ?jobs: bool,
-                       ?active_record: bool, ?query_time: bool, **untyped database_options) -> Counter
+                       ?active_record: bool, ?database_options: Hash[Symbol, untyped]) -> Counter
 
     # Boots the version at +root+ in +environment+, from its own tree.
     def self.boot: (String root, String environment) -> bool
@@ -66,7 +66,7 @@ module Duel
       # The URL's scheme, by database, where the plugin's own isn't it.
       SCHEMES: Hash[Symbol, String]
 
-      def self.configure: (Config config, Symbol database, **untyped options) -> untyped
+      def self.configure: (Config config, Symbol database, ?Hash[Symbol, untyped] options) -> untyped
 
       # Loads the version's schema into the worker's database.
       def self.load_schema: () -> void

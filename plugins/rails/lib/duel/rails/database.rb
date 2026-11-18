@@ -15,9 +15,13 @@ module Duel
 
       # Gives each worker its own +database+: a file for :sqlite, or a
       # server for :postgresql, :mysql2 or :trilogy, from its Duel plugin
-      # (used with +options+).
-      def self.configure(config, database, **options)
-        return config.prepare(:worker) { |w| {"DATABASE_URL" => "sqlite3:#{w.path("db.sqlite3")}"} } if database == :sqlite
+      # (used with +options+, which a file takes none of).
+      def self.configure(config, database, options = {})
+        if database == :sqlite
+          raise ArgumentError, "database_options: #{options.keys.join(", ")}: :sqlite is a file, which takes none" unless options.empty?
+
+          return config.prepare(:worker) { |w| {"DATABASE_URL" => "sqlite3:#{w.path("db.sqlite3")}"} }
+        end
 
         plugin = SERVERS.fetch(database) do
           raise ArgumentError, "database: must be :sqlite, :postgresql, :mysql2 or :trilogy, not #{database.inspect}"

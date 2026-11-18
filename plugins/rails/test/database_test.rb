@@ -27,9 +27,16 @@ class DatabaseTest < PluginTest
       given = []
       c.define_singleton_method(:use) { |name, **opts| (given << [name, opts]) && :used }
 
-      assert_equal :used, Duel::Rails::Database.configure(c, database, **options)
+      assert_equal :used, Duel::Rails::Database.configure(c, database, options)
       assert_equal [[plugin, used]], given, database
     end
+  end
+
+  # A file takes no server's options.
+  def test_sqlite_takes_no_options
+    error = assert_raises(ArgumentError) { Duel::Rails::Database.configure(config, :sqlite, {sql: "SELECT 1", args: []}) }
+
+    assert_equal "database_options: sql, args: :sqlite is a file, which takes none", error.message
   end
 
   def test_a_database_there_isnt
