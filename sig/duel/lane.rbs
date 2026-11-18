@@ -82,6 +82,9 @@ module Duel
 
     private
 
+    # How a benchmark runs as a process of its own, or nil.
+    def process_of: (String name) -> Definition::process?
+
     # Each version's first worker, by version.
     def firsts: () -> Hash[String, WorkerProcess]
 

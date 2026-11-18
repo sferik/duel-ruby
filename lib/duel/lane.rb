@@ -139,7 +139,7 @@ module Duel
     def compare(name)
       result = Result.new(name)
       started = monotonic
-      if benchmarks.fetch(name).fetch("process")
+      if process_of(name)
         measure_process(name, result)
       else
         set_up(name, result)
@@ -169,6 +169,10 @@ module Duel
     end
 
     private
+
+    # How a benchmark runs as a process of its own, or nil where it's no
+    # process benchmark.
+    def process_of(name) = benchmarks.fetch(name).fetch("process")
 
     # Each version's first worker, by version.
     def firsts = {"baseline" => @bases.first, "candidate" => @candidates.first}
@@ -336,7 +340,7 @@ module Duel
       result.n = 1
       floors = Array.new(PROCESS_WARMUP) { |i| pair(name, 1, i) }
       # (A process benchmark's.)
-      process = benchmarks.fetch(name).fetch("process") #: Definition::process
+      process = process_of(name) #: Definition::process
       judge(name, process.fetch("runs") || process_runs(floors), floors, result)
       return if @peaks.values.flatten.include?(nil)
 
@@ -444,7 +448,7 @@ module Duel
       # @type var raw: Hash[String, Array[[Metric::value, Metric::value]]]
       raw = judged.to_h { |spec| [spec.fetch("name"), []] }
       pending = judged.dup
-      every = benchmarks.fetch(name).fetch("process")
+      every = process_of(name)
       (0...MAX_PAIRS).each do |i|
         break if pending.empty?
 
@@ -476,7 +480,7 @@ module Duel
     # samples is a fresh process already, so its pairs are independent),
     # or there are too few workers of each version for an interval over
     # them (Lane.by_process?).
-    def by_process?(name) = !benchmarks.fetch(name).fetch("process") && Lane.by_process?(@bases.size, @settings.confidence)
+    def by_process?(name) = !process_of(name) && Lane.by_process?(@bases.size, @settings.confidence)
 
     # Takes rounds of pairs, each a sample from every worker of each
     # version (the baseline's in order, paired with the candidate's in
@@ -634,21 +638,20 @@ module Duel
     # +base_first+ (see #pair).
     def sampled(name, n, base, candidate, base_first:, runs:, count:)
       order = base_first ? [base, candidate] : [candidate, base]
-      process = benchmarks.fetch(name).fetch("process")
+      process = process_of(name)
       replies = if process
         # (Each run of one version's next to one of the other's.)
         each_run = Array.new(n) { order.map { |worker| worker.run(process) } }
-        order.zip(each_run.transpose).to_h do |worker, samples|
+        fastest = order.zip(each_run.transpose).to_h do |worker, samples|
           # (Never nil: each worker in order has its runs.)
           ran = samples #: Array[ProcessSample::sampled]
           [worker, ProcessSample.fastest(ran)]
         end
+        @peaks.fetch("baseline") << fastest.fetch(base).fetch("peak")
+        @peaks.fetch("candidate") << fastest.fetch(candidate).fetch("peak")
+        fastest
       else
         order.to_h { |worker| [worker, worker.sample(name, n, runs: runs, count: count)] }
-      end
-      if process
-        @peaks.fetch("baseline") << replies.fetch(base).fetch("peak")
-        @peaks.fetch("candidate") << replies.fetch(candidate).fetch("peak")
       end
       [replies.fetch(base), replies.fetch(candidate)]
     end
