@@ -86,7 +86,7 @@ module Duel
     def self.made(metrics, measures)
       metrics.each { |metric| metric.measures.each { |name, settings| Metric.check(name, settings) } }
       names = metrics.flat_map { |metric| metric.measures.keys }
-      twice = names.select { |name| names.count(name) > 1 }.uniq
+      twice = names.tally.select { |_, count| count > 1 }.keys
       raise Error, "more than one metric measures #{twice.join(", ")}" unless twice.empty?
       unknown = measures.keys - names
       raise Error, "no metric measures #{unknown.join(", ")} (c.measure)" unless unknown.empty?
