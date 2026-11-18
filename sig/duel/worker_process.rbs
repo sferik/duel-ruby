@@ -78,7 +78,7 @@ module Duel
 
     private
 
-    def accept: (UNIXServer | TCPServer server, String path) -> (UNIXSocket | TCPSocket)
+    def accept: (UNIXServer | TCPServer server, String address) -> (UNIXSocket | TCPSocket)
 
     def read: () -> reply
 

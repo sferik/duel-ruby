@@ -113,8 +113,8 @@ module Duel
     private
 
     # The worker's connection, once it has loaded (or Failed if it died,
-    # or took too long, first).
-    def accept(server, path)
+    # or took too long, first), to +server+, at +address+ (see Control).
+    def accept(server, address)
       deadline = monotonic + @timeout
       until server.wait_readable(POLL)
         raise Failed, "#{@label} worker exited while loading" unless @child.alive?
@@ -123,7 +123,7 @@ module Duel
       server.accept
     ensure
       server.close
-      Control.remove(path)
+      Control.remove(address)
     end
 
     def read
