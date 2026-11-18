@@ -126,27 +126,13 @@ module Duel
       def load_settings
         Duel.load_config(File.join(destination_root, ".duel.rb"))
       rescue ScriptError, StandardError => e
-        say_status :warning, ".duel.rb didn't load (#{e.class}: #{e}), so the workflow has both jobs for pushes, as if it asked for them"
+        say_status :warning, ".duel.rb didn't load (#{e.class}: #{e}), so the workflows take Duel's defaults"
         nil
-      end
-
-      # Whether the workflow comments on a pushed commit: where a regression
-      # in a push passes (c.fail_on = :pull_requests).
-      def comment_on_pushes?
-        found = settings
-        found.nil? || found.fail_on == :pull_requests
-      end
-
-      # Whether the workflow marks a push passed: where a push is compared
-      # with the last commit Duel passed (c.push_base = :last_passed).
-      def mark_passed?
-        found = settings
-        found.nil? || found.push_base == :last_passed
       end
 
       # The label that accepts a regression, for the workflows, as for
       # `duel init` (see Duel::Init#accept_label).
-      def accept_label = settings&.accept_label
+      def accept_label = (settings || ::Duel::Config.new).accept_label
 
       # Whether the workflow keeps a badge for the README (--badge), as for
       # `duel init` (see Duel::Init#badge?).

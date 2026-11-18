@@ -490,7 +490,8 @@ class CLISummaryTest < DuelTest
 
   # Where c.push_base says to compare a push with the last commit Duel
   # passed, a push that passed, or had nothing to compare, is marked
-  # passed (the step output "passed"). Nothing else is.
+  # passed (the step output "passed", the branch that marks it). Nothing
+  # else is.
   def test_marking_a_push_passed
     repo = git_repo
     sha = IO.popen(["git", "-C", repo, "rev-parse", "HEAD"], &:read).chomp
@@ -512,14 +513,14 @@ class CLISummaryTest < DuelTest
     @git.call("add", "-A")
     @git.call("commit", "-qm", "two")
 
-    assert_equal "comment=none\nstatus=passed\npassed=true\n", outputs.call
+    assert_equal "comment=none\nstatus=passed\npassed=duel/passed/main\n", outputs.call, "the branch that marks it"
     assert_equal "comment=none\nstatus=failed\n", outputs.call(passed: false)
     File.write(File.join(repo, ".duel.rb"), %(Duel.configure { |c| c.push_base = :last_passed\n c.accept_label = "ok" }\n))
     @git.call("commit", "-qam", "three")
 
-    assert_equal "comment=none\nstatus=failed\npassed=true\n", outputs.call(passed: false, env: {"DUEL_LABELS" => %(["ok"])}),
+    assert_equal "comment=none\nstatus=failed\npassed=duel/passed/main\n", outputs.call(passed: false, env: {"DUEL_LABELS" => %(["ok"])}),
       "accepted: marked passed"
-    assert_equal "comment=none\nstatus=neutral\npassed=true\n", outputs.call(env: {"GITHUB_EVENT_PATH" => event(before: short(repo, "HEAD"))}),
+    assert_equal "comment=none\nstatus=neutral\npassed=duel/passed/main\n", outputs.call(env: {"GITHUB_EVENT_PATH" => event(before: short(repo, "HEAD"))}),
       "nothing to compare"
     assert_equal "comment=change\nstatus=passed\n", outputs.call("--base", sha, env: {"GITHUB_EVENT_NAME" => "pull_request"}), "not a push"
   end

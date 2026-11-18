@@ -74,6 +74,10 @@ module Duel
     # a pull request with Config#accept_label (DUEL_ACCEPTED): see
     # Baseline#last_release.
     attr_accessor accepted: String?
+    # On a schedule on GitHub Actions, the repository (GITHUB_REPOSITORY)
+    # Duel finds what was accepted in, without DUEL_ACCEPTED: see
+    # Baseline#merged_accepted.
+    attr_accessor repository: String?
     # Of jobs and processes, those Duel may lower to fit the memory
     # available (see Runner#fit).
     attr_accessor fit: Array[:jobs | :processes]
@@ -82,12 +86,12 @@ module Duel
                    ?Integer processes, ?Float limit, ?Float confidence, ?Float? warm, ?bool force, ?String? config_path,
                    ?Float timeout, ?Config::ruby ruby, ?Config::comment? comment,
                    ?Config::fail_on? fail_on, ?String? pushed,
-                   ?String? target, ?Float time_limit, ?String? accepted, ?Array[:jobs | :processes] fit) -> instance
+                   ?String? target, ?Float time_limit, ?String? accepted, ?String? repository, ?Array[:jobs | :processes] fit) -> instance
                 | (?base: String?, ?base_dir: String?, ?candidate_dir: String?, ?filter: Regexp, ?jobs: Integer,
                    ?processes: Integer, ?limit: Float, ?confidence: Float, ?warm: Float?, ?force: bool,
                    ?config_path: String?, ?timeout: Float, ?ruby: Config::ruby, ?comment: Config::comment?,
                    ?fail_on: Config::fail_on?, ?pushed: String?,
-                   ?target: String?, ?time_limit: Float, ?accepted: String?, ?fit: Array[:jobs | :processes]) -> instance
+                   ?target: String?, ?time_limit: Float, ?accepted: String?, ?repository: String?, ?fit: Array[:jobs | :processes]) -> instance
 
     def self.defaults: () -> Settings
   end

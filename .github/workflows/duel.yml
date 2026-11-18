@@ -57,38 +57,10 @@ on:
         description: A name for this call's report (yjit, say), where the workflow calls this one more than once. The Perf comment workflow comments with every call's, each under its name
         type: string
         default: ""
-      accept-label:
-        description: The label that accepts a regression (c.accept_label), or none
-        type: string
-        default: ""
-      release-tags:
-        description: The glob release tags match (c.release_tags)
-        type: string
-        default: v*
-      comment-on-pushes:
-        description: Whether to comment on a pushed commit (c.fail_on = :pull_requests)
-        type: boolean
-        default: false
-      mark-passed:
-        description: Whether to mark a push passed (c.push_base = :last_passed)
-        type: boolean
-        default: false
       badge:
         description: Whether to keep a badge for the README
         type: boolean
         default: false
-      passed-branch:
-        description: What names the branches that mark the last commit Duel passed
-        type: string
-        default: duel/passed
-      badge-branch:
-        description: The branch that holds the badge
-        type: string
-        default: duel/badge
-      marker:
-        description: What marks Duel's comments
-        type: string
-        default: duel
     # What Duel said, for the caller's own jobs (a notice, say).
     outputs:
       comment:
@@ -136,32 +108,18 @@ jobs:
       # The labels of the pull request (or for a push, of the one that
       # merged it), for c.accept_label in .duel.rb, as a JSON array. They're
       # read as the job runs, and adding the label (or taking it off) runs
-      # the job again: see the Perf comment workflow.
-      # On a schedule, the last commit since the last release that merged a
-      # pull request with the label (ACCEPT_LABEL, as .duel.rb names it):
-      # what that slowed down was accepted, so it's compared with instead.
+      # the job again: see the Perf comment workflow. (On a schedule, Duel
+      # finds the last change merged with the label since the last
+      # release itself.)
       - name: Find the pull request's labels
         id: labels
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' || (github.event_name == 'schedule' && inputs.accept-label != '')
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
         continue-on-error: true # (without them, nothing's accepted)
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           QUEUED: ${{ github.event.merge_group.head_ref }}
-          ACCEPT_LABEL: '${{ inputs.accept-label }}'
-          RELEASE_TAGS: "${{ inputs.release-tags }}"
         run: |
-          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-            tag=$(git describe --tags --abbrev=0 --match "$RELEASE_TAGS" HEAD^ 2>/dev/null) || exit 0
-            since=$(TZ=UTC git log -1 --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd "$tag")
-            merged=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label "$ACCEPT_LABEL" --search "merged:>=$since" --limit 1000 \
-              --json mergeCommit --jq '.[].mergeCommit.oid')
-            # (Not git rev-list piped to grep, which stops at the first, so
-            # git dies of SIGPIPE, which fails a pipeline, under pipefail.)
-            accepted=$(grep -Fx -m 1 -f <(echo "$merged") <(git rev-list "$tag..HEAD")) || accepted=
-            echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           # (In a merge queue, the last pull request queued, which the queue's
           # branch names: gh-readonly-queue/main/pr-123-<sha>.)
           if [ -n "$QUEUED" ]; then
@@ -230,7 +188,9 @@ jobs:
         id: baseline
         if: inputs.version-file
         env:
-          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
+          # (On a schedule, for the last change a label accepted since the
+          # last release, which Duel finds with gh.)
+          GH_TOKEN: ${{ github.event_name == 'schedule' && github.token || '' }}
         run: |
           base=$(bundle exec duel base)
           # (None where the commit has no .ruby-version: git fails, which
@@ -285,7 +245,9 @@ jobs:
           # with itself, which checks the setup.)
           DUEL_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
           DUEL_LABELS: ${{ steps.labels.outputs.labels }}
-          DUEL_ACCEPTED: ${{ steps.labels.outputs.accepted }}
+          # (On a schedule, for the last change a label accepted since the
+          # last release, which Duel finds with gh.)
+          GH_TOKEN: ${{ github.event_name == 'schedule' && github.token || '' }}
         run: bundle exec duel --markdown "$RUNNER_TEMP/duel/duel.md"
       # For a pull request, what Duel said, for the Perf comment workflow,
       # which can't see this job's outputs.
@@ -317,7 +279,7 @@ jobs:
   commit-comment:
     name: Comment on the commit
     needs: duel
-    if: ${{ inputs.comment-on-pushes && !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
+    if: ${{ !cancelled() && github.event_name == 'push' && (needs.duel.outputs.comment == 'post' || needs.duel.outputs.comment == 'change') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # to comment on the commit with the report
@@ -335,7 +297,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           COMMENT: ${{ needs.duel.outputs.comment }}
           STATUS: ${{ needs.duel.outputs.status }}
-          MARKER: ${{ inputs.marker }}
+          # (duel, or for a project in a subdirectory, duel and its path.)
+          MARKER: ${{ inputs.working-directory == '.' && 'duel' || format('duel {0}', inputs.working-directory) }}
         run: |
           marker="<!-- $MARKER"
           last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/comments" \
@@ -348,11 +311,11 @@ jobs:
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
   # the last commit Duel passed, which a branch marks (each branch pushed
   # has its own), so slowdowns too small for any one push to fail add up
-  # until they fail one. This job moves the branch to a push that passed
-  # (or makes it), but never back: where a newer push's run moved it
+  # until they fail one. This job moves the branch (as Duel names it) to
+  # a push that passed (or makes it), but never back: where a newer push's run moved it
   # first, it stays. It checks nothing out and runs none of the code. To
   # accept a regression, move the branch yourself (for main, git push
-  # origin main:${{ inputs.passed-branch }}/main).
+  # origin main:duel/passed/main).
   passed:
     name: Mark the commit passed
     needs: duel
@@ -363,7 +326,7 @@ jobs:
     concurrency:
       group: ${{ github.workflow }}-passed-${{ github.ref_name }}
       cancel-in-progress: false
-    if: ${{ inputs.mark-passed && !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # to move the branch
@@ -371,7 +334,7 @@ jobs:
       - name: Move the branch to the commit
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ inputs.passed-branch }}/${{ github.ref_name }}
+          BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
           # (Git can't make a branch where another's name is a folder of its
           # name: a branch named duel blocks duel/passed/main. If one does,
@@ -418,7 +381,7 @@ jobs:
   # a run for an older push than the badge's. This job writes the badge,
   # alone, to a branch of its own, which the README shows:
   #
-  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/${{ inputs.badge-branch }}/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
   #
   # It checks nothing out, runs none of the code, and fetches nothing.
   badge:
@@ -440,10 +403,14 @@ jobs:
       - name: Update the badge
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ inputs.badge-branch }}
+          DIRECTORY: ${{ inputs.working-directory }}
           RESULT: ${{ needs.duel.result }}
           STATUS: ${{ needs.duel.outputs.status }}
         run: |
+          # (duel/badge, or for a project in a subdirectory, duel/badge-<its
+          # path>.)
+          BRANCH=duel/badge
+          if [ "$DIRECTORY" != . ]; then BRANCH="duel/badge-$(printf %s "$DIRECTORY" | tr / -)"; fi
           # (Git can't make a branch where another's name is a folder of its
           # name: a branch named duel blocks duel/passed/main. If one does,
           # this names it.)

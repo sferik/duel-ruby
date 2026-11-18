@@ -151,6 +151,46 @@ class BaselineTest < DuelTest
     assert_nil baseline(base: "last-release", accepted: accepted).ref, "no release"
   end
 
+  # On a scheduled run on GitHub Actions (with Settings#repository), and
+  # no DUEL_ACCEPTED, what was accepted since the release is what gh finds:
+  # the last commit since it that merged a pull request with the label,
+  # merged since it. Nothing where gh can't say.
+  def test_what_was_accepted_as_gh_finds_it
+    skip "the fake gh is a .cmd there, whose cmd.exe takes the > of merged:>= for a redirect" if windows?
+    git("checkout", "-q", "main")
+    # (A release with history before it, so that its time is its own.)
+    git("tag", "v1.1")
+    File.write(File.join(@repo, "lib", "sample.rb"), "module Sample; def self.work = 3; end\n")
+    accepted = commit("accepted")
+    File.write(File.join(@repo, "lib", "sample.rb"), "module Sample; def self.work = 4; end\n")
+    later = commit("accepted later")
+    @config.accept_label = "duel: accept"
+    bin = File.join(tmpdir, "bin")
+    asked = File.join(tmpdir, "asked")
+    released = Time.at(Integer(`git -C #{@repo} log -1 --format=%ct v1.1`)).utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    fake_command(File.join(bin, "gh"), %(echo "$*" > #{asked}\nprintf '%s\\n' $MERGED\n[ -z "$FAILS" ]))
+    found = lambda do |merged, fails: nil, **settings|
+      with_env("PATH" => path_with(bin), "MERGED" => merged, "FAILS" => fails) { baseline(base: "last-release", **settings).ref }
+    end
+
+    assert_equal accepted, found.call("#{"f" * 40} #{accepted}", repository: "me/mine")
+    assert_equal "pr list --repo me/mine --state merged --label duel: accept --search merged:>=#{released} --limit 1000 " \
+      "--json mergeCommit --jq .[].mergeCommit.oid", File.read(asked).chomp
+    assert_equal later, found.call("#{accepted} #{later}", repository: "me/mine"), "the last"
+    assert_equal "v1.1", found.call("f" * 40, repository: "me/mine"), "none since"
+    assert_equal "v1.1", found.call(accepted, fails: "1", repository: "me/mine"), "gh can't say"
+    assert_equal "v1.1", found.call(accepted), "not on GitHub Actions"
+    assert_equal later, found.call(accepted, repository: "me/mine", accepted: later), "DUEL_ACCEPTED's"
+    open3 = Duel::Spawn.method(:open3)
+    no_gh = ->(name, *args, **options) { (args.first == "gh") ? raise(Errno::ENOENT, "gh") : open3.call(name, *args, **options) }
+
+    assert_equal "v1.1", stub(Duel::Spawn, :open3, no_gh) { baseline(base: "last-release", repository: "me/mine").ref }, "no gh"
+    assert_equal "v1.1", found.call("#{accepted}0", repository: "me/mine"), "only a commit gh names"
+    @config.accept_label = nil
+
+    assert_equal "v1.1", found.call(accepted, repository: "me/mine"), "no label"
+  end
+
   # A commit accepted on a line that never had the release (merged since)
   # isn't since the release, so the release is compared with.
   def test_what_was_accepted_on_another_line

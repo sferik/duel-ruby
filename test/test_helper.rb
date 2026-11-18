@@ -262,6 +262,15 @@ class DuelTest < Minitest::Test
   # The PATH with +dir+ first.
   def path_with(dir, path = ENV.fetch("PATH")) = [dir, path].join(File::PATH_SEPARATOR)
 
+  # Runs the block with environment variables set (or, nil, unset).
+  def with_env(vars)
+    saved = vars.keys.to_h { |name| [name, ENV.fetch(name, nil)] }
+    vars.each { |name, value| ENV[name] = value }
+    yield
+  ensure
+    saved&.each { |name, value| ENV[name] = value }
+  end
+
   # A child of the test's that has ended (with 3), and not been waited
   # for: once ps says it's a zombie. Windows has no zombies (nor ps -o),
   # so there, once it says it's exiting, and a moment more.

@@ -123,9 +123,6 @@ module Duel
 
     def comment_inputs: () -> Hash[String, String]
 
-    # The glob release tags match, as .duel.rb sets it.
-    def set_release_tags: () -> String?
-
     # The project's configuration, as the conventions have it.
     def config: () -> Config
 
@@ -135,23 +132,11 @@ module Duel
 
     def load_settings: () -> Config?
 
-    # The settings of the .duel.rb it writes.
-    def written_settings: () -> Config
-
     # The label that accepts a regression, for the workflows, or nil.
     def accept_label: () -> String?
 
-    # Whether the workflow comments on a pushed commit.
-    def comment_on_pushes?: () -> bool
-
-    # Whether the workflow marks a push passed.
-    def mark_passed?: () -> bool
-
     # The library the gemspec names, or nil.
     def library: () -> String?
-
-    # The glob release tags match, for the workflow.
-    def release_tags: () -> String
 
     # The library, without a gemspec: lib/'s only Ruby file, or nil.
     def guess: () -> String?
@@ -212,8 +197,6 @@ module Duel
 
       def accept_label: () -> String
 
-      def release_tags: () -> String
-
       def ruby_version: () -> String
 
       def working_directory: () -> String
@@ -223,10 +206,6 @@ module Duel
       def badge_branch: () -> String
 
       def version_file: () -> true
-
-      def comment_on_pushes?: () -> true
-
-      def mark_passed?: () -> true
 
       def badge?: () -> true
     end

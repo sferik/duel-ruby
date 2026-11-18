@@ -253,11 +253,7 @@ module Duel
       def settings: () -> Config?
       def load_settings: () -> Config?
 
-      # Whether the workflow comments on a pushed commit.
-      def comment_on_pushes?: () -> bool
 
-      # Whether the workflow marks a push passed.
-      def mark_passed?: () -> bool
 
       # The label that accepts a regression, for the workflows, or nil.
       def accept_label: () -> String?

@@ -203,12 +203,13 @@ at the API.
      `.duel.rb` chooses when, and Duel also adds the report to the
      job's summary). It runs none of the pull request's code. Keep it as
      it is.
-   - `duel init` writes the jobs for pushes (a comment on a pushed
-     commit, and a `duel/passed/` branch that marks the last commit
-     Duel passed) only where `.duel.rb` sets `c.fail_on =
-     :pull_requests` or `c.push_base = :last_passed`, and the badge's
-     job only with `--badge`. Each needs `contents: write`, so don't
-     set those settings, or add those jobs, unless I ask.
+   - The workflow's jobs for pushes (a comment on a pushed commit,
+     and a `duel/passed/` branch that marks the last commit Duel
+     passed) run only where `.duel.rb` sets `c.fail_on =
+     :pull_requests` or `c.push_base = :last_passed`, and `duel init`
+     writes the badge's job only with `--badge`. Each writes to the
+     repository, so don't set those settings, or ask for the badge,
+     unless I ask.
 
    Check that `ruby-version` is one the project supports, unless it has
    a `.ruby-version`. With `c.ruby = :version_file` and another version

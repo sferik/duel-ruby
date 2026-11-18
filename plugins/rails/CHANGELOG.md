@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Duel no `DUEL_BASE`, as Duel finds the baseline from the run's event
   now, and finds the baseline's Ruby from `bundle exec duel base`, once
   the app's Ruby is set up.
+- The Perf workflow that `bin/rails generate duel:install` writes has
+  the jobs for pushes whatever `.duel.rb` says, as they run where Duel
+  says to, and finds no accepted change on a schedule itself: Duel
+  does, from `.duel.rb`.
 - `duel_request` takes `judge:`, as `duel` does now, in place of `only:`
   and `peak_memory:`.
 - The database server's plugin's options are `database_options:`, a

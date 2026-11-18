@@ -23,8 +23,8 @@ module Duel
   # On GitHub Actions (GITHUB_STEP_SUMMARY), it adds its report to the
   # job's summary, in Markdown (see Summary), and tells the step's
   # outputs (GITHUB_OUTPUT) what to do about the comment on a pull
-  # request (see .comment), and for a push, whether to mark it passed
-  # (see Config#push_base). --markdown writes the Markdown to a file, and
+  # request (see .comment), and for a push, the branch that marks it
+  # passed, where it's to be (see Config#push_base). --markdown writes the Markdown to a file, and
   # --json the report as JSON (see JSONReport), whatever the run's
   # outcome, but not for a command line that isn't valid.
   # @api private
@@ -147,6 +147,9 @@ module Duel
       target = variable("GITHUB_BASE_REF", "CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
       settings.target = "origin/#{target}" if target && pull_request?
       settings.accepted = variable("DUEL_ACCEPTED")
+      # (Where Duel finds what a label accepted since the last release, on
+      # a schedule: see Baseline#merged_accepted.)
+      settings.repository = variable("GITHUB_REPOSITORY") if event == "schedule" && !gitlab?
       settings.config_path ||= (".duel.rb" if File.exist?(".duel.rb"))
       settings.config_path &&= File.expand_path(settings.config_path)
       settings
@@ -207,7 +210,7 @@ module Duel
         return nothing("no release to compare against", "no release tag (#{config.release_tags}) before HEAD to compare against")
       end
       if !settings.force && baseline.unchanged?
-        @passed = marks_passed?(config, settings)
+        @passed = (baseline.passed_branch if marks_passed?(config, settings))
         return nothing("nothing to compare",
           "#{baseline.watched.join(", ")} unchanged since the baseline, so there's nothing to compare (--force to anyway)")
       end
@@ -220,7 +223,7 @@ module Duel
       results = runner.run
       passed = runner.passed?(results)
       status = passed ? 0 : slower(config, settings)
-      @passed = (passed || accepted?(config)) && marks_passed?(config, settings)
+      @passed = (baseline.passed_branch if (passed || accepted?(config)) && marks_passed?(config, settings))
       publish(
         passed ? "passed" : "failed",
         -> {
@@ -393,12 +396,12 @@ module Duel
     # (STEP_SUMMARY). Each is only made if it's written. On GitHub
     # Actions, it also sets the step's outputs (STEP_OUTPUT) for the jobs
     # that comment: +comment+, and +status+ as the comment's marker has
-    # it (MARKED), and for the job that marks a push passed, "passed"
-    # (see #marks_passed?). Where DUEL_OUTPUT names a file (OUTPUT), it
-    # writes them there too, as variables.
+    # it (MARKED), and for the job that marks a push passed, "passed",
+    # the branch that marks it (see #marks_passed?). Where DUEL_OUTPUT
+    # names a file (OUTPUT), it writes them there too, as variables.
     def publish(status, markdown, json)
       comment = commenting(status)
-      outputs = "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n#{"passed=true\n" if @passed}"
+      outputs = "comment=#{comment}\nstatus=#{MARKED.fetch(status)}\n#{"passed=#{@passed}\n" if @passed}"
       step_output = variable(STEP_OUTPUT)
       File.write(step_output, outputs, mode: "a") if step_output
       output = variable(OUTPUT)

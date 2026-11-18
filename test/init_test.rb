@@ -65,12 +65,12 @@ class InitTest < DuelTest
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
-    "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
+    "  # from a workflow job that runs where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
     "\n  # A label that accepts a regression in a pull request, for a change\n  # that's slower on purpose (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
     "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \
-    "  # (A workflow job moves the branch, written only where this is set: see\n  # docs/ci.md.)\n  # c.push_base = :before\nend\n"
+    "  # (A workflow job moves the branch where this is set: see docs/ci.md.)\n  # c.push_base = :before\nend\n"
 
   def test_a_gem
     gem
@@ -108,12 +108,11 @@ class InitTest < DuelTest
     assert_includes workflow, "        with:\n          ruby-version: \"#{ruby_version}\"\n          bundler-cache: true\n"
     refute_includes workflow, "baseline-ruby"
     refute_includes workflow, "working-directory"
-    refute_includes workflow, "marker="
     assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
     jobs = YAML.safe_load(workflow).fetch("jobs")
     steps = ->(job) { jobs.dig(job, "steps").map { |step| step["name"]&.split&.first || step.fetch("uses")[%r{/([\w-]+)@}, 1] } }
 
-    assert_equal %w[duel], jobs.keys, "none for pushes, which the defaults don't comment on or mark passed, and no badge without --badge"
+    assert_equal %w[duel commit-comment passed], jobs.keys, "the jobs for pushes, which run where Duel says, and no badge without --badge"
     assert_equal %w[checkout Find setup-ruby Compare Say Keep], steps.call("duel")
   end
 
@@ -145,35 +144,46 @@ class InitTest < DuelTest
     assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
   end
 
-  # Each job for pushes, alone, where .duel.rb asks for only it.
-  def test_one_job_for_pushes
+  # The jobs for pushes, whatever .duel.rb says: they run where Duel's
+  # outputs say to (see CLI#publish), as .duel.rb says.
+  def test_the_jobs_for_pushes_whatever_duel_rb_says
     gem
-    write(".duel.rb", "Duel.configure { |c| c.fail_on = :pull_requests }\n")
+    ["", "Duel.configure { |c| c.fail_on = :pull_requests }\n", "Duel.configure { |c| c.push_base = :last_passed }\n"].each do |config|
+      write(".duel.rb", config)
+      FileUtils.rm_rf(File.join(root, ".github"))
+      init.run
+      jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
+
+      assert_equal %w[duel commit-comment passed], jobs.keys, config
+      assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed != '' }}", jobs.dig("passed", "if")
+      assert_equal "${{ needs.duel.outputs.passed }}", jobs.dig("passed", "steps", 0, "env", "BRANCH"), "the branch Duel names"
+    end
+  end
+
+  # The label the comment workflow runs the Duel job again for: .duel.rb's,
+  # or with --force, which writes .duel.rb anew, Duel's own.
+  def test_the_label_of_duel_rb_or_duels_own
+    gem
+    write(".duel.rb", %(Duel.configure { |c| c.accept_label = "perf: accept" }\n))
     init.run
 
-    assert_equal %w[duel commit-comment], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
-    write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
+    assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'perf: accept'"
+    write(".duel.rb", %(Duel.configure { |c| c.accept_label = "perf: accept" }\n))
     init("--force").run
 
-    assert_equal %w[duel], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys,
-      "--force writes .duel.rb anew, with the defaults"
-    write(".duel.rb", "Duel.configure { |c| c.push_base = :last_passed }\n")
-    FileUtils.rm(File.join(root, ".github/workflows/perf.yml"))
-    init.run
-
-    assert_equal %w[duel passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'duel: accept'"
   end
 
   # A .duel.rb that doesn't load (one of its plugins isn't installed, say)
-  # leaves the workflow every job, and says so.
+  # leaves the workflows Duel's defaults, and says so.
   def test_a_config_that_doesnt_load
     gem
     write(".duel.rb", %(Duel.configure { |c| c.use :not_a_plugin }\n))
     init.run
 
-    assert_equal %w[duel commit-comment passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys, "no badge, which isn't .duel.rb's to say"
+    assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'duel: accept'", "Duel's label"
     assert_equal "duel init: .duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the " \
-      "duel-not_a_plugin gem to the Gemfile), so the workflow has both jobs for pushes, as if it asked for them\n", @err.string
+      "duel-not_a_plugin gem to the Gemfile), so the workflows take Duel's defaults\n", @err.string
   end
 
   # The job that runs the branch's code (its benchmarks too) only reads,
@@ -261,53 +271,27 @@ class InitTest < DuelTest
     labels = steps.find { |step| step["id"] == "labels" }
 
     assert_equal "${{ steps.labels.outputs.labels }}", steps.find { |step| step["name"] == "Compare" }.dig("env", "DUEL_LABELS")
-    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' || " \
-                  "github.event_name == 'schedule'", true],
+    assert_equal ["github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'", true],
       labels.values_at("if", "continue-on-error")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "PR" => "${{ github.event.pull_request.number }}",
-                  "QUEUED" => "${{ github.event.merge_group.head_ref }}", "ACCEPT_LABEL" => "duel: accept", "RELEASE_TAGS" => "v*"},
-      labels.fetch("env"))
+                  "QUEUED" => "${{ github.event.merge_group.head_ref }}"}, labels.fetch("env"), "nothing of .duel.rb's")
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
     assert_includes labels.fetch("run"), %(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[0].labels[]?.name]')
   end
 
-  # On a schedule, the labels step finds the last commit since the last
-  # release that merged a pull request with the label, with gh stubbed to
-  # list the commits that merged one (+merged+), in a repository where
-  # v1 is the release, and +accepted+ and HEAD came after it: the commit,
-  # for the Compare step, or nothing.
-  def accepted_since_the_release(merged)
-    @root = FileUtils.mkdir_p(File.join(tmpdir, "my_gem", "run#{@runs = (@runs || 0) + 1}")).first
-    gem
-    init.run
-    step = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |s| s["id"] == "labels" }
-    git = ->(*args) { IO.popen(["git", "-C", root, *args], &:read).chomp }
-    git.call("init", "-q", "-b", "main")
-    commit = ->(message) { git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", message) }
-    commit.call("one")
-    git.call("tag", "v1")
-    commit.call("accepted")
-    accepted = git.call("rev-parse", "HEAD")
-    commit.call("three")
-    bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
-    File.write(File.join(bin, "gh"), %(#!/bin/bash\necho "$*" > #{tmpdir}/gh-args\nprintf '%s\\n' #{merged.call(accepted).join(" ")}\n))
-    FileUtils.chmod(0o755, File.join(bin, "gh"))
-    output = File.join(tmpdir, "output")
-    File.write(output, "")
-    env = step.fetch("env").merge("PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "GITHUB_EVENT_NAME" => "schedule", "GITHUB_OUTPUT" => output,
-      "GITHUB_REPOSITORY" => "me/my_gem")
-
-    assert shell(env, step.fetch("run"), chdir: root)
-    [File.read(output), accepted, File.read(File.join(tmpdir, "gh-args"))]
-  end
-
+  # On a schedule, Duel finds what a label accepted since the last
+  # release itself, with gh (see Baseline#merged_accepted): the steps that
+  # run it get the token then, and only then.
   def test_what_was_accepted_since_the_last_release
-    found, accepted, args = accepted_since_the_release(->(commit) { ["0" * 40, commit] })
+    gem
+    write(".ruby-version", "3.4.1\n")
+    init.run
+    steps = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps")
 
-    assert_equal "accepted=#{accepted}\n", found
-    assert_match(/\Apr list --repo me\/my_gem --state merged --label duel: accept --search merged:>=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ /, args)
-    assert_equal "accepted=\n", accepted_since_the_release(->(_) { ["0" * 40] }).first, "none merged since the release"
-    assert_equal "accepted=\n", accepted_since_the_release(->(_) { [] }).first, "none at all"
+    %w[baseline compare].each do |id|
+      assert_equal "${{ github.event_name == 'schedule' && github.token || '' }}", steps.find { |step| step["id"] == id }.dig("env", "GH_TOKEN"), id
+    end
+    refute_includes read(".github/workflows/perf.yml"), "outputs.accepted", "no step of its own"
   end
 
   # Without a label that accepts a regression, the workflows look for
@@ -319,7 +303,6 @@ class InitTest < DuelTest
     perf = read(".github/workflows/perf.yml")
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
 
-    refute_includes perf, "outputs.accepted"
     refute_includes perf, "ACCEPT_LABEL"
     assert_equal %w[workflow_run], comment.fetch(true).keys
     assert_equal %w[comment], comment.fetch("jobs").keys
@@ -380,9 +363,7 @@ class InitTest < DuelTest
     gem
     write(".duel.rb", %(Duel.configure { |c| c.accept_label = "it's fine" }\n))
     init.run
-    labels = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |step| step["id"] == "labels" }
 
-    assert_equal "it's fine", labels.dig("env", "ACCEPT_LABEL")
     assert_includes YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "again", "if"), "== 'it''s fine'"
   end
 
@@ -419,8 +400,8 @@ class InitTest < DuelTest
     assert_equal ["duel", {"contents" => "write"}, "Mark the commit passed"], passed.values_at("needs", "permissions", "name")
     assert_equal({"group" => "${{ github.workflow }}-passed-${{ github.ref_name }}", "cancel-in-progress" => false}, passed.fetch("concurrency"),
       "one at a time for each branch")
-    assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed == 'true' }}", passed.fetch("if")
-    assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "duel/passed/${{ github.ref_name }}"}, step.fetch("env"))
+    assert_equal "${{ !cancelled() && github.event_name == 'push' && needs.duel.outputs.passed != '' }}", passed.fetch("if")
+    assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "${{ needs.duel.outputs.passed }}"}, step.fetch("env"), "the branch Duel names")
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
     assert_equal 1, passed.fetch("steps").size
@@ -732,7 +713,6 @@ class InitTest < DuelTest
     baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
 
     assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
-    assert_includes workflow, %(          RELEASE_TAGS: "v*"\n), "the last release as Duel finds it"
     assert_equal 9, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size
     workflow.scan(/^        run: \|\n((?:          .*\n)+)/).flatten.each { |script| refute_includes script, "${{", "only in env" }
   end
@@ -984,7 +964,6 @@ class InitTest < DuelTest
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [YAML.safe_load(workflow).fetch("name"), comments.dig(true, "workflow_run", "workflows")],
       "a workflow of its own, and its comments"
     assert_includes comments.dig("jobs", "comment", "steps", 2, "run"), %(--marker 'duel gems/parser'\n)
-    assert_equal "duel/passed-gems-parser/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "a branch of its own"
     assert_equal "duel/badge-gems-parser", YAML.safe_load(workflow).dig("jobs", "badge", "steps", 0, "env", "BRANCH"), "a badge of its own"
     assert_includes workflow, "https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg"
     assert_path_exists File.join(project, ".duel.rb")
@@ -1000,21 +979,6 @@ class InitTest < DuelTest
     workflow = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
 
     assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
-  end
-
-  # And the jobs for pushes, as it writes them where .duel.rb asks for
-  # them.
-  def test_the_guides_jobs_for_pushes
-    gem
-    push_settings
-    workflow = init.files.fetch(".github/workflows/perf.yml")
-    guide = repo_file("docs/ci.md")
-    {"c.fail_on = :pull_requests" => ["  # The report, as a new comment on a pushed commit", "  # With c.push_base = :last_passed"],
-     "c.push_base = :last_passed" => ["  # With c.push_base = :last_passed", nil]}.each do |setting, (from, to)|
-      job = guide[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with #{Regexp.escape(setting)}\)\n(.*?)^```$/m, 1]
-
-      assert_equal workflow[workflow.index(from)...(workflow.index(to) if to)].rstrip, job.rstrip, setting
-    end
   end
 
   # And the badge's job, as it writes it with --badge.
@@ -1098,7 +1062,7 @@ class InitTest < DuelTest
       esac
     SH
     FileUtils.chmod(0o755, File.join(bin, "curl"))
-    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "DUEL_PASSED" => "true", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
+    env = {"PATH" => [bin, ENV.fetch("PATH")].join(File::PATH_SEPARATOR), "DUEL_PASSED" => "duel/passed/main", "CI_API_V4_URL" => "https://gitlab/api/v4", "CI_PROJECT_ID" => "7",
            "DUEL_TOKEN" => "t", "CI_COMMIT_BRANCH" => "main", "CI_COMMIT_SHA" => "abc", "AT" => at, "BASE" => base, "BLOCKER" => blocker}
 
     assert_equal success, shell(env, "set -o pipefail\n#{script}", shell: "sh", out: (@said = File.join(tmpdir, "said")))
@@ -1141,7 +1105,7 @@ class InitTest < DuelTest
     assert_equal ["gems/parser/duel.md", "gems/parser/duel.env"], jobs.dig("duel:gems/parser", "artifacts").values_at("paths", "reports").map { |v| v.is_a?(Array) ? v.first : v.fetch("dotenv") }
     assert_includes text, %(marker="<!-- duel gems/parser"\n)
     assert_includes text, %(--report gems/parser --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel gems/parser'\n)
-    assert_includes text, %(branch="duel/passed-gems-parser/$CI_COMMIT_BRANCH"\n)
+    assert_includes text, %(branch=$DUEL_PASSED\n), "the branch Duel names"
     assert_equal "duel/gems/parser/passed", jobs.dig("duel:gems/parser:passed", "resource_group"), "its own, with no colon, which GitLab doesn't take"
   end
 
@@ -1421,15 +1385,13 @@ class InitTest < DuelTest
     perf, comment = files.values.map { |content| YAML.safe_load(content) }
 
     assert_equal "Duel", perf.fetch("name")
-    inputs = %w[ruby-version version-file jit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report
-      accept-label release-tags
-      comment-on-pushes mark-passed badge passed-branch badge-branch marker]
+    inputs = %w[ruby-version version-file jit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report badge]
 
     assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
     refute perf.key?("concurrency"), "the caller's: one of its own would wait for the caller's run"
     assert_equal %w[duel commit-comment passed badge], perf.fetch("jobs").keys, "every job"
-    assert_equal %w[inputs.comment-on-pushes inputs.mark-passed inputs.badge], perf.fetch("jobs").values.drop(1).map { |job| job.fetch("if")[/inputs\.[a-z-]+/] },
-      "each that's left out unless .duel.rb asks for it, run where its input says to"
+    assert_equal [nil, nil, "inputs.badge"], perf.fetch("jobs").values.drop(1).map { |job| job.fetch("if")[/inputs\.[a-z-]+/] },
+      "the jobs for pushes where Duel says, and the badge's where its input says to"
     steps = perf.dig("jobs", "duel", "steps")
 
     assert_equal "inputs.version-file", steps.find { |step| step["name"] == "Find the baseline's Ruby" }.fetch("if")
@@ -1440,7 +1402,6 @@ class InitTest < DuelTest
 
     assert_equal [gemfile, jit], [steps[3], steps[4].except("run")]
     assert_operator steps.index { |step| step["uses"]&.start_with?("ruby/setup-ruby") }, :>, 4
-    assert_equal "${{ inputs.accept-label }}", steps.fetch(1).dig("env", "ACCEPT_LABEL")
     assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
     assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
@@ -1512,7 +1473,7 @@ class InitTest < DuelTest
 
     assert_equal "sferik/duel-ruby/.github/workflows/duel.yml@v#{Duel::VERSION}", job.fetch("uses")
     assert_equal({"contents" => "write", "pull-requests" => "read"}, job.fetch("permissions"), "though nothing it turns on writes")
-    assert_equal({"ruby-version" => ruby_version, "accept-label" => "duel: accept"}, job.fetch("with"))
+    assert_equal({"ruby-version" => ruby_version}, job.fetch("with"), "nothing of .duel.rb's: Duel reads it")
     assert_equal %w[pull_request merge_group push schedule workflow_dispatch], perf.fetch(true).keys
     assert perf.key?("concurrency")
     assert_equal "sferik/duel-ruby/.github/workflows/duel-comment.yml@v#{Duel::VERSION}", comment.dig("jobs", "comment", "uses")
@@ -1521,9 +1482,10 @@ class InitTest < DuelTest
     assert_equal %w[workflow_run pull_request_target], comment.fetch(true).keys
   end
 
-  # What .duel.rb asks for is passed on: the jobs for pushes (which write,
-  # as the badge's does), no label, other release tags, and the Ruby
-  # .ruby-version names.
+  # What the workflow needs to know before Duel runs is passed on: the
+  # Ruby .ruby-version names, and the badge, which writes. Nothing of
+  # .duel.rb's, which Duel reads, but the label, for the comment
+  # workflow, which runs none of the code.
   def test_reusable_settings
     gem
     write(".ruby-version", "4.0.1\n")
@@ -1533,40 +1495,41 @@ class InitTest < DuelTest
     job = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
 
-    assert_equal({"version-file" => true, "release-tags" => "my_gem-v*", "comment-on-pushes" => true, "mark-passed" => true, "badge" => true},
-      job.fetch("with"))
+    assert_equal({"version-file" => true, "badge" => true}, job.fetch("with"))
     assert_equal "write", job.dig("permissions", "contents")
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"))
-    write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
-    FileUtils.rm_rf(File.join(root, ".github"))
-    init("--reusable", "--badge").run
-
-    assert_equal "write", YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "permissions", "contents"), "the badge's"
     refute comment.fetch("jobs").fetch("comment").key?("with"), "nothing to pass on"
     assert_equal %w[workflow_run], comment.fetch(true).keys, "no label to run it again for"
-    %w[mark-passed comment-on-pushes].each do |input|
-      write(".duel.rb", (input == "mark-passed") ? "Duel.configure { |c| c.push_base = :last_passed }\n" : "Duel.configure { |c| c.fail_on = :pull_requests }\n")
-      FileUtils.rm_rf(File.join(root, ".github"))
-      init("--reusable").run
-      written = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
-
-      assert_equal [true, "write"], [written.dig("with", input), written.dig("permissions", "contents")], input
-    end
   end
 
-  # Where .duel.rb doesn't load, the workflow has both jobs for pushes (as
-  # the whole workflow does), and passes on no label or release tags.
+  # Where .duel.rb doesn't load, the workflows take Duel's defaults: its
+  # label.
   def test_reusable_with_a_config_that_doesnt_load
     gem
     write(".duel.rb", "raise 'not here'\n")
     init("--reusable").run
 
-    assert_equal({"ruby-version" => ruby_version, "comment-on-pushes" => true, "mark-passed" => true},
-      YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "with"))
+    assert_equal({"ruby-version" => ruby_version}, YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "with"))
+    assert_equal({"accept-label" => "duel: accept"}, YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "comment", "with"))
   end
 
-  # A project in a subdirectory: its directory, its branches, its marker,
-  # and its Perf workflow's name.
+  # The reusable workflow's badge branch and marker, from its
+  # working-directory: duel/badge and duel at the root, and for a project
+  # in a subdirectory, its path's, as Init names them.
+  def test_the_reusable_workflows_names
+    jobs = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml")).fetch("jobs")
+    named = jobs.dig("badge", "steps", 0, "run")[/^BRANCH=duel\/badge\n.*?\n/m]
+    out = File.join(tmpdir, "out")
+    branch = ->(directory) { shell({"DIRECTORY" => directory}, "#{named}echo \"$BRANCH\"", out: out) && File.read(out).chomp }
+
+    assert_equal %w[duel/badge duel/badge-gems-parser], %w[. gems/parser].map(&branch)
+    assert_equal "${{ inputs.working-directory == '.' && 'duel' || format('duel {0}', inputs.working-directory) }}",
+      jobs.dig("commit-comment", "steps", 1, "env", "MARKER")
+  end
+
+  # A project in a subdirectory: its directory, from which the reusable
+  # workflow works out its branches and its marker, and its Perf
+  # workflow's name.
   def test_reusable_in_a_subdirectory
     system("git", "init", "--quiet", tmpdir, exception: true)
     project = File.join(tmpdir, "gems", "parser")
@@ -1576,16 +1539,9 @@ class InitTest < DuelTest
     perf = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
     comment = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
 
-    assert_equal({"ruby-version" => ruby_version, "working-directory" => "gems/parser", "accept-label" => "duel: accept", "badge" => true,
-                  "passed-branch" => "duel/passed-gems-parser", "badge-branch" => "duel/badge-gems-parser", "marker" => "duel gems/parser"},
-      perf.dig("jobs", "duel", "with"))
+    assert_equal({"ruby-version" => ruby_version, "working-directory" => "gems/parser", "badge" => true}, perf.dig("jobs", "duel", "with"))
     assert_equal({"accept-label" => "duel: accept", "perf-workflow" => "Perf (gems/parser)", "marker" => "duel gems/parser"}, comment.dig("jobs", "comment", "with"))
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [perf.fetch("name"), comment.dig(true, "workflow_run", "workflows")]
-    FileUtils.rm_rf(File.join(tmpdir, ".github"))
-    init("--reusable", at: project).run
-
-    refute YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml")).dig("jobs", "duel", "with").key?("badge-branch"),
-      "no badge, no branch for it"
   end
 
   # --check with --reusable compares the workflows that call Duel's, and

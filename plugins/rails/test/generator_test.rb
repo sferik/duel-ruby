@@ -51,12 +51,12 @@ class GeneratorTest < PluginTest
     "\n  # Which runs a regression fails: :every_run, or :pull_requests, for a\n" \
     "  # project where people push to main directly (on GitHub Actions, another\n" \
     "  # run warns and passes, and a pushed commit gets the comment instead,\n" \
-    "  # from a workflow job written only where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
+    "  # from a workflow job that runs where this is set: see docs/ci.md).\n  # c.fail_on = :every_run\n" \
     "\n  # A label that accepts a regression in a pull request, for a change\n  # that's slower on purpose (nil for none).\n  # c.accept_label = \"duel: accept\"\n" \
     "\n  # What the workflow compares a push with: :before (the commit before it),\n" \
     "  # or :last_passed (the last commit Duel passed, which a branch,\n" \
     "  # duel/passed/main, marks), so small slowdowns add up until they fail.\n" \
-    "  # (A workflow job moves the branch, written only where this is set: see\n  # docs/ci.md.)\n  # c.push_base = :before\nend\n"
+    "  # (A workflow job moves the branch where this is set: see docs/ci.md.)\n  # c.push_base = :before\nend\n"
 
   # What it adds to the Gemfile for profiles of regressions.
   STACKPROF = %(gem "stackprof", platforms: :mri, group: :development\n)
@@ -151,7 +151,8 @@ class GeneratorTest < PluginTest
     RUBY
     workflow = read(".github/workflows/perf.yml")
 
-    assert_equal %w[duel], YAML.safe_load(workflow).fetch("jobs").keys, "none for pushes, which the defaults don't need, and no badge without --badge"
+    assert_equal %w[duel commit-comment passed], YAML.safe_load(workflow).fetch("jobs").keys,
+      "the jobs for pushes, which run where Duel says, and no badge without --badge"
     refute_includes workflow, "working-directory"
     refute_includes workflow, "baseline-ruby", "no Ruby of the baseline's own"
     assert_includes workflow, "          ruby-version: \"#{RUBY_VERSION[/\A\d+\.\d+/]}\"\n          bundler-cache: true\n"
@@ -195,8 +196,10 @@ class GeneratorTest < PluginTest
       workflow[/^  commit-comment:\n.*?^          marker=/m], "Duel's own, on a push"
     assert_equal own("perf.yml")[/^  passed:\n.*?^          BRANCH:/m],
       workflow[/^  passed:\n.*?^          BRANCH:/m], "Duel's own, marking a push passed"
-    assert_equal "duel/passed/${{ github.ref_name }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH")
-    badge = own("perf.yml")[/^  # Duel's badge.*\z/m]
+    assert_equal "${{ needs.duel.outputs.passed }}", YAML.safe_load(workflow).dig("jobs", "passed", "steps", 0, "env", "BRANCH"), "the branch Duel names"
+    # (Its whole workflow's, without the reusable one's.)
+    badge = own("perf.yml")[/^  # Duel's badge.*\z/m].gsub(/<% if reusable\? -%>\n.*?<% else -%>\n(.*?)<% end -%>\n/m, '\\1')
+      .gsub(/<% if reusable\? -%>\n.*?<% end -%>\n/m, "")
 
     assert_equal badge.gsub("<%= badge_branch %>", "duel/badge").delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
   end
@@ -206,7 +209,7 @@ class GeneratorTest < PluginTest
   def test_the_badge
     generate("--badge")
 
-    assert_equal %w[duel badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
+    assert_equal %w[duel commit-comment passed badge], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
   end
 
   # A benchmark of the app's boot, in a process of its own.
@@ -229,12 +232,11 @@ class GeneratorTest < PluginTest
     workflow = read(".github/workflows/perf.yml")
 
     assert_includes workflow, "        with:\n          bundler-cache: true\n"
-    assert_operator workflow.index("id: baseline-ruby"), :<, workflow.rindex("bundler-cache"), "the baseline's Ruby first"
+    assert_operator workflow.index("id: ruby\n"), :<, workflow.index("id: baseline-ruby"), "the app's Ruby first, for duel base"
     baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
 
     assert_equal({"ruby-version" => "${{ steps.baseline.outputs.ruby }}", "bundler-cache" => true}, baseline.fetch("with"), "with its own bundle")
     assert_includes workflow, %(ruby_of() { git show "$1:./.ruby-version" 2>/dev/null)
-    assert_includes workflow, %(          RELEASE_TAGS: "v*"\n)
     assert_includes workflow, %(ln -sfn "$PREFIX" ~/.rubies/ruby-)
     assert_equal 9, YAML.safe_load(workflow).dig("jobs", "duel", "steps").size, "YAML"
   end
@@ -242,14 +244,14 @@ class GeneratorTest < PluginTest
   # An app in a subdirectory of its repository (a monorepo's): its
   # workflow is at the repository's root, named for the app's directory,
   # and runs there.
-  # A .duel.rb that doesn't load leaves the workflow every job.
+  # A .duel.rb that doesn't load leaves the workflows Duel's defaults.
   def test_a_config_that_doesnt_load
     generate
     out, = capture_io { regenerate(config: "Duel.configure { |c| c.use :not_a_plugin }\n", quiet: false) }
 
     assert_equal %w[duel commit-comment passed], YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs").keys
     said = ".duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the duel-not_a_plugin gem " \
-      "to the Gemfile), so the workflow has both jobs for pushes, as if it asked for them"
+      "to the Gemfile), so the workflows take Duel's defaults"
 
     assert_equal 1, out.scan(/warning  #{Regexp.escape(said)}$/).size, "said once, as .duel.rb is loaded once"
   end
@@ -264,7 +266,7 @@ class GeneratorTest < PluginTest
     assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
-    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: duel/passed-apps-blog/${{ github.ref_name }}",
+    assert_equal [%(          marker="<!-- duel apps/blog"), "          BRANCH: ${{ needs.duel.outputs.passed }}",
       "          BRANCH: duel/badge-apps-blog", %(          duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel apps/blog')],
       (workflow + read(".github/workflows/perf-apps-blog-comment.yml")).lines(chomp: true).grep(/marker="|--marker |BRANCH: /).uniq,
       "comments, and a branch, of its own"

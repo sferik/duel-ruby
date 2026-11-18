@@ -55,12 +55,12 @@ module Duel
 
     # The last release, or where a pull request merged since then was
     # accepted with Config#accept_label, the commit that merged the last
-    # one (Settings#accepted, which the workflow finds): what it slowed
-    # down was accepted, so it's compared with instead. Nil with no
-    # release.
+    # one (Settings#accepted, or on GitHub Actions, #merged_accepted):
+    # what it slowed down was accepted, so it's compared with instead.
+    # Nil with no release.
     def last_release
       found = release or return
-      accepted = @settings.accepted
+      accepted = @settings.accepted || merged_accepted(found)
       return found unless accepted && !@config.accept_label.nil?
       return found unless ancestor?(found, accepted) && !ancestor?(accepted, found) && ancestor?(accepted, "HEAD")
 
@@ -68,6 +68,26 @@ module Duel
     end
 
     def ancestor?(commit, of) = !git("merge-base", "--is-ancestor", commit, of, allow_failure: true).nil?
+
+    # The last commit since +release+ that merged a pull request with
+    # Config#accept_label, on GitHub (in Settings#repository: a scheduled
+    # run's on GitHub Actions), as gh finds them, or nil: without the
+    # label, or gh, or what gh needs (GH_TOKEN), say.
+    def merged_accepted(release)
+      repository = @settings.repository
+      label = @config.accept_label
+      return unless repository && label
+
+      since = Time.at(Integer(git("log", "-1", "--format=%ct", release))).utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+      merged, _, status = Spawn.open3(:capture3, "gh", "pr", "list", "--repo", repository, "--state", "merged", "--label", label,
+        "--search", "merged:>=#{since}", "--limit", "1000", "--json", "mergeCommit", "--jq", ".[].mergeCommit.oid")
+      return unless status.success?
+
+      merges = merged.split
+      git("rev-list", "#{release}..HEAD").split.find { |commit| merges.include?(commit) }
+    rescue SystemCallError # (no gh)
+      nil
+    end
 
     # The branch that marks the last commit Duel passed in a push to the
     # branch pushed (Settings#pushed), for Config#push_base:

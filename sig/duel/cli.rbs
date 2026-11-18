@@ -58,7 +58,9 @@ module Duel
     @config: Config?
     # The Config::RUN_SETTINGS options given.
     @given: Array[Symbol]
-    @passed: bool?
+    # The branch that marks the push passed (see Baseline#passed_branch),
+    # where the run marks it.
+    @passed: String?
     @note: String?
     @accepted: bool?
     # Why a run that failed passed anyway, for the JSON report.

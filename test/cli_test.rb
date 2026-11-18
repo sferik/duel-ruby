@@ -225,11 +225,17 @@ class CLITest < DuelTest
   end
 
   # On a schedule, the commit since the last release that merged the last
-  # pull request accepted with the label, as the workflow found it.
+  # pull request accepted with the label, where DUEL_ACCEPTED gives it,
+  # and on GitHub Actions, the repository Duel finds it in otherwise.
   def test_accepted
     assert_equal "abc123", cli(env: {"DUEL_ACCEPTED" => "abc123"}).parse.accepted
     assert_nil cli(env: {"DUEL_ACCEPTED" => ""}).parse.accepted, "none"
     assert_nil cli.parse.accepted, "unset"
+    scheduled = {"GITHUB_EVENT_NAME" => "schedule", "GITHUB_REPOSITORY" => "me/mine"}
+
+    assert_equal "me/mine", cli(env: scheduled).parse.repository
+    assert_nil cli(env: scheduled.merge("GITHUB_EVENT_NAME" => "push")).parse.repository, "not a schedule"
+    assert_nil cli(env: scheduled.merge("GITLAB_CI" => "true", "CI_PIPELINE_SOURCE" => "schedule")).parse.repository, "GitLab's"
   end
 
   # On GitLab CI: a push's baseline (CI_COMMIT_BEFORE_SHA) and branch

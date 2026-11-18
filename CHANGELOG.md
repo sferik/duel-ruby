@@ -97,6 +97,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and bundle are set up, so it no longer finds the main branch and the
   last release in shell of its own, which `c.main_branch` and
   `c.release_tags` had to be copied into.
+- The Perf workflow follows `.duel.rb`, rather than copying it. Its
+  jobs for pushes, the comment on a pushed commit and marking a push
+  passed, are always there (`duel init` wrote them only where `.duel.rb`
+  asked, and said to write the workflow again if that changed), and run
+  where Duel's outputs say to: its `passed` output is the branch that
+  marks the push passed (`duel/passed/main`), not `true`, so the job
+  moves the one Duel reads. Duel's reusable Perf workflow takes none of
+  `.duel.rb`'s settings: `accept-label`, `release-tags`,
+  `comment-on-pushes`, `mark-passed`, `passed-branch`, `badge-branch`
+  and `marker` are gone, as Duel reads `.duel.rb`, and the names it
+  needs come from `working-directory`. And on a schedule, Duel finds
+  the last change a label accepted since the last release itself, with
+  `gh` (`DUEL_ACCEPTED` still names one), which the workflow's labels
+  step did, with `c.accept_label` and `c.release_tags` copied into it.
 - `duel` fails on an argument that isn't an option (`duel v1.2.0`, say,
   for `duel --base v1.2.0`), which it ignored.
 - `duel clean` removes `tmp/duel` and the baseline's git worktree, as

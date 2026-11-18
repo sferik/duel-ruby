@@ -3,7 +3,6 @@
 require "erb"
 require "json"
 require "fileutils"
-require "tmpdir"
 require "open3"
 require "optparse"
 require "pathname"
@@ -330,28 +329,16 @@ module Duel
     def reusable? = false
 
     # What the workflow it writes with --reusable passes on to Duel's
-    # Perf workflow, as its inputs (see Reusable): what .duel.rb sets that
-    # isn't the input's default, each as YAML has it.
+    # Perf workflow, as its inputs (see Reusable): what isn't the input's
+    # default, each as YAML has it. (What .duel.rb sets, Duel reads.)
     def perf_inputs
       {
         "ruby-version" => ruby_version,
         "version-file" => (true if version_file),
         "working-directory" => working_directory,
-        "accept-label" => accept_label,
-        "release-tags" => (set_release_tags unless set_release_tags == "v*"),
-        "comment-on-pushes" => (true if comment_on_pushes?),
-        "mark-passed" => (true if mark_passed?),
-        "badge" => (true if badge?),
-        "passed-branch" => (passed_branch if working_directory),
-        "badge-branch" => (badge_branch if working_directory && badge?),
-        "marker" => (marker if working_directory)
+        "badge" => (true if badge?)
       }.compact.transform_values(&:to_json)
     end
-
-    # The glob release tags match, as .duel.rb sets it (c.release_tags),
-    # or nil where it doesn't load. (The whole workflows take the
-    # conventions', and say to set RELEASE_TAGS to match.)
-    def set_release_tags = settings&.release_tags
 
     # The same, for Duel's Perf comment workflow.
     def comment_inputs
@@ -365,63 +352,31 @@ module Duel
     # The project's configuration, as the conventions have it.
     def config = Config.new(@root)
 
-    # The project's settings, which decide the workflow's jobs: its
-    # .duel.rb's, or where there's none yet or --force replaces it, those
-    # of the one it writes. Nil where it doesn't load (one
-    # of its plugins isn't installed, say), and then the workflow has
-    # both jobs for pushes, as if .duel.rb asked for them, and says so.
+    # The project's settings, which decide what the comment workflow runs
+    # the Duel job again for (the label that accepts a regression): its
+    # .duel.rb's, or nil where there's none yet or --force replaces it
+    # (the one it writes sets nothing), or it doesn't load (one of its
+    # plugins isn't installed, say, which it says): Duel's own.
     def settings = instance_variable_defined?(:@settings) ? @settings : (@settings = load_settings)
 
     def load_settings
       path = File.join(@root, ".duel.rb")
-      return written_settings if @force || !File.exist?(path)
-
-      Duel.load_config(path)
+      Duel.load_config(path) if !@force && File.exist?(path)
     rescue ScriptError, StandardError => e
-      @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflow has both jobs for pushes, as if it asked for them"
-    end
-
-    # The settings of the .duel.rb it writes.
-    def written_settings
-      Dir.mktmpdir do |dir|
-        path = File.join(dir, ".duel.rb")
-        File.write(path, render("duel.rb"))
-        Duel.load_config(path)
-      end
+      @err.puts "duel init: .duel.rb didn't load (#{e.class}: #{e}), so the workflows take Duel's defaults"
     end
 
     # The label that accepts a regression (Config#accept_label), for the
-    # workflows: the Duel job's, to find what was accepted since the last
-    # release, and the comment's, to run the Duel job again when it's
-    # added or taken off. Nil without one, or where .duel.rb doesn't load.
-    def accept_label = settings&.accept_label
+    # comment workflow, to run the Duel job again when it's added or taken
+    # off: .duel.rb's, or where it doesn't load, Duel's own. Nil without
+    # one.
+    def accept_label = (settings || config).accept_label
 
-    # Whether the workflow comments on a pushed commit: where a regression
-    # in a push passes (c.fail_on = :pull_requests), the only time Duel
-    # says to.
-    def comment_on_pushes?
-      found = settings
-      found.nil? || found.fail_on == :pull_requests
-    end
-
-    # Whether the workflow marks a push passed: where a push is compared
-    # with the last commit Duel passed (c.push_base = :last_passed).
-    def mark_passed?
-      found = settings
-      found.nil? || found.push_base == :last_passed
-    end
-
-    # Whether the workflow keeps a badge for the README (--badge): its job
-    # moves a branch, so it's the workflow's only job, without the jobs
-    # for pushes, that writes to the repository.
+    # Whether the workflow keeps a badge for the README (--badge).
     def badge? = @badge
 
     # The library the gemspec names (see Config#gem_library), or nil.
     def library = config.gem_library
-
-    # The glob release tags match (Config#release_tags), for the workflow
-    # to find the last release as Duel does.
-    def release_tags = config.release_tags
 
     # The library, without a gemspec: lib/'s only Ruby file, or nil.
     def guess
@@ -519,22 +474,18 @@ module Duel
       # Each an input's (see the templates' workflow_call).
       def accept_label = "${{ inputs.accept-label }}"
 
-      def release_tags = "${{ inputs.release-tags }}"
-
       def ruby_version = "${{ inputs.ruby-version }}"
 
       def working_directory = "${{ inputs.working-directory }}"
 
-      def passed_branch = "${{ inputs.passed-branch }}"
+      # (As the comments name them, for a project at the root: the jobs
+      # work them out from working-directory.)
+      def passed_branch = "duel/passed"
 
-      def badge_branch = "${{ inputs.badge-branch }}"
+      def badge_branch = "duel/badge"
 
       # Each in, run only where its input says to.
       def version_file = true
-
-      def comment_on_pushes? = true
-
-      def mark_passed? = true
 
       def badge? = true
     end
