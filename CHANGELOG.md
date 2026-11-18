@@ -87,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `duel clean` removes `tmp/duel` and the baseline's git worktree, as
   `duel --clean` did, which took (and ignored) every other option, and
   is gone. It takes `--config`.
+- `duel comment` comments on a GitLab merge request where `GITLAB_CI`
+  says it runs on GitLab CI, without `--gitlab`, which the GitLab CI
+  jobs `duel init --gitlab` writes no longer pass. (It's still taken,
+  and does nothing, for the jobs that earlier versions wrote.)
 - `--candidate-dir` is `--candidate`, as `--base` names the baseline,
   and `DUEL_CANDIDATE` sets it.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and

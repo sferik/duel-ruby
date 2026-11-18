@@ -30,9 +30,10 @@ module Duel
   # Reporter's.
   # @api private
   class Comment
-    USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT] [--gitlab]\n\n" \
+    USAGE = "Usage: duel comment --report DIR --head SHA [--marker TEXT]\n\n" \
       "Comments on a pull request with the report a Perf run kept in DIR, when Duel said to, and only if the pull\n" \
-      "request's head is still SHA: what the Perf comment workflow runs (or with --gitlab, the comment job).\n\n"
+      "request's head is still SHA: what the Perf comment workflow runs (or on GitLab CI, where GITLAB_CI is set,\n" \
+      "on a merge request, with DUEL_COMMENT_TOKEN: the comment job).\n\n"
 
     # The first release of Duel whose `duel comment` the Perf comment
     # workflow that this one writes can run (0.2.0's merges the reports
@@ -90,7 +91,10 @@ module Duel
     # Returns the exit status: 0 commented (or had nothing to say), 1 GitHub
     # wouldn't take it, 2 a bad option.
     def run
-      rest = catch(:help) { parser.parse(@argv) } or return 0
+      # (--gitlab is taken, and unlisted: the comment jobs that duel init
+      # wrote before, which install the newest Duel of their release,
+      # pass it. GITLAB_CI says it's GitLab's now.)
+      rest = catch(:help) { parser.parse(@argv - ["--gitlab"]) } or return 0
       raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
       report = @report
       raise OptionParser::MissingArgument, "--report and --head are required" unless report && @head
@@ -103,13 +107,16 @@ module Duel
 
     private
 
+    # Whether it runs on GitLab CI (GITLAB_CI, set and not empty): then it
+    # comments on a merge request.
+    def gitlab? = !@env["GITLAB_CI"].to_s.empty?
+
     def parser
       OptionParser.new do |o|
         o.banner = USAGE
         o.on("--report DIR", "The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)") { |v| @report = v }
         o.on("--head SHA", "The commit the run compared, the pull request's head") { |v| @head = v }
         o.on("--marker TEXT", "What marks Duel's comments (default: duel)") { |v| @marker = v }
-        o.on("--gitlab", "Comment on a GitLab merge request, from GitLab CI (with DUEL_COMMENT_TOKEN)") { @gitlab = true }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
           throw :help
@@ -124,25 +131,25 @@ module Duel
       pr, mode, status = SAID.keys.map { |name| merged(name, reports.map { |report| said(name, report) }) }
       return quiet("Duel said not to") unless pr && mode && status
 
-      head = (@gitlab ? merge_request(pr)&.fetch("sha") : gh("repos/#{repository}/pulls/#{pr}", "--jq", ".head.sha")&.chomp) or return 1
-      return quiet("the #{@gitlab ? "merge" : "pull"} request has moved on since the run") unless head == @head
+      head = (gitlab? ? merge_request(pr)&.fetch("sha") : gh("repos/#{repository}/pulls/#{pr}", "--jq", ".head.sha")&.chomp) or return 1
+      return quiet("the #{gitlab? ? "merge" : "pull"} request has moved on since the run") unless head == @head
 
-      ours = (@gitlab ? notes(pr) : earlier(pr)) or return 1
+      ours = (gitlab? ? notes(pr) : earlier(pr)) or return 1
       ours = ours.select { |c| c.fetch("marked").start_with?("#{marker} status=") || c.fetch("marked") == "#{marker} -->" }
       last = ours.last&.fetch("marked")
       stale = last && !last.eql?("#{marker} status=#{status} -->")
       return quiet("the last comment says #{status} already") unless mode == "post" || stale
 
       post(pr, "#{marker} status=#{status} -->\n#{body(reports)}") or return 1
-      @out.puts "duel comment: commented on #{@gitlab ? "merge request !" : "pull request "}#{pr}"
-      ours.reject { |earlier| earlier.fetch("hidden") }.each { |earlier| hide(earlier.fetch("id")) } unless @gitlab
+      @out.puts "duel comment: commented on #{gitlab? ? "merge request !" : "pull request "}#{pr}"
+      ours.reject { |earlier| earlier.fetch("hidden") }.each { |earlier| hide(earlier.fetch("id")) } unless gitlab?
       0
     end
 
     # Posts +body+ as a new comment on the pull request (or merge request)
     # +pr+: what GitHub (or GitLab) said, or nil.
     def post(pr, body)
-      return gh("repos/#{repository}/issues/#{pr}/comments", "--method", "POST", "-f", "body=#{body}") unless @gitlab
+      return gh("repos/#{repository}/issues/#{pr}/comments", "--method", "POST", "-f", "body=#{body}") unless gitlab?
 
       gitlab(:Post, "#{project}/merge_requests/#{pr}/notes", {"body" => body})
     end
@@ -153,7 +160,7 @@ module Duel
     # duel-report and duel-report-NAME (where a call of the Perf workflow
     # named its report), in order (Dir.glob's).
     def reports(dir)
-      return [dir] if @gitlab || File.file?(File.join(dir, "comment.env"))
+      return [dir] if gitlab? || File.file?(File.join(dir, "comment.env"))
 
       Dir.glob("duel-report{,-*}", base: dir).map { |name| File.join(dir, name) }
     end
@@ -198,7 +205,7 @@ module Duel
     # What Duel said, as SAID has it, or nil: in +report+'s comment.env
     # (the last line that says it), or on GitLab CI, as GITLAB has it.
     def said(name, report)
-      return @env[GITLAB.fetch(name)].to_s[SAID.fetch(name)] if @gitlab
+      return @env[GITLAB.fetch(name)].to_s[SAID.fetch(name)] if gitlab?
 
       path = File.join(report, "comment.env")
       lines = File.file?(path) ? File.readlines(path, chomp: true) : [] #: Array[String]

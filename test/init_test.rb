@@ -1068,7 +1068,7 @@ class InitTest < DuelTest
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
     assert_equal ["ruby:slim", ["gem install duel --version '~> 0.2.0' --no-document",
-      %(duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
+      %(duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
       jobs.fetch("duel:comment").values_at("image", "script"), "Duel's own code, from RubyGems"
     assert_includes jobs.dig("duel:passed", "rules", 0, "if"), "$DUEL_TOKEN"
     assert_equal "duel/passed", jobs.dig("duel:passed", "resource_group"), "one at a time"

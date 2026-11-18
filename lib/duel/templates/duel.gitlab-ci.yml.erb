@@ -80,7 +80,7 @@
     - gem install duel --version '~> <%= Duel::Comment::SINCE %>' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
-    - duel comment --gitlab --report <%= working_directory || "." %> --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker '<%= marker.gsub("'") { "'\\''" } %>'
+    - duel comment --report <%= working_directory || "." %> --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker '<%= marker.gsub("'") { "'\\''" } %>'
 
 # The report, as a new comment on a pushed commit, when Duel says to, as
 # for a merge request: only where a regression in a push passes (see

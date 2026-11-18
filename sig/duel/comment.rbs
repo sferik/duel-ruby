@@ -33,7 +33,6 @@ module Duel
     @marker: String
     @report: String?
     @head: String?
-    @gitlab: bool?
 
     def initialize: (Array[String] argv, env: CLI::_Env, out: _Output, err: _Output) -> void
 
@@ -42,6 +41,9 @@ module Duel
     def run: () -> Integer
 
     private
+
+    # Whether it runs on GitLab CI.
+    def gitlab?: () -> bool
 
     def parser: () -> OptionParser
 

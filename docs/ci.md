@@ -933,7 +933,7 @@ log and its `duel.md` artifact have the report.
   protected, so only your protected branches' pipelines have it, to
   comment on a pushed commit and to mark a push passed.
 
-The comment on a merge request comes from `duel comment --gitlab`,
+The comment on a merge request comes from `duel comment`, on GitLab CI,
 installed from RubyGems in a `ruby:slim` image, as on GitHub, so a fix
 to it comes with a release of Duel. It trusts only a `DUEL_COMMENT` and
 a `DUEL_STATUS` that Duel says, and comments only if the merge
@@ -1031,7 +1031,7 @@ duel:comment:
     - gem install duel --version '~> 0.2.0' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
-    - duel comment --gitlab --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
+    - duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
 
 # The report, as a new comment on a pushed commit, when Duel says to, as
 # for a merge request: only where a regression in a push passes (see

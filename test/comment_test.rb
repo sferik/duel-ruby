@@ -245,12 +245,12 @@ class CommentTest < DuelTest
   end
 
   GITLAB_ENV = {"CI_API_V4_URL" => "https://gitlab.example/api/v4", "CI_PROJECT_ID" => "7", "DUEL_COMMENT_TOKEN" => "t",
-                "CI_MERGE_REQUEST_IID" => "12", "DUEL_COMMENT" => "post", "DUEL_STATUS" => "failed"}.freeze
+                "CI_MERGE_REQUEST_IID" => "12", "DUEL_COMMENT" => "post", "DUEL_STATUS" => "failed", "GITLAB_CI" => "true"}.freeze
 
   # A note of GitLab's API, by +author+ (an id).
   def note(id, body, author: 5) = {"id" => id, "author" => {"id" => author}, "body" => body}
 
-  # Runs `duel comment --gitlab` in an environment of GITLAB_ENV and
+  # Runs `duel comment` on GitLab CI, in an environment of GITLAB_ENV and
   # +env+, with GitLab's API faked: the merge request's head is +head+,
   # its notes' pages are +notes+, and the calls in +failing+ fail.
   # Returns its exit status, and the calls it made.
@@ -258,7 +258,7 @@ class CommentTest < DuelTest
     File.write(File.join(report, "duel.md"), "**Slower**\n")
     calls = []
     paging = method(:page_of)
-    command = Duel::Comment.new(["--gitlab", "--report", report, "--head", "abc", *argv], env: GITLAB_ENV.merge(env),
+    command = Duel::Comment.new(["--report", report, "--head", "abc", *argv], env: GITLAB_ENV.merge(env),
       out: (@out = StringIO.new), err: (@err = StringIO.new))
     command.define_singleton_method(:gitlab) do |verb, path, body = nil, pages: false|
       calls << [verb, path, body, pages].compact.reject { |arg| arg == false }
@@ -291,6 +291,7 @@ class CommentTest < DuelTest
     assert_equal "duel comment: commented on merge request !12\n", @out.string
     assert_equal [0, 1], gitlab_comment(head: "def").then { |done, made| [done, made.size] }
     assert_equal "duel comment: no comment (the merge request has moved on since the run)\n", @out.string
+    assert_equal [status, calls], gitlab_comment("--gitlab"), "--gitlab too, as the comment jobs duel init wrote before pass it"
   end
 
   # It trusts only what Duel could have said, as on GitHub.
@@ -298,7 +299,7 @@ class CommentTest < DuelTest
     [{"DUEL_COMMENT" => "none"}, {"DUEL_STATUS" => "failed -->"}, {"CI_MERGE_REQUEST_IID" => "12; x"}, {"DUEL_COMMENT" => ""}].each do |env|
       assert_equal [0, []], gitlab_comment(env: env), env.inspect
     end
-    command = Duel::Comment.new(["--gitlab", "--report", report, "--head", "abc"], env: GITLAB_ENV.except("DUEL_STATUS"), out: StringIO.new,
+    command = Duel::Comment.new(["--report", report, "--head", "abc"], env: GITLAB_ENV.except("DUEL_STATUS"), out: StringIO.new,
       err: StringIO.new)
 
     assert_equal 0, command.run, "none said"
@@ -449,15 +450,15 @@ class CommentTest < DuelTest
   def test_options
     assert_equal 0, Duel::Comment.new(["--help"], env: {}, out: (out = StringIO.new), err: StringIO.new).run
     assert_equal <<~HELP, out.string
-      Usage: duel comment --report DIR --head SHA [--marker TEXT] [--gitlab]
+      Usage: duel comment --report DIR --head SHA [--marker TEXT]
 
       Comments on a pull request with the report a Perf run kept in DIR, when Duel said to, and only if the pull
-      request's head is still SHA: what the Perf comment workflow runs (or with --gitlab, the comment job).
+      request's head is still SHA: what the Perf comment workflow runs (or on GitLab CI, where GITLAB_CI is set,
+      on a merge request, with DUEL_COMMENT_TOKEN: the comment job).
 
               --report DIR                 The directory of the Perf run's report (duel.md and comment.env), or of its reports (duel-report*/)
               --head SHA                   The commit the run compared, the pull request's head
               --marker TEXT                What marks Duel's comments (default: duel)
-              --gitlab                     Comment on a GitLab merge request, from GitLab CI (with DUEL_COMMENT_TOKEN)
           -h, --help                       Print this help
     HELP
     assert_equal 0, Duel::Comment.new(["-h"], env: {}, out: StringIO.new, err: StringIO.new).run
