@@ -74,8 +74,8 @@ module Duel
     # each version's median an iteration.
     def timed(result)
       # (Timed, so measured, with an n.)
+      n = result.n #: Integer
       result.timed.to_h do |metric, t|
-        n = result.n #: Integer
         [metric, {"ratio" => t.fetch("median"), "interval" => t.fetch("interval"), "limit" => t.fetch("limit"),
                   "pairs" => t.fetch("pairs"), "processes" => t["processes"], "verdict" => t.fetch("verdict"), "baseline" => t.fetch("baseline").fdiv(n),
                   "candidate" => t.fetch("candidate").fdiv(n), "unit" => t.fetch("unit"), "plural" => t.fetch("plural"),
