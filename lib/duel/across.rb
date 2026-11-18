@@ -46,15 +46,9 @@ module Duel
       medians = Hash.new { |h, k| h[k] = [] }
       # @type var limits: Hash[String, Float]
       limits = {}
-      @results.each do |result|
-        next if result.error || result.skipped
-
-        result.timed.each do |metric, timed|
-          next unless timed.fetch("across")
-
-          medians[metric] << timed.fetch("median")
-          limits[metric] ||= Across.limit(timed.fetch("limit"))
-        end
+      each_across do |_, metric, timed|
+        medians[metric] << timed.fetch("median")
+        limits[metric] ||= Across.limit(timed.fetch("limit"))
       end
       return by_process_or_benchmark(medians, limits) if @by_process
 
@@ -62,6 +56,16 @@ module Duel
     end
 
     private
+
+    # Each timed measure that counts across the board, of each benchmark
+    # judged: its result, its metric and the measure.
+    def each_across
+      @results.each do |result|
+        next if result.error || result.skipped
+
+        result.timed.each { |metric, timed| yield result, metric, timed if timed.fetch("across") }
+      end
+    end
 
     # The verdicts of a run that judged benchmarks over workers: over the
     # workers' scores, for a metric with MIN_BENCHMARKS judged by process
@@ -80,13 +84,9 @@ module Duel
     def workers
       # @type var found: Hash[String, Array[Result::processes]]
       found = Hash.new { |h, k| h[k] = [] }
-      @results.each do |result|
-        next if result.error || result.skipped
-
-        result.timed.each do |metric, timed|
-          each = result.processes[metric]
-          found[metric] << each if each && timed.fetch("across")
-        end
+      each_across do |result, metric, _|
+        each = result.processes[metric]
+        found[metric] << each if each
       end
       found
     end

@@ -24,6 +24,10 @@ module Duel
 
     private
 
+    # Each timed measure that counts across the board, of each benchmark
+    # judged: its result, its metric and the measure.
+    def each_across: () { (Result, String, Result::timed) -> void } -> void
+
     # The verdicts of a run that judged benchmarks over workers.
     def by_process_or_benchmark: (Hash[String, Array[Float]] medians, Hash[String, Float] limits) -> Hash[String, verdict]
 
