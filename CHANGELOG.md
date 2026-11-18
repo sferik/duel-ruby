@@ -84,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `unsettled` (a benchmark's `verdict` says so), `errors` (each
     benchmark's `error` says so) and `comment` (the workflow's step
     output says so) are gone.
+- `duel clean` removes `tmp/duel` and the baseline's git worktree, as
+  `duel --clean` did, which took (and ignored) every other option, and
+  is gone. It takes `--config`.
 - `--candidate-dir` is `--candidate`, as `--base` names the baseline,
   and `DUEL_CANDIDATE` sets it.
 - `DUEL_FORCE` is `1` or `true` (or `0` or `false`, for off), and

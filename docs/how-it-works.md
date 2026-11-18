@@ -201,7 +201,7 @@ next run. If your project has an `ext/` directory, Duel builds the
 baseline with `bundle exec rake compile`. To remove the baseline, git's
 record of it, and the rest of `tmp/duel` (see
 [What Duel keeps in tmp/duel](#what-duel-keeps-in-tmpduel)), run
-`duel --clean`.
+`duel clean`.
 
 If your project is in a subdirectory of its repository, as in a
 monorepo, run `duel` in that subdirectory. Duel checks out the whole
@@ -240,7 +240,7 @@ Duel keeps what it needs between runs in your project's `tmp/duel`:
 
 When a run ends, Duel removes `tmp/duel` if nothing is left in it, and
 `tmp` too if Duel made it. A project without plugins that build
-something keeps nothing there. `duel --clean` removes the rest. Each
+something keeps nothing there. `duel clean` removes the rest. Each
 run's sockets and server directories are in a temporary directory,
 which the run removes when it ends.
 

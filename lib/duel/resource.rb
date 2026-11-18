@@ -149,7 +149,7 @@ module Duel
     # copy): the first that asks for +key+ builds it, in a directory the
     # block is given, and the rest get it built. A key names what's built
     # (put a version in it), as a file name: tmp/duel/cache/+key+, which
-    # `duel --clean` removes. A build that fails leaves nothing behind.
+    # `duel clean` removes. A build that fails leaves nothing behind.
     # A key that ends with a hash (and a version before it, if you like:
     # mysql-0.1.2-3f9c2a1b) replaces the builds of its name when the run
     # ends (see .evict): the one a run used is the one that's kept.

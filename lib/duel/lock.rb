@@ -38,7 +38,7 @@ module Duel
         yield
       ensure
         # (Removed while it's held, so a run that opens it after makes a new
-        # one. `duel --clean` may have removed it already.)
+        # one. `duel clean` may have removed it already.)
         FileUtils.rm_f(path)
         file.close
         FileUtils.rm_f(path) if windows

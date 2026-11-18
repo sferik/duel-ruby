@@ -546,7 +546,7 @@ class CleanTest < DuelTest
     FileUtils.mkdir_p(File.join(repo, "tmp", "duel"))
     File.write(File.join(repo, "tmp", "duel", "report.json"), "{}")
     out = StringIO.new
-    status = Dir.chdir(repo) { Duel::CLI.new(["--clean"], env: {}, out: out, err: StringIO.new).run }
+    status = Dir.chdir(repo) { Duel::CLI.new(["clean"], env: {}, out: out, err: StringIO.new).run }
 
     assert_equal 0, status
     assert_equal "duel: removed tmp/duel and its baseline's worktree\n", out.string

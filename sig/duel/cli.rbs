@@ -52,7 +52,6 @@ module Duel
     @env: _Env
     @out: _Output
     @err: _Output
-    @clean: bool?
     @markdown: String?
     @json: String?
     @settings: Settings?
@@ -86,6 +85,9 @@ module Duel
     def parse: () -> Settings
 
     private
+
+    # duel clean: removes what Duel keeps, and the baseline's worktree.
+    def clean: (Array[String] argv) -> Integer
 
     # What #run does, holding the project's lock.
     def compare: (Config config, Settings settings) -> Integer

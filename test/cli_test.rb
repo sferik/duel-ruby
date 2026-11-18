@@ -72,10 +72,12 @@ class CLITest < DuelTest
     assert_equal <<~HELP, cli.send(:parser, Duel::Settings.defaults).help
       Usage: duel [options]
              duel init [options]
+             duel clean [--config PATH]
              duel comment [options]
 
-      Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project, and
-      `duel comment` is what its Perf comment workflow runs.
+      Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project,
+      `duel clean` removes tmp/duel and the baseline's git worktree, and `duel comment` is what its Perf comment
+      workflow runs.
 
               --base REF|DIR               Baseline: a commit (default: where HEAD left the main branch), last-release (the newest
                                            release tag), or a directory, already built
@@ -99,7 +101,6 @@ class CLITest < DuelTest
                                            failures, or never (default: c.comment, or failures)
               --fail-on RUNS               Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another
                                            warns and passes) (default: c.fail_on, or every_run)
-              --clean                      Remove tmp/duel, and the baseline's git worktree, and stop
           -v, --version                    Print the version
     HELP
   end
@@ -408,14 +409,43 @@ class CLITest < DuelTest
     assert_equal [2, "duel: another duel run (pid 1) is using it\n"], [status, @err.string]
   end
 
+  # duel clean: the baseline's clean, holding the lock, for the
+  # configuration of the .duel.rb here (or --config's), and nothing else.
   def test_clean
     cleaned = []
     baseline = Object.new
     baseline.define_singleton_method(:clean) { cleaned << :clean }
-    status = stub(Duel::Baseline, :new, ->(*) { baseline }) { Dir.chdir(tmpdir) { cli("--clean").run } }
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.release_tags = "here-*" }\n))
+    File.write(File.join(FileUtils.mkdir_p(File.join(tmpdir, "other")).first, ".duel.rb"), "")
+    made = ->(config, settings) { (cleaned << [config.root, config.release_tags, settings.class]) && baseline }
+    locked = ->(state, &block) { (cleaned << [:locked, state]) && block.call }
+    statuses = stub(Duel::Lock, :hold, locked) do
+      stub(Duel::Baseline, :new, made) { Dir.chdir(tmpdir) { [cli("clean").run, cli("clean", "--config", "other/.duel.rb").run] } }
+    end
+    here = Dir.chdir(tmpdir) { Dir.pwd }
+    other = File.join(here, "other")
 
-    assert_equal [0, [:clean]], [status, cleaned]
+    assert_equal [0, 0], statuses
+    assert_equal [[:locked, File.join(here, "tmp", "duel")], [here, "here-*", Duel::Settings], :clean,
+      [:locked, File.join(other, "tmp", "duel")], [other, "v*", Duel::Settings], :clean], cleaned
     assert_equal "duel: removed tmp/duel and its baseline's worktree\n", @out.string
+  end
+
+  # Its usage (its own: OptionParser's exits), and what it doesn't take.
+  def test_clean_takes_only_config
+    usage = "Usage: duel clean [--config PATH]\n        --config PATH                Config file (default: .duel.rb)\n" \
+      "    -h, --help                       Print this help\n"
+    %w[--help -h].each do |help|
+      assert_equal [0, usage], Dir.chdir(tmpdir) { [cli("clean", help).run, @out.string] }
+    rescue SystemExit
+      flunk "OptionParser's own #{help} exits"
+    end
+
+    refute_path_exists File.join(tmpdir, "tmp"), "nothing cleaned"
+    assert_equal 2, Dir.chdir(tmpdir) { cli("clean", "--base", "v1").run }
+    assert_equal "duel clean: invalid option: --base\n", @err.string
+    assert_equal 2, Dir.chdir(tmpdir) { cli("clean", "x", "y").run }
+    assert_equal "duel clean: needless argument: x\n", @err.string
   end
 
   def test_the_conventions_without_a_config_file

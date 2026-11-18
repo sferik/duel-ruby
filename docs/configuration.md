@@ -272,7 +272,7 @@ names what's cached, so put a version in it. If the key ends with a hash
 of what the build depends on, such as `postgres-16.2-3f9c2a1b`, then
 when a run ends, Duel removes the other builds of that name, the part
 before the version and the hash, so an upgrade doesn't leave the old
-build behind. Each build that the run used stays. `duel --clean` removes
+build behind. Each build that the run used stays. `duel clean` removes
 every cached directory.
 
 ```ruby

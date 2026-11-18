@@ -120,7 +120,7 @@ A database cluster takes `initdb`, and that's slow, so it's done once
 `duel` database and `pg_stat_statements` created in it, in your
 project's `tmp/duel/cache`, and every worker (in that run and the next
 ones) starts with a copy. One is made for each server's programs (and
-version of the plugin): another PostgreSQL gets its own. `duel --clean`
+version of the plugin): another PostgreSQL gets its own. `duel clean`
 deletes them.
 
 The metrics come from `pg_stat_statements`, which PostgreSQL updates as

@@ -18,7 +18,7 @@ run replaces the file.
 Duel writes the report whatever the outcome: a comparison that passed or
 failed, nothing to compare, or a comparison that couldn't run. It writes
 nothing when the command line isn't valid, such as an unknown option,
-and nothing for `--clean`, `--version`, or `duel init`, which aren't
+and nothing for `duel clean`, `--version`, or `duel init`, which aren't
 comparisons. So a missing report means that `duel` didn't get as far as
 comparing, or crashed.
 

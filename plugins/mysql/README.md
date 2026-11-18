@@ -114,7 +114,7 @@ Initializing a data directory takes seconds, so it's done once (Duel's
 database created in it, in your project's `tmp/duel/cache`, and every
 worker (in that run and the next ones) starts with a copy. One is made
 for each server program (and version of the plugin): another MySQL gets
-its own. `duel --clean` deletes them. (`args` are the running server's,
+its own. `duel clean` deletes them. (`args` are the running server's,
 not its initialization's.)
 
 The metrics come from the server's status (`Questions`) and

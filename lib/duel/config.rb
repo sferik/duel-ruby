@@ -36,7 +36,7 @@ module Duel
     # build once (Resource#cached), in cache/, and the baseline's checkout
     # where it can't go next to the repository (see Baseline#checkout), in
     # base/. A run removes the lock when it ends, and what that leaves
-    # empty. `duel --clean` removes the rest.
+    # empty. `duel clean` removes the rest.
     def state = File.join(root, "tmp", "duel")
 
     # Where what a resource builds once is kept (see Resource#cached):

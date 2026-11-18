@@ -149,7 +149,7 @@ class LockTest < DuelTest
     assert_path_exists File.join(@dir, "cache", "mysql-0.1.2-0123456789abcdef")
   end
 
-  # `duel --clean` removes tmp/duel, lock and all, while it's held.
+  # `duel clean` removes tmp/duel, lock and all, while it's held.
   def test_removed_while_held
     project = FileUtils.mkdir_p(File.join(tmpdir, "project")).first
     dir = File.join(project, "tmp", "duel")

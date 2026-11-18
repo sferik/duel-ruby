@@ -27,9 +27,10 @@ module Duel
   # outcome, but not for a command line that isn't valid.
   # @api private
   class CLI
-    USAGE = "Usage: duel [options]\n       duel init [options]\n       duel comment [options]\n\n" \
-      "Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project, and\n" \
-      "`duel comment` is what its Perf comment workflow runs.\n\n"
+    USAGE = "Usage: duel [options]\n       duel init [options]\n       duel clean [--config PATH]\n       duel comment [options]\n\n" \
+      "Fails if this tree is slower than a baseline at any benchmark. `duel init` sets Duel up in a project,\n" \
+      "`duel clean` removes tmp/duel and the baseline's git worktree, and `duel comment` is what its Perf comment\n" \
+      "workflow runs.\n\n"
 
     # Where GitHub Actions has a step add to its job's summary.
     STEP_SUMMARY = "GITHUB_STEP_SUMMARY"
@@ -84,6 +85,7 @@ module Duel
     def run
       return Init.new(@argv.drop(1), out: @out, err: @err).run if @argv.first == "init"
       return Comment.new(@argv.drop(1), env: @env, out: @out, err: @err).run if @argv.first == "comment"
+      return clean(@argv.drop(1)) if @argv.first == "clean"
 
       settings = @settings = catch(:version) { parse } or return 0
       config = @config = settings.config_path ? Duel.load_config(settings.config_path) : Config.new
@@ -145,14 +147,34 @@ module Duel
 
     private
 
+    # `duel clean`: removes what Duel keeps (tmp/duel), and the baseline's
+    # git worktree (see Baseline#clean), holding the project's lock, for
+    # the configuration at --config, or .duel.rb.
+    def clean(argv)
+      path = nil
+      parser = OptionParser.new("Usage: duel clean [--config PATH]") do |o|
+        o.on("--config PATH", "Config file (default: .duel.rb)") { |v| path = v }
+        o.on("-h", "--help", "Print this help") do
+          @out.puts o
+          return 0
+        end
+      end
+      rest = parser.parse(argv)
+      raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
+
+      path ||= (".duel.rb" if File.exist?(".duel.rb"))
+      config = path ? Duel.load_config(path) : Config.new
+      Lock.hold(config.state) { Baseline.new(config, Settings.defaults).clean }
+      @out.puts "duel: removed tmp/duel and its baseline's worktree"
+      0
+    rescue Error, OptionParser::ParseError => e
+      @err.puts "duel clean: #{e}"
+      2
+    end
+
     # What #run does, holding the project's lock (see Lock).
     def compare(config, settings)
       baseline = Baseline.new(config, settings)
-      if @clean
-        baseline.clean
-        @out.puts "duel: removed tmp/duel and its baseline's worktree"
-        return 0
-      end
       if settings.base_dir.nil? && baseline.ref.nil?
         return nothing("no commit to compare against", "no commit before this push to compare against") if settings.pushed
 
@@ -556,7 +578,6 @@ module Duel
           "failures, or never (default: c.comment, or failures)") { |v| settings.comment = CLI.named(v, Config::COMMENTS) }
         o.on("--fail-on RUNS", "Which runs a regression fails: every_run, or pull_requests (on GitHub Actions, another",
           "warns and passes) (default: c.fail_on, or every_run)") { |v| settings.fail_on = CLI.named(v, Config::FAIL_ON) }
-        o.on("--clean", "Remove tmp/duel, and the baseline's git worktree, and stop") { @clean = true }
         o.on("-v", "--version", "Print the version") do
           @out.puts "duel #{VERSION}"
           throw :version
