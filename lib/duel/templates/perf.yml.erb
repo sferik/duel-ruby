@@ -2,10 +2,10 @@
 name: Duel
 
 # Duel's Perf workflow, reusable: a project's own Perf workflow (as
-# `duel init --reusable` writes it) calls it, with its triggers and its
+# `duel init` writes it) calls it, with its triggers and its
 # concurrency, and passes on what .duel.rb sets that it needs as its
-# inputs. Its jobs run as the Perf workflow's that `duel init` writes
-# do, and the caller grants contents: write (GitHub checks each job's
+# inputs. Its jobs run as the whole Perf workflow's that
+# `duel init --standalone` writes do, and the caller grants contents: write (GitHub checks each job's
 # permissions against the caller's, whether it runs or not, and those
 # that mark a push passed, comment on it, or keep the badge write) and
 # pull-requests: read (for the labels), which each job narrows: the Duel

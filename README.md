@@ -109,7 +109,7 @@ one on Linux or macOS.
 |---|---|
 | `.duel.rb` | Duel's configuration. It builds a project that has an `ext/` directory with `rake compile`, and runs each version on its own Ruby when the project has a `.ruby-version`. Without a gemspec to name the library, it names the only file in `lib/`, or leaves the library for you to set. See [Configure Duel](docs/configuration.md). |
 | `duel/<library>_duel.rb` | An example benchmark to replace with your own, with advice on writing benchmarks that tell a regression from noise. See [Write a benchmark](#write-a-benchmark). |
-| `.github/workflows/perf.yml` | The GitHub Actions workflow in [Run Duel in CI](docs/ci.md#catch-slow-creep). For a project in a subdirectory of its repository, the workflow is at the repository's root, named after the subdirectory, and runs in it. |
+| `.github/workflows/perf.yml` | A short GitHub Actions workflow that calls Duel's reusable one (see [Call Duel's reusable workflows](docs/ci.md#call-duels-reusable-workflows)), with `perf-comment.yml`, which comments on a pull request. With `--standalone`, they're the whole workflows in [Run Duel in CI](docs/ci.md#catch-slow-creep). For a project in a subdirectory of its repository, the workflow is at the repository's root, named after the subdirectory, and runs in it. |
 | `Rakefile` | If there is one, `duel init` adds Duel's Rake task to it, as `rake duel`. See [Run Duel in CI](#run-duel-in-ci). |
 | `Gemfile` | Unless it mentions StackProf already, `duel init` adds `gem "stackprof", platforms: :mri` to its `development` group (or, without one, to its end), so Duel can show where a regression spent its extra time. StackProf runs on CRuby only, so the gem isn't installed on JRuby or TruffleRuby. |
 
@@ -118,9 +118,9 @@ one on Linux or macOS.
 use `--dry-run`. For a badge in your README that turns red when Duel
 fails a push, use `--badge` (see
 [Show that a project is guarded](#show-that-a-project-is-guarded)).
-To write short workflows that call Duel's reusable ones instead of
-copies of them, use `--reusable` (see
-[Call Duel's reusable workflows](docs/ci.md#call-duels-reusable-workflows)).
+To write the whole workflows, to change as you like, rather than short
+ones that call Duel's reusable workflows, use `--standalone` (see
+[Run Duel in CI](docs/ci.md)).
 When it's done, `duel init` lists the next steps.
 
 For a Rails app, use

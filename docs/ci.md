@@ -12,9 +12,13 @@ example, a series of changes that are each 1.5% slower would each pass.
 To catch that kind of slow creep, also compare against your last release
 on a schedule. The slowdowns add up there until they're a regression.
 
-The following GitHub Actions workflow does both. `duel init` writes it
-for you, as `.github/workflows/perf.yml`, with a second workflow that
-comments on a pull request when a benchmark fails (see
+The following GitHub Actions workflow does both. `duel init` writes a
+short workflow that calls Duel's, which is this one with each setting
+as an input (see
+[Call Duel's reusable workflows](#call-duels-reusable-workflows)).
+`duel init --standalone` writes the whole of it, as
+`.github/workflows/perf.yml`, to change as you like, with a second
+workflow that comments on a pull request when a benchmark fails (see
 [Comment on a pull request](#comment-on-a-pull-request)):
 
 ```yaml
@@ -619,8 +623,10 @@ bundle exec duel init --check
 
 It says whether each workflow is the same, differs (and shows how, as
 `diff -u` does), or is missing, and writes nothing. It exits with 1
-where one isn't the same. Copy in the changes you want, so that steps
-you added to the Duel job (to install a database server, say) stay.
+where one isn't the same. For the short workflows that call Duel's, a
+release mostly changes the tag they call. For the whole ones
+(`--standalone`), copy in the changes you want, so that steps you
+added to the Duel job (to install a database server, say) stay.
 With `--gitlab`, it checks the GitLab CI jobs. In a Rails app, run
 duel-rails's generator with `--check` instead:
 
@@ -630,11 +636,12 @@ bin/rails generate duel:install --check
 
 ## Call Duel's reusable workflows
 
-Rather than copy Duel's whole workflows into your repository, you can
-call Duel's reusable ones, which are the same workflows with each
-setting as an input. `duel init --reusable` writes a Perf workflow and a
-Perf comment workflow that call them, at the tag of the Duel release you
-run it with, and pass on what your `.duel.rb` sets:
+Rather than copy Duel's whole workflows into your repository, the
+workflows that `duel init` writes call Duel's reusable ones, which are
+the same workflows with each setting as an input. It writes a Perf
+workflow and a Perf comment workflow that call them, at the tag of the
+Duel release you run it with, and pass on what your `.duel.rb` sets
+(with `--standalone`, it writes the whole workflows instead):
 
 ```yaml
 # .github/workflows/perf.yml
@@ -773,8 +780,8 @@ or not, and a run where one asks for more fails before it starts. With
 an accept label, your Perf comment workflow grants
 `actions: write`, to run the Duel job again. The checks are named for
 your job and Duel's, as in `duel / Duel`. To update Duel's workflows,
-change the tag. `duel init --check --reusable` compares the workflows
-that call them.
+change the tag. `duel init --check` compares the workflows that call
+them, and `duel init --check --standalone` the whole ones.
 
 ## Run Duel on GitLab CI
 

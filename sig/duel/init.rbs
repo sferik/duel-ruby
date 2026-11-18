@@ -37,7 +37,7 @@ module Duel
     @label: bool?
     @force: bool?
     @dry_run: bool?
-    @reusable: bool?
+    @standalone: bool?
     @check: bool?
     @gitlab: bool?
     @badge: bool?
@@ -117,8 +117,8 @@ module Duel
     def reusable?: () -> bool
 
 
-    # What a workflow it writes with --reusable passes on to Duel's, as
-    # its inputs, each as YAML has it.
+    # What a workflow it writes (without --standalone) passes on to
+    # Duel's, as its inputs, each as YAML has it.
     def perf_inputs: () -> Hash[String, String]
 
     def comment_inputs: () -> Hash[String, String]

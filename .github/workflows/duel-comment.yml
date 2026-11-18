@@ -1,14 +1,14 @@
 name: Duel comment
 
 # Duel's Perf comment workflow, reusable: a project's own Perf comment
-# workflow (as `duel init --reusable` writes it) calls it, triggered as
-# that workflow is (once the Perf workflow has run, and where there's a
-# label that accepts a regression, when it's added or taken off), and
-# passes on what .duel.rb sets that it needs as its inputs. Its jobs run
-# as the Perf comment workflow's that `duel init` writes do, and the
-# caller grants what they need (actions: read, or write to run the Duel
-# job again, and pull-requests: write), which each job narrows. See
-# Duel's docs/ci.md.
+# workflow (as `duel init` writes it) calls it, triggered as that
+# workflow is (once the Perf workflow has run, and where there's a label
+# that accepts a regression, when it's added or taken off), and passes
+# on what .duel.rb sets that it needs as its inputs. Its jobs run as the
+# whole Perf comment workflow's that `duel init --standalone` writes do,
+# and the caller grants what they need (actions: read, or write to run
+# the Duel job again, and pull-requests: write), which each job narrows.
+# See Duel's docs/ci.md.
 on:
   workflow_call:
     inputs:

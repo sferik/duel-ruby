@@ -13,6 +13,10 @@ class InitTest < DuelTest
 
   def init(*argv, at: root, input: StringIO.new) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), input: input, root: at)
 
+  # `duel init --standalone`, which writes the whole workflows, its
+  # options parsed (for its #files).
+  def whole(*argv, **options) = init("--standalone", *argv, **options).tap { |command| command.send(:parser).parse(["--standalone", *argv]) }
+
   def read(path) = File.read(File.join(root, path))
 
   # A file of Duel's repository, with LF line endings: as Git may check it
@@ -76,7 +80,7 @@ class InitTest < DuelTest
     gem
     write("config/settings.yml")
 
-    assert_equal 0, init.run
+    assert_equal 0, whole.run
     assert_equal <<~OUT, @out.string
         create    .duel.rb
         create    duel/my_gem_duel.rb
@@ -126,7 +130,7 @@ class InitTest < DuelTest
     read = File.method(:read)
     crlf = ->(path, *args, **options) { read.call(path, *args, **options).then { |text| path.end_with?(".erb") ? text.gsub(/\r?\n/, "\r\n") : text } }
 
-    assert_equal 0, stub(File, :read, crlf) { init.run }
+    assert_equal 0, stub(File, :read, crlf) { whole.run }
     assert_includes read(".github/workflows/perf.yml"), "name: Perf\n\non:\n"
     refute_includes read(".github/workflows/perf.yml") + read(".duel.rb"), "\r"
   end
@@ -134,7 +138,7 @@ class InitTest < DuelTest
   def test_the_jobs_for_pushes
     gem
     push_settings
-    init.run
+    whole.run
     workflow = read(".github/workflows/perf.yml")
     jobs = YAML.safe_load(workflow).fetch("jobs")
 
@@ -152,7 +156,7 @@ class InitTest < DuelTest
     ["", "Duel.configure { |c| c.fail_on = :pull_requests }\n", "Duel.configure { |c| c.push_base = :last_passed }\n"].each do |config|
       write(".duel.rb", config)
       FileUtils.rm_rf(File.join(root, ".github"))
-      init.run
+      whole.run
       jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
 
       assert_equal %w[duel commit-comment passed], jobs.keys, config
@@ -166,11 +170,11 @@ class InitTest < DuelTest
   def test_the_label_of_duel_rb_or_duels_own
     gem
     write(".duel.rb", %(Duel.configure { |c| c.accept_label = "perf: accept" }\n))
-    init.run
+    whole.run
 
     assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'perf: accept'"
     write(".duel.rb", %(Duel.configure { |c| c.accept_label = "perf: accept" }\n))
-    init("--force").run
+    whole("--force").run
 
     assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'duel: accept'"
   end
@@ -180,7 +184,7 @@ class InitTest < DuelTest
   def test_a_config_that_doesnt_load
     gem
     write(".duel.rb", %(Duel.configure { |c| c.use :not_a_plugin }\n))
-    init.run
+    whole.run
 
     assert_includes read(".github/workflows/perf-comment.yml"), "github.event.label.name == 'duel: accept'", "Duel's label"
     assert_equal "duel init: .duel.rb didn't load (Duel::Error: c.use :not_a_plugin: no duel/not_a_plugin to require: add the " \
@@ -192,7 +196,7 @@ class InitTest < DuelTest
   # request, for the Perf comment workflow.
   def test_the_workflows_permissions
     gem
-    init.run
+    whole.run
     workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
     duel = workflow.dig("jobs", "duel")
     said = duel.fetch("steps").find { |step| step["name"] == "Say whether to comment" }
@@ -218,7 +222,7 @@ class InitTest < DuelTest
   # to the end, in a group of its own.
   def test_concurrency
     gem
-    init.run
+    whole.run
 
     assert_equal({"group" => "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}",
                   "cancel-in-progress" => "${{ github.event_name == 'pull_request' }}"},
@@ -231,7 +235,7 @@ class InitTest < DuelTest
   # decides what to post (see CommentTest).
   def test_the_comment_workflow
     gem
-    init.run
+    whole.run
     workflow = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
     comment = workflow.dig("jobs", "comment")
     get, ruby, post = comment.fetch("steps")
@@ -254,7 +258,7 @@ class InitTest < DuelTest
   # A marker with a quote in it is quoted for the shell.
   def test_the_comment_workflows_marker_quoted
     gem
-    init.run
+    whole.run
     init = self.init
 
     init.define_singleton_method(:marker) { "duel it's" }
@@ -267,7 +271,7 @@ class InitTest < DuelTest
   # push, for c.accept_label, and nothing's accepted without them.
   def test_the_pull_requests_labels
     gem
-    init.run
+    whole.run
     steps = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps")
     labels = steps.find { |step| step["id"] == "labels" }
 
@@ -286,7 +290,7 @@ class InitTest < DuelTest
   def test_what_was_accepted_since_the_last_release
     gem
     write(".ruby-version", "3.4.1\n")
-    init.run
+    whole.run
     steps = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps")
 
     %w[baseline compare].each do |id|
@@ -300,7 +304,7 @@ class InitTest < DuelTest
   def test_no_label_that_accepts_a_regression
     gem
     write(".duel.rb", "Duel.configure { |c| c.accept_label = nil }\n")
-    init.run
+    whole.run
     perf = read(".github/workflows/perf.yml")
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
 
@@ -315,7 +319,7 @@ class InitTest < DuelTest
   # the gh run rerun it asks for, or nil.
   def again(action, conclusion, run: "7")
     gem
-    init.run
+    whole.run
     job = YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "again")
     bin = FileUtils.mkdir_p(File.join(tmpdir, "bin")).first
     File.write(File.join(bin, "gh"), <<~SH)
@@ -343,7 +347,7 @@ class InitTest < DuelTest
   # run one again from a fork.
   def test_running_duel_again_for_the_label
     gem
-    init.run
+    whole.run
     workflow = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
     job = workflow.dig("jobs", "again")
 
@@ -363,7 +367,7 @@ class InitTest < DuelTest
   def test_a_label_with_a_quote
     gem
     write(".duel.rb", %(Duel.configure { |c| c.accept_label = "it's fine" }\n))
-    init.run
+    whole.run
 
     assert_includes YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "again", "if"), "== 'it''s fine'"
   end
@@ -373,7 +377,7 @@ class InitTest < DuelTest
   def test_a_merge_queue
     gem
     write(".ruby-version", "3.4.1\n")
-    init.run
+    whole.run
     workflow = YAML.safe_load(read(".github/workflows/perf.yml"))
     steps = workflow.dig("jobs", "duel", "steps")
     labels = steps.find { |step| step["id"] == "labels" }.fetch("run")
@@ -392,7 +396,7 @@ class InitTest < DuelTest
   def test_marking_a_push_passed
     gem
     push_settings
-    init.run
+    whole.run
     jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     passed = jobs.fetch("passed")
     ruby, step = passed.fetch("steps")
@@ -416,7 +420,7 @@ class InitTest < DuelTest
   # where the Duel job failed before Duel said.
   def test_the_badge
     gem
-    init("--badge").run
+    whole("--badge").run
     badge = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "badge")
     ruby, step = badge.fetch("steps")
 
@@ -456,7 +460,7 @@ class InitTest < DuelTest
   def test_the_comment_on_a_pushed_commit
     gem
     push_settings
-    init.run
+    whole.run
     jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     duel, comment = jobs.values_at("duel", "commit-comment")
 
@@ -480,7 +484,7 @@ class InitTest < DuelTest
   def test_a_dashed_gem
     write("my-gem.gemspec", %(Gem::Specification.new { |s| s.name = "my-gem" }\n))
     write("lib/my/gem.rb")
-    init.run
+    whole.run
 
     assert_includes @out.string, "  create    duel/my_gem_duel.rb\n"
     assert_includes read(".duel.rb"), %(  # c.library = "my/gem"\n)
@@ -495,7 +499,7 @@ class InitTest < DuelTest
   # The example defines a benchmark, as workers load it.
   def test_the_example
     gem
-    init.run
+    whole.run
     path = File.join(root, "duel", "my_gem_duel.rb")
     DSL.instance_eval(File.read(path), path)
 
@@ -509,7 +513,7 @@ class InitTest < DuelTest
     gem
     write("ext/my_gem/extconf.rb")
     write(".ruby-version", "3.4.1\n")
-    init.run
+    whole.run
 
     assert_includes read(".duel.rb"), %(  # c.library = "my_gem"\n\n  # Builds each version's C extension, so that each is measured with its\n) +
       %(  # own build: with this, by default, for a project with ext/ and a\n  # Rakefile.\n  # c.build = "bundle exec rake compile"\n\n) +
@@ -534,7 +538,7 @@ class InitTest < DuelTest
   def test_finding_the_baseline_ruby
     gem
     write(".ruby-version", "3.4.1\n")
-    init.run
+    whole.run
     step = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "steps").find { |s| s["id"] == "baseline" }
     git = ->(*args) { IO.popen(["git", "-C", root, *args], &:read).chomp }
     commit = lambda do |*unadded|
@@ -569,7 +573,7 @@ class InitTest < DuelTest
     write(".ruby-version", "3.4.1\n")
     steps = repo_file("docs/ci.md")[/^```yaml\n      # \(After the step that sets up the candidate's Ruby, id: ruby\.\)\n(.*?)^```$/m, 1]
 
-    assert_includes init.files.fetch(".github/workflows/perf.yml"),
+    assert_includes whole.files.fetch(".github/workflows/perf.yml"),
       "      - uses: ruby/setup-ruby@v1\n        id: ruby\n        with:\n          bundler-cache: true\n#{steps}      # Against the branch it targets"
   end
 
@@ -577,13 +581,13 @@ class InitTest < DuelTest
   # to guess, and it says to set one.
   def test_an_app
     write("lib/my_app.rb")
-    init.run
+    whole.run
 
     assert_includes read(".duel.rb"), %(  # The library each version's workers require, from its lib/.\n  c.library = "my_app"\n#{ENDING})
     assert_includes @out.string, "  create    duel/my_app_duel.rb\n"
     assert_includes read("duel/my_app_duel.rb"), "# load my_app and every duel/**/*_duel.rb file. See\n"
     write("lib/other.rb")
-    init("--force").run
+    whole("--force").run
 
     assert_includes read(".duel.rb"), %(  #   c.library = ->(root) { require File.join(root, "config", "boot") }\n  # c.library = "my_library"\n#{ENDING})
     assert_includes @out.string, "  create    duel/example_duel.rb\n"
@@ -594,15 +598,15 @@ class InitTest < DuelTest
   # Without Duel in the Gemfile (or a Gemfile), it says to add it.
   def test_duel_to_add
     write("lib/my_app.rb")
-    init.run
+    whole.run
 
     assert_includes @out.string, %(\nNext:\n  1. Add gem "duel" to the Gemfile's development group, and run `bundle install`.\n  2. Replace)
     write("Gemfile", %(gem "duel-redis"\n))
-    init.run
+    whole.run
 
     assert_includes @out.string, %(  1. Add gem "duel")
     write("Gemfile", %(gem 'duel', group: :development\ngem "stackprof"\n))
-    init.run
+    whole.run
 
     assert_includes @out.string, "\n  1. Replace"
   end
@@ -611,11 +615,11 @@ class InitTest < DuelTest
   def test_existing_files
     gem
     write(".duel.rb", "mine")
-    init.run
+    whole.run
 
     assert_equal "mine", read(".duel.rb")
     assert_includes @out.string, "  skip      .duel.rb (it exists: --force to overwrite)\n  create    duel/my_gem_duel.rb\n"
-    init("--force").run
+    whole("--force").run
 
     assert_includes read(".duel.rb"), "Duel.configure"
     assert_includes @out.string, "  overwrite .duel.rb\n  overwrite duel/my_gem_duel.rb\n  overwrite .github/workflows/perf.yml\n"
@@ -625,11 +629,11 @@ class InitTest < DuelTest
     gem
     write(".duel.rb", "mine")
 
-    assert_equal 0, init("--dry-run").run
+    assert_equal 0, whole("--dry-run").run
     assert_equal "duel init: a dry run, so nothing is written\n  skip      .duel.rb (it exists: --force to overwrite)\n" \
       "  create    duel/my_gem_duel.rb\n", @out.string.lines.first(3).join
     assert_equal ["my_gem.gemspec", "lib", "Gemfile", ".duel.rb"].sort, Dir.children(root).sort
-    init("--dry-run", "--force").run
+    whole("--dry-run", "--force").run
 
     assert_includes @out.string, "  overwrite .duel.rb\n"
     assert_equal "mine", read(".duel.rb")
@@ -639,24 +643,24 @@ class InitTest < DuelTest
   def test_the_rakefile
     gem
     write("Rakefile", "task :default")
-    init.run
+    whole.run
 
     assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
     assert_includes @out.string, "  create    .github/workflows/perf-comment.yml\n  append    Rakefile\n  append    Gemfile"
-    init.run
+    whole.run
 
     assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
     assert_includes @out.string, "  skip      Rakefile (it has Duel's task)\n"
     write("Rakefile", "task :default\n")
-    init.run
+    whole.run
 
     assert_equal %(task :default\n\nrequire "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
     write("Rakefile")
-    init.run
+    whole.run
 
     assert_equal %(require "duel/rake_task"\nDuel::RakeTask.new\n), read("Rakefile")
     write("Rakefile", "x\n")
-    init("--dry-run").run
+    whole("--dry-run").run
 
     assert_equal "x\n", read("Rakefile")
     assert_includes @out.string, "  append    Rakefile\n"
@@ -669,10 +673,10 @@ class InitTest < DuelTest
   def test_stackprof
     gem
 
-    assert_equal 0, init.run
+    assert_equal 0, whole.run
     assert_equal %(source "https://rubygems.org"\ngemspec\ngem "duel"\n\n# For profiles of regressions (StackProf runs on CRuby only)\n) +
       %(gem "stackprof", platforms: :mri\n), read("Gemfile")
-    init("--force").run
+    whole("--force").run
 
     assert_includes @out.string, "  skip      Gemfile (it has stackprof)\n\nNext:\n  1. Replace"
     assert_equal 1, read("Gemfile").scan("stackprof").size
@@ -680,7 +684,7 @@ class InitTest < DuelTest
     {"" => "", "gem \"rake\"" => "gem \"rake\"\n", "group :test do\nend" => "group :test do\nend\n",
      "group :development do\n  gem \"duel\"\n" => "group :development do\n  gem \"duel\"\n"}.each do |gemfile, before|
       write("Gemfile", gemfile)
-      init.run
+      whole.run
 
       assert_includes @out.string, "  append    Gemfile (gem \"stackprof\", platforms: :mri)\n"
       assert_equal "#{before}#{"\n" unless before.empty?}# For profiles of regressions (StackProf runs on CRuby only)\n" \
@@ -690,14 +694,14 @@ class InitTest < DuelTest
       "  group :development do"].each do |opening|
       indent = opening[/\A */]
       write("Gemfile", "#{indent}platforms :ruby do\n#{indent}end\n\n#{opening}\n#{indent}  gem \"duel\"\n#{indent}end\n#{indent}gem \"x\"\n")
-      init.run
+      whole.run
 
       assert_includes @out.string, "  insert    Gemfile (gem \"stackprof\", platforms: :mri, in the development group)\n"
       assert_equal "#{indent}platforms :ruby do\n#{indent}end\n\n#{opening}\n#{indent}  gem \"duel\"\n#{indent}  gem \"stackprof\", platforms: :mri\n#{indent}end\n" \
         "#{indent}gem \"x\"\n", read("Gemfile"), opening
     end
     write("Gemfile", group)
-    init.run
+    whole.run
 
     assert_equal "group :development do\n  gem \"duel\"\n  if true\n  end\n  gem \"stackprof\", platforms: :mri\nend\n",
       read("Gemfile"), "at its own end"
@@ -705,11 +709,11 @@ class InitTest < DuelTest
 
   def test_stackprof_in_a_dry_run
     gem
-    init("--dry-run").run
+    whole("--dry-run").run
 
     assert_includes @out.string, "  append    Gemfile (gem \"stackprof\", platforms: :mri)\n\nNext:\n  1. Run `bundle install`"
     write("Gemfile", "group :development do\nend\n")
-    init("--dry-run").run
+    whole("--dry-run").run
 
     assert_includes @out.string, "  insert    Gemfile (gem \"stackprof\", platforms: :mri, in the development group)\n"
     assert_equal "group :development do\nend\n", read("Gemfile")
@@ -718,7 +722,7 @@ class InitTest < DuelTest
   # Without a Gemfile, there's none to add StackProf to.
   def test_stackprof_without_a_gemfile
     write("lib/my_app.rb")
-    init.run
+    whole.run
 
     refute_includes @out.string, "stackprof"
     refute_path_exists File.join(root, "Gemfile")
@@ -728,12 +732,12 @@ class InitTest < DuelTest
   def test_a_rails_app
     write("config/application.rb")
 
-    assert_equal 1, init.run
+    assert_equal 1, whole.run
     assert_equal "duel init: this is a Rails app (config/application.rb). Add duel-rails to the Gemfile's development group, " \
       "and run `bin/rails generate duel:install` instead\n", @err.string
     assert_empty @out.string
     assert_equal %w[config], Dir.children(root)
-    assert_equal 1, init("--check").run
+    assert_equal 1, whole("--check").run
     assert_includes @err.string, "and run `bin/rails generate duel:install --check` instead\n", "its own --check"
   end
 
@@ -744,7 +748,7 @@ class InitTest < DuelTest
     FileUtils.mkdir_p(File.join(project, "lib"))
     File.write(File.join(project, "lib", "parser.rb"), "")
     File.write(File.join(project, ".ruby-version"), "3.4.1\n")
-    init(at: project).run
+    whole(at: project).run
     workflow = File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
     baseline = YAML.safe_load(workflow).dig("jobs", "duel", "steps").find { |step| step["id"] == "baseline-ruby" }
 
@@ -760,7 +764,7 @@ class InitTest < DuelTest
     FileUtils.mkdir_p(File.join(project, "lib"))
     File.write(File.join(project, "lib", "parser.rb"), "")
     push_settings(at: project)
-    init("--badge", at: project).run
+    whole("--badge", at: project).run
 
     assert_includes @out.string, "  create    ../../.github/workflows/perf-gems-parser.yml\n"
     workflow = File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
@@ -778,7 +782,7 @@ class InitTest < DuelTest
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
     refute YAML.safe_load(workflow).dig("jobs", "commit-comment").key?("defaults"), "nothing checked out there"
-    init(at: tmpdir).run
+    whole(at: tmpdir).run
 
     assert_includes @out.string, "  create    .github/workflows/perf.yml\n", "at the root"
   end
@@ -787,14 +791,12 @@ class InitTest < DuelTest
   def test_the_guides_workflow
     workflow = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf\.yml\n(.*?)^```$/m, 1]
 
-    assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), init.files.fetch(".github/workflows/perf.yml")
+    assert_equal workflow.sub(%("3.4" # (or none, with a .ruby-version)), %("#{ruby_version}")), whole.files.fetch(".github/workflows/perf.yml")
   end
 
   # And the badge's job, as it writes it with --badge.
   def test_the_guides_badge_job
-    init = init("--badge")
-    init.send(:parser).parse(["--badge"])
-    workflow = init.files.fetch(".github/workflows/perf.yml")
+    workflow = whole("--badge").files.fetch(".github/workflows/perf.yml")
     job = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf\.yml, in jobs: \(with duel init --badge\)\n(.*?)^```$/m, 1]
 
     assert_equal workflow[workflow.index("  # Duel's badge")..].rstrip, job.rstrip
@@ -813,7 +815,7 @@ class InitTest < DuelTest
   def test_the_guides_comment_workflow
     workflow = repo_file("docs/ci.md")[/^```yaml\n# \.github\/workflows\/perf-comment\.yml\n(.*?)^```$/m, 1]
 
-    assert_equal workflow, init.files.fetch(".github/workflows/perf-comment.yml")
+    assert_equal workflow, whole.files.fetch(".github/workflows/perf-comment.yml")
   end
 
   # With --gitlab, GitLab CI jobs to include, not GitHub Actions
@@ -886,22 +888,22 @@ class InitTest < DuelTest
   # differs, or that it's missing, and writes nothing.
   def test_check
     gem
-    init.run
+    whole.run
     before = Dir.glob("**/*", File::FNM_DOTMATCH, base: root).sort
 
-    assert_equal 0, init("--check").run
+    assert_equal 0, whole("--check").run
     assert_equal "  same      .github/workflows/perf.yml\n  same      .github/workflows/perf-comment.yml\n", @out.string
     assert_equal read(".github/workflows/perf.yml"), File.binread(File.join(root, ".github/workflows/perf.yml")), "written with LF, as it is"
     crlf = File.join(root, ".github/workflows/perf-comment.yml")
     File.binwrite(crlf, File.binread(crlf).gsub("\n", "\r\n"))
 
-    assert_equal 0, init("--check").run, "with CRLF line endings, as git can check it out on Windows"
+    assert_equal 0, whole("--check").run, "with CRLF line endings, as git can check it out on Windows"
     File.write(File.join(root, ".github/workflows/perf.yml"), read(".github/workflows/perf.yml").sub("name: Perf\n", "name: Mine\n"))
 
-    assert_equal 1, init("--check").run, "one that differs"
+    assert_equal 1, whole("--check").run, "one that differs"
     File.delete(File.join(root, ".github/workflows/perf-comment.yml"))
 
-    assert_equal 1, init("--check").run
+    assert_equal 1, whole("--check").run
     assert_equal <<~OUT, @out.string
         differs   .github/workflows/perf.yml
       --- .github/workflows/perf.yml
@@ -915,8 +917,8 @@ class InitTest < DuelTest
         missing   .github/workflows/perf-comment.yml
     OUT
     assert_equal before - [".github/workflows/perf-comment.yml"], Dir.glob("**/*", File::FNM_DOTMATCH, base: root).sort, "nothing written"
-    assert_equal 1, init("--check", "--badge").run, "with other options, other workflows"
-    assert_equal 1, init("--check", "--gitlab").run
+    assert_equal 1, whole("--check", "--badge").run, "with other options, other workflows"
+    assert_equal 1, whole("--check", "--gitlab").run
     assert_equal "  missing   .gitlab/duel.gitlab-ci.yml\n", @out.string
   end
 
@@ -931,7 +933,7 @@ class InitTest < DuelTest
   def labeled(*argv, input: terminal, answers: {})
     gem
     calls = []
-    command = init(*argv, input: input)
+    command = whole(*argv, input: input)
     command.define_singleton_method(:cli) do |*args|
       calls << args
       answers[args.first(3)]
@@ -1031,7 +1033,7 @@ class InitTest < DuelTest
         "Accepts a regression that Duel found"]], calls
     assert_includes @out.string, %(Create the label "duel: accept" in me/my_gem with glab, so a merge request can accept a regression? [y/N] )
     assert_includes @out.string, "  create    label duel: accept (me/my_gem)\n"
-    command = init("--force", "--gitlab", input: terminal("y\n"))
+    command = whole("--force", "--gitlab", input: terminal("y\n"))
     listed = []
     command.define_singleton_method(:cli) do |*args|
       next %({"path_with_namespace": "me/my_gem"}) if args.first(3) == %w[glab repo view]
@@ -1097,7 +1099,7 @@ class InitTest < DuelTest
               --check                      Say how the workflows differ from what it writes (with the same options), and write nothing
               --badge                      Write a job that keeps a badge for the README (it needs contents: write)
               --gitlab                     Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows
-              --reusable                   Write workflows that call Duel's reusable ones (at this release), not whole workflows
+              --standalone                 Write whole workflows, not ones that call Duel's reusable ones (at this release)
           -h, --help                       Print this help
     HELP
     assert_equal 0, init("-h").run
@@ -1232,14 +1234,14 @@ class InitTest < DuelTest
     assert_equal({"pattern" => "duel-report*"}, comment.dig("jobs", "comment", "steps", 0, "with").slice("pattern", "name"))
   end
 
-  # With --reusable, workflows that call Duel's (at this release), with
+  # By default, workflows that call Duel's (at this release), with
   # what .duel.rb sets that isn't an input's default, and the
   # permissions their jobs need: contents: write, as GitHub checks every
   # job of Duel's against it, whether it runs or not.
   def test_reusable
     gem
 
-    assert_equal 0, init("--reusable").run
+    assert_equal 0, init.run
     perf = YAML.safe_load(read(".github/workflows/perf.yml"))
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
     job = perf.dig("jobs", "duel")
@@ -1264,7 +1266,7 @@ class InitTest < DuelTest
     write(".ruby-version", "4.0.1\n")
     write(".duel.rb", "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\n  c.accept_label = nil\n" \
       "  c.release_tags = \"my_gem-v*\"\nend\n")
-    init("--reusable", "--badge").run
+    init("--badge").run
     job = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
 
@@ -1280,7 +1282,7 @@ class InitTest < DuelTest
   def test_reusable_with_a_config_that_doesnt_load
     gem
     write(".duel.rb", "raise 'not here'\n")
-    init("--reusable").run
+    init.run
 
     assert_equal({"ruby-version" => ruby_version}, YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel", "with"))
     assert_equal({"accept-label" => "duel: accept"}, YAML.safe_load(read(".github/workflows/perf-comment.yml")).dig("jobs", "comment", "with"))
@@ -1308,7 +1310,7 @@ class InitTest < DuelTest
     project = File.join(tmpdir, "gems", "parser")
     FileUtils.mkdir_p(File.join(project, "lib"))
     File.write(File.join(project, "lib", "parser.rb"), "")
-    init("--reusable", "--badge", at: project).run
+    init("--badge", at: project).run
     perf = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
     comment = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
 
@@ -1317,15 +1319,16 @@ class InitTest < DuelTest
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [perf.fetch("name"), comment.dig(true, "workflow_run", "workflows")]
   end
 
-  # --check with --reusable compares the workflows that call Duel's, and
-  # --reusable is GitHub Actions': GitLab CI has no reusable workflows.
+  # --check compares the workflows that call Duel's, and with
+  # --standalone, the whole ones. GitLab CI has no reusable workflows, so
+  # with --gitlab, it's the whole jobs either way.
   def test_reusable_checked
     gem
-    init("--reusable").run
+    init.run
 
-    assert_equal 0, init("--check", "--reusable").run
-    assert_equal 1, init("--check").run, "not the whole workflows"
-    assert_equal 2, init("--reusable", "--gitlab").run
-    assert_equal "duel init: invalid option: --reusable with --gitlab (GitLab CI has no reusable workflows)\n", @err.string
+    assert_equal [0, 1], [init("--check").run, init("--check", "--standalone").run], "not the whole workflows"
+    init("--gitlab").run
+
+    assert_equal [0, 0], [init("--check", "--gitlab").run, init("--check", "--gitlab", "--standalone").run]
   end
 end

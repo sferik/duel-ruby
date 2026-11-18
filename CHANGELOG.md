@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `duel init` writes short workflows that call Duel's reusable ones, at
+  the tag of the release that writes them, as `--reusable` did, which
+  is gone. `--standalone` writes the whole workflows, as `duel init`
+  did, to change as you like. `--check` compares the ones it would
+  write with the same options, so `duel init --check --standalone`
+  checks whole workflows that an earlier `duel init` wrote.
 - The badge links to USERS.md, the list of projects using Duel, in
   Duel's repository, not to the repository itself: in the README, the
   guide, and the workflows that `duel init` and `rails generate

@@ -19,9 +19,9 @@ module Duel
   # a job that keeps a badge), or with
   # --gitlab, GitLab CI jobs to include, adds a Rake
   # task to the Rakefile, and adds StackProf to the Gemfile (for profiles
-  # of regressions, on CRuby). With --reusable, its workflows are short
-  # ones that call Duel's reusable workflows (see Reusable), passing on
-  # what .duel.rb sets. It overwrites nothing without --force, and
+  # of regressions, on CRuby). Its workflows are short ones that call
+  # Duel's reusable workflows (see Reusable), passing on what .duel.rb
+  # sets, or with --standalone, whole ones, to change as you like. It overwrites nothing without --force, and
   # writes nothing with --dry-run, or with --check, which says how the
   # workflows differ from what it writes.
   # @api private
@@ -49,7 +49,8 @@ module Duel
     LABEL_COLOR = "FBCA04"
 
     # Where Duel's reusable workflows are (see Reusable), which the
-    # workflows it writes with --reusable call, at this release's tag.
+    # workflows it writes call (without --standalone), at this release's
+    # tag.
     REUSABLE = "sferik/duel-ruby/.github/workflows"
 
     def initialize(argv, out: $stdout, err: $stderr, input: $stdin, root: Dir.pwd)
@@ -66,7 +67,6 @@ module Duel
     def run
       rest = catch(:help) { parser.parse(@argv) } or return 0
       raise OptionParser::NeedlessArgument, rest.first unless rest.empty?
-      raise OptionParser::InvalidOption, "--reusable with --gitlab (GitLab CI has no reusable workflows)" if @reusable && @gitlab
       return rails if File.exist?(File.join(@root, "config", "application.rb"))
 
       return check if @check
@@ -90,8 +90,8 @@ module Duel
       return written.merge(top.join(gitlab_file).to_s => render("duel.gitlab-ci.yml")) if @gitlab
 
       workflows = top.join(".github", "workflows")
-      # (With --reusable, ones that call Duel's.)
-      perf, comment = @reusable ? %w[perf-caller.yml perf-comment-caller.yml] : %w[perf.yml perf-comment.yml]
+      # (Ones that call Duel's, or with --standalone, whole ones.)
+      perf, comment = @standalone ? %w[perf.yml perf-comment.yml] : %w[perf-caller.yml perf-comment-caller.yml]
       written.merge(workflows.join(workflow_name).to_s => render(perf),
         workflows.join(workflow_name.sub(/\.yml\z/, "-comment.yml")).to_s => render(comment))
     end
@@ -106,7 +106,7 @@ module Duel
         o.on("--check", "Say how the workflows differ from what it writes (with the same options), and write nothing") { @check = true }
         o.on("--badge", "Write a job that keeps a badge for the README (it needs contents: write)") { @badge = true }
         o.on("--gitlab", "Write GitLab CI jobs (to include from .gitlab-ci.yml), not GitHub Actions workflows") { @gitlab = true }
-        o.on("--reusable", "Write workflows that call Duel's reusable ones (at this release), not whole workflows") { @reusable = true }
+        o.on("--standalone", "Write whole workflows, not ones that call Duel's reusable ones (at this release)") { @standalone = true }
         o.on("-h", "--help", "Print this help") do
           @out.puts o
           throw :help
@@ -328,9 +328,10 @@ module Duel
     # mutant:disable -- nil (a mutation's) renders as false does
     def reusable? = false
 
-    # What the workflow it writes with --reusable passes on to Duel's
-    # Perf workflow, as its inputs (see Reusable): what isn't the input's
-    # default, each as YAML has it. (What .duel.rb sets, Duel reads.)
+    # What the workflow it writes (without --standalone) passes on to
+    # Duel's Perf workflow, as its inputs (see Reusable): what isn't the
+    # input's default, each as YAML has it. (What .duel.rb sets, Duel
+    # reads.)
     def perf_inputs
       {
         "ruby-version" => ruby_version,
@@ -451,8 +452,8 @@ module Duel
     # project in a subdirectory, duel/badge-<its path>.
     def badge_branch = suffixed("duel/badge")
 
-    # Duel's reusable workflows, which the workflows `duel init --reusable`
-    # writes call: .github/workflows/duel.yml (the Perf workflow's jobs)
+    # Duel's reusable workflows, which the workflows `duel init` writes
+    # call: .github/workflows/duel.yml (the Perf workflow's jobs)
     # and duel-comment.yml (the Perf comment workflow's), in Duel's
     # repository. They're the templates `duel init` writes from, rendered
     # with each setting of .duel.rb they need as an input (and a job or a

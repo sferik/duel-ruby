@@ -141,9 +141,10 @@ at the API.
    If the project pins its Ruby (`.ruby-version`, `.tool-versions`, or
    `mise.toml`), set `c.ruby = :version_file`, so that a branch that
    upgrades Ruby is compared on each version's own Ruby. `duel init`
-   does this, and adds the steps in Duel's `docs/ci.md` that install
-   the baseline's Ruby to the workflow, for a `.ruby-version`. For another version
-   file, do both yourself (see step 6). Duel uses the Ruby that runs it
+   does this for a `.ruby-version`, and has the workflow set up the
+   baseline's Ruby too (`version-file: true`). For another version
+   file, set it yourself, and see step 6 for the workflow. Duel uses the
+   Ruby that runs it
    when that's the one asked for, so CI needs nothing more until a
    branch changes the Ruby.
 
@@ -191,13 +192,14 @@ at the API.
      your names can be picked out. Without `--force`, a tree with
      nothing changed since the main branch has nothing to compare.
 
-6. **Check CI.** `duel init` wrote two GitHub Actions workflows.
-   - `.github/workflows/perf.yml` runs Duel. Keep `fetch-depth: 0`:
-     Duel's baseline comes from git history. Keep its check for a push
-     with no commit before it in the history (a branch's first push, or
-     a force push), which would otherwise fail the job. The Duel job
-     runs the branch's code, so it only reads: don't give it, or the
-     workflow, any write permission.
+6. **Check CI.** `duel init` wrote two GitHub Actions workflows, short
+   ones that call Duel's reusable workflows, at the tag of the Duel
+   release that wrote them, with what `.duel.rb` sets that they need.
+   - `.github/workflows/perf.yml` runs Duel. Its Duel job runs the
+     branch's code, and Duel's workflow keeps that job to
+     `contents: read`. Keep the permissions as `duel init` wrote them:
+     GitHub checks every job of Duel's workflow against them, whether
+     it runs or not.
    - `.github/workflows/perf-comment.yml` comments on a pull request
      with Duel's report once the first has run (`c.comment` in
      `.duel.rb` chooses when, and Duel also adds the report to the
@@ -212,14 +214,17 @@ at the API.
      unless I ask.
 
    Check that `ruby-version` is one the project supports, unless it has
-   a `.ruby-version`. With `c.ruby = :version_file` and another version
-   file than `.ruby-version`, add the steps in Duel's `docs/ci.md` that
-   install the baseline's Ruby, reading that file instead. If
-   `.duel.rb` sets `c.release_tags`, set the labels step's
-   `RELEASE_TAGS` to match. Add the project's
-   other CI setup that its tests need (system packages, services) to
-   the Duel job as well. Keep the scheduled `last-release` run only if
-   the project tags its releases (`v*` by default, or else set
+   a `.ruby-version`. Give the project's other CI setup that its tests
+   need (system packages, services) to the call as `setup:`, shell
+   commands that run before Ruby is set up (Duel's `docs/ci.md` lists
+   the inputs). Where that isn't enough, or with `c.ruby =
+   :version_file` and another version file than `.ruby-version`, delete
+   the two workflows and run `bundle exec duel init --standalone`,
+   which writes the whole ones (and leaves the files that are there).
+   Add the setup to its Duel job, and for the version file, the steps in
+   Duel's `docs/ci.md` that install the baseline's Ruby, reading that
+   file instead. Keep the scheduled `last-release` run only if the
+   project tags its releases (`v*` by default, or else set
    `c.release_tags`), or leave the schedule out. Until the first
    release is tagged, that run says there's nothing to compare against,
    and passes. Once it's pushed, run the workflow by hand: it compares
