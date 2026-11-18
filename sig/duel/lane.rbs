@@ -82,6 +82,9 @@ module Duel
 
     private
 
+    # Each version's first worker, by version.
+    def firsts: () -> Hash[String, WorkerProcess]
+
     def spawn: (String side, Integer index) -> WorkerProcess
 
     # Fails where a worker's environment turns on one of CRuby's JITs that

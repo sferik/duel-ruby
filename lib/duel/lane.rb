@@ -123,7 +123,7 @@ module Duel
     def benchmarks = @candidates.first.benchmarks
 
     # The Ruby each version runs on (RUBY_DESCRIPTION), by version.
-    def rubies = {"baseline" => @bases.first.description, "candidate" => @candidates.first.description}
+    def rubies = firsts.transform_values(&:description)
 
     # Stops its workers, then their resources: each worker's last first
     # (one may need another), the workers' at once.
@@ -161,7 +161,7 @@ module Duel
       return unless @profiler
 
       # @type var sides: Hash[String, WorkerProcess]?
-      sides = {"baseline" => @bases.first, "candidate" => @candidates.first}
+      sides = firsts
       sides.each_value { |worker| worker.request("setup", name) }
       sides.transform_values { |worker| worker.request("profile", name, n: n, runs: PROFILE_SAMPLES) }
     ensure
@@ -169,6 +169,9 @@ module Duel
     end
 
     private
+
+    # Each version's first worker, by version.
+    def firsts = {"baseline" => @bases.first, "candidate" => @candidates.first}
 
     # A worker of +side+, with its own resources, and its version's Ruby
     # and environment.
@@ -216,7 +219,7 @@ module Duel
     # loaded one twice (see Worker.twice): the candidate's, that something
     # required before Duel loaded the version, and then its own over it.
     def check_builds
-      workers = {"baseline" => @bases.first, "candidate" => @candidates.first}
+      workers = firsts
       workers.each do |side, worker|
         worker.twice.each do |feature, paths|
           raise Failed, "the #{side} loaded #{feature} twice, from #{paths.join(" and ")}: something required it before " \
