@@ -124,6 +124,9 @@ module Duel
     # The hooks +name+d: the configuration's, then its file's and its own.
     def hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
 
+    # The hooks +name+d, each given the benchmark, if it takes it.
+    def given_hooks: (Symbol name, Hash[Symbol, Array[hook]] hooks) -> Array[_Bound]
+
     # +hook+, given the benchmark, if it takes it.
     def given: (_Bound hook) -> _Bound
 

@@ -68,9 +68,9 @@ module Duel
       body = definition.body
       @body = bound(body)
       @given_n = body.arity == 1
-      @setup = hooks(:setup, hooks).map { |hook| given(hook) }
-      @teardown = hooks(:teardown, hooks).map { |hook| given(hook) }.reverse
-      @before_sample = hooks(:before_sample, hooks).map { |hook| given(hook) }
+      @setup = given_hooks(:setup, hooks)
+      @teardown = given_hooks(:teardown, hooks).reverse
+      @before_sample = given_hooks(:before_sample, hooks)
       @after = hooks(:after_iterations, hooks)
       # (Each around_iteration hook's Iteration, innermost first, made once:
       # running one allocates nothing.)
@@ -187,6 +187,10 @@ module Duel
       file = Duel.file_hooks.fetch(@definition.file, NO_HOOKS).fetch(name)
       hooks.fetch(name) + [*file, *@definition.hooks[name]].map { |hook| bound(hook) }
     end
+
+    # The hooks +name+d (see #hooks), each given the benchmark, if it
+    # takes it.
+    def given_hooks(name, hooks) = hooks(name, hooks).map { |hook| given(hook) }
 
     # +hook+, given the benchmark, if it takes it.
     def given(hook)
