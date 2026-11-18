@@ -219,8 +219,7 @@ module Duel
         run.processes = 2
         # (.duel.rb's run settings, c.limit say, but where one's given, and
         # its processes: a test's are few.)
-        config.run_settings.except(:processes).each { |name, value| run[name] = value }
-        settings.each { |setting, value| run[setting] = value }
+        config.run_settings.except(:processes).merge(settings).each { |name, value| run[name] = value }
         out = StringIO.new
         runner = Runner.new(config, run, base, out: out)
         results = runner.run
