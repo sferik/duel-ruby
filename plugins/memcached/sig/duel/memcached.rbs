@@ -21,12 +21,12 @@ module Duel
     NEEDLES: Hash[String, String]
 
     # Configures Duel for the plugin (c.use :memcached): the server
-    # (+server+ is the program, +args+ more of its options, +env+ the
+    # (+server+ is the program, +settings+ more of its options, +env+ the
     # variables besides DUEL_MEMCACHED_SERVERS given its socket's path)
     # and its metrics, memcached_cpu too with +cpu+, on a port of
     # 127.0.0.1's with +tcp+ (by default on Windows). Returns the plugin's
     # own connection to it, a worker's.
-    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?cpu: bool, ?tcp: bool) -> InWorker[Connection]
+    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer | true], ?env: Array[String], ?cpu: bool, ?tcp: bool) -> InWorker[Connection]
 
     # What the worker's server has done so far (but memcached_cpu), read
     # over +connection+ (the plugin's own). It allocates only its Hash.

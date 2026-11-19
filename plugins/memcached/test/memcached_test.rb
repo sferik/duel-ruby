@@ -61,21 +61,16 @@ class MemcachedTest < PluginTest
   # With +tcp+ (Windows's, by default), on a port of its own, of
   # 127.0.0.1's alone, with the same options, and those it's given.
   def test_a_server_on_a_port
-    server = worker(config(tcp: true, args: ["-c", "77"])) do |env|
+    server = worker(config(tcp: true, settings: {"conn-limit" => 77})) do |env|
       server = env.fetch("DUEL_MEMCACHED_SERVERS")
       stats = @connection.value.stats
 
       assert_match(/\A127\.0\.0\.1:\d+\z/, server)
       assert_equal server, env.fetch("MEMCACHE_SERVERS")
       assert_equal ["1", (32 << 20).to_s, "77"], stats.values_at("threads", "limit_maxbytes", "max_connections")
-      settings = Duel::Memcached::Connection.socket(server)
-      settings.write("stats settings\r\n")
-      lines = []
-      lines << settings.gets.chomp until lines.last == "END"
-      settings.close
+      settings = settings(server)
 
-      assert_includes lines, "STAT tcpport #{server[/\d+\z/]}"
-      assert_includes lines, "STAT inter 127.0.0.1"
+      assert_equal [server[/\d+\z/], "127.0.0.1"], settings.values_at("tcpport", "inter")
       server
     end
 
@@ -136,9 +131,10 @@ class MemcachedTest < PluginTest
   end
 
   def test_its_options
-    worker(config(args: ["-m", "8"], env: %w[CACHE_SERVERS])) do |env|
+    worker(config(settings: {"memory-limit": 8, "disable-cas": true}, env: %w[CACHE_SERVERS])) do |env|
       assert_equal %w[CACHE_SERVERS DUEL_MEMCACHED_SERVERS], env.keys.sort
-      assert_equal (8 << 20).to_s, @connection.value.stats.fetch("limit_maxbytes"), "its own -m wins"
+      assert_equal (8 << 20).to_s, @connection.value.stats.fetch("limit_maxbytes"), "its own memory-limit wins"
+      assert_equal "no", settings(env.fetch("DUEL_MEMCACHED_SERVERS")).fetch("cas_enabled"), "a flag"
     end
   end
 
@@ -451,6 +447,16 @@ class MemcachedTest < PluginTest
   end
 
   private
+
+  # The server's settings (stats settings), by name.
+  def settings(server)
+    socket = Duel::Memcached::Connection.socket(server)
+    socket.write("stats settings\r\n")
+    lines = []
+    lines << socket.gets.chomp until lines.last == "END"
+    socket.close
+    lines[0...-1].to_h { |line| line.split(" ", 3).drop(1) }
+  end
 
   # Objects the block allocates, counted the second time it runs: what's
   # made only the first time (Ruby's caches for each call, say) isn't.

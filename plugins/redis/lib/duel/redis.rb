@@ -35,10 +35,11 @@ module Duel
     OPTIONS = ["--port", "0", "--save", "", "--appendonly", "no"].freeze
 
     # Configures Duel for the plugin (c.use :redis): the server
-    # (+server+ is the program, +args+ more of its options) and its
+    # (+server+ is the program, +settings+ more of its configuration's
+    # directives: maxmemory: "64mb", as --maxmemory 64mb) and its
     # metrics. Returns the plugin's own connection to it, a worker's
     # (see Config#in_worker, and in tests, Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), args: [], env: %w[REDIS_URL],
+    def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), settings: {}, env: %w[REDIS_URL],
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         if tcp
@@ -51,8 +52,9 @@ module Duel
           url = "unix://#{socket}"
         end
         # (Where it listens after OPTIONS, whose port of 0 a port takes the
-        # place of.)
-        w.spawn(*[server, "--dir", w.dir, *OPTIONS, *listen] + args)
+        # place of, and +settings+ last: of a directive given twice, the
+        # server takes the last.)
+        w.spawn(server, "--dir", w.dir, *OPTIONS, *listen, *settings.flat_map { |name, value| ["--#{name}", value.to_s] })
         w.wait_until { Connection.ping(url) }
         ([URL] + env).to_h { |name| [name, url] }
       end

@@ -12,12 +12,12 @@ module Duel
     METRICS: Hash[String, Metric::settings]
 
     # Configures Duel for the plugin (c.use :redis): the server (+server+
-    # is the program, +args+ more of its options, +env+ the variables
+    # is the program, +settings+ more of its directives, +env+ the variables
     # besides DUEL_REDIS_URL given its URL) and its metrics. Returns the
     # plugin's own connection to it, a worker's.
     # +tcp+: on a port of 127.0.0.1's, not a Unix socket (by default on
     # Windows).
-    def self.configure: (Config config, ?server: String, ?args: Array[String], ?env: Array[String], ?tcp: bool) -> InWorker[Connection]
+    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?env: Array[String], ?tcp: bool) -> InWorker[Connection]
 
     # What the worker's server has done so far, read over +connection+.
     def self.stats: (Connection connection) -> Hash[String, Integer]

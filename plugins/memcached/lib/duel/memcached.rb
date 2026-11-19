@@ -36,11 +36,13 @@ module Duel
     SERVERS = "DUEL_MEMCACHED_SERVERS"
 
     # Configures Duel for the plugin (c.use :memcached): the server
-    # (+server+ is the program, +args+ more of its options) and its
+    # (+server+ is the program, +settings+ more of its options, by their
+    # long names: "memory-limit": 256, as --memory-limit=256, and a
+    # flag's true: "disable-cas": true, as --disable-cas) and its
     # metrics, memcached_cpu too with +cpu+. Returns the plugin's own
     # connection to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), args: [], env: %w[MEMCACHE_SERVERS], cpu: false,
+    def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), settings: {}, env: %w[MEMCACHE_SERVERS], cpu: false,
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         if tcp
@@ -51,7 +53,9 @@ module Duel
           address = w.path("memcached.sock")
           listen = ["-s", address]
         end
-        w.spawn(*[server, *listen, "-m", "32", "-t", "1"] + args)
+        # (+settings+ last: of an option given twice, the server takes the
+        # last.)
+        w.spawn(server, *listen, "-m", "32", "-t", "1", *settings.map { |name, value| (value == true) ? "--#{name}" : "--#{name}=#{value}" })
         w.wait_until { Connection.ready?(address) }
         ([SERVERS] + env).to_h { |name| [name, address] }
       end

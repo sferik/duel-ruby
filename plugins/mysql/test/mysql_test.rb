@@ -91,19 +91,20 @@ class MySQLTest < PluginTest
 
   def test_its_options
     unix!
-    config = config(server: MYSQLD, args: ["--max-connections=17"], env: %w[PRIMARY_URL], tcp: false,
+    config = config(server: MYSQLD, settings: {:max_connections => 17, "sort-buffer-size" => "4M", :innodb_buffer_pool_size => "64M"}, env: %w[PRIMARY_URL], tcp: false,
       scheme: "trilogy", sql: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
       assert_equal %w[DUEL_MYSQL_SOCKET DUEL_MYSQL_URL MYSQL_UNIX_PORT PRIMARY_URL], env.keys.sort
       assert_equal "trilogy://root@localhost/duel?socket=#{Duel::MySQL.socket}", env.fetch("PRIMARY_URL")
-      assert_equal [[17, 2, 1]], query("SELECT @@max_connections, (SELECT COUNT(*) FROM items), @@skip_networking"), "no network"
+      assert_equal [[17, 4 << 20, 2, 1]], query("SELECT @@max_connections, @@sort_buffer_size, (SELECT COUNT(*) FROM items), @@skip_networking"), "no network"
+      assert_equal [[64 << 20]], query("SELECT @@innodb_buffer_pool_size"), "over the plugin's own"
     end
   end
 
   def test_a_server_that_doesnt_start
-    error = assert_raises(Duel::Failed) { prepare(config(args: ["--no-such-option"])) { flunk "started" } }
+    error = assert_raises(Duel::Failed) { prepare(config(settings: {no_such_setting: 1})) { flunk "started" } }
 
-    assert_match(/\Ahead-1's resource: mysqld(\.exe)? exited before it was ready\n.*no-such-option/m, error.message)
+    assert_match(/\Ahead-1's resource: mysqld(\.exe)? exited before it was ready\n.*no_such_setting/m, error.message)
   end
 
   def test_no_server
@@ -304,7 +305,7 @@ class MySQLTest < PluginTest
   # while it runs) aren't clients: a reading doesn't wait for them, but
   # for clients still.
   def test_a_reading_waits_for_clients_only
-    worker(config(args: ["--event-scheduler=ON"])) do
+    worker(config(settings: {event_scheduler: "ON"})) do
       connection = @connection.value
       Duel::MySQL.execute("CREATE EVENT sleeping ON SCHEDULE EVERY 1 SECOND DO DO SLEEP(3)")
       sleep 0.01 until query("SELECT COUNT(*) FROM performance_schema.threads WHERE NAME = 'thread/sql/event_worker'") != [[0]]

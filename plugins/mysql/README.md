@@ -100,7 +100,7 @@ Options:
 ```ruby
 c.use :mysql,
   server: "/usr/local/mysql/bin/mysqld",    # the program (default: DUEL_MYSQL_SERVER, or mysqld)
-  args: ["--sort-buffer-size=4M"],          # more of its options
+  settings: {sort_buffer_size: "4M"},       # more of its system variables, as --sort_buffer_size=4M
   sql: File.read("db/structure.sql"),       # SQL each worker's database runs first
   env: %w[DATABASE_URL PRIMARY_URL],        # variables given its URL besides DUEL_MYSQL_URL
   scheme: "trilogy",                        # the URL's (Rails takes it for the adapter, mysql2 by default)
@@ -118,8 +118,8 @@ Initializing a data directory takes seconds, so it's done once (Duel's
 database created in it, in your project's `tmp/duel/cache`, and every
 worker (in that run and the next ones) starts with a copy. One is made
 for each server program (and version of the plugin): another MySQL gets
-its own. `duel clean` deletes them. (`args` are the running server's,
-not its initialization's.)
+its own. `duel clean` deletes them. (`settings` are the running
+server's, not its initialization's.)
 
 The metrics come from the server's status (`Questions`) and
 `performance_schema` (its statement summaries), which MySQL updates as

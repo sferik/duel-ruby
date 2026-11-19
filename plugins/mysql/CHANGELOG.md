@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sql:` is what each worker's database runs once its server starts
   (a schema, say), in place of `setup:`, which is a hook's name
   everywhere else in Duel.
+- `settings:` gives each worker's server more of its system variables,
+  as a Hash (`settings: {sort_buffer_size: "4M"}`, passed as
+  `--sort_buffer_size=4M`), as duel-postgresql's `settings:` does, in
+  place of `args:`, a list of mysqld's options, as duel-redis's and
+  duel-memcached's `settings:` do too. They come last, so they win over
+  the plugin's own.
 - `server:` is found by Duel's `Duel.find_program`, as duel-postgresql's
   is: a path is expanded (`~/mysql/bin/mysqld`, say), and a directory
   named `mysqld` on the `PATH` isn't taken for the program.

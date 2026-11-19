@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `settings:` gives each worker's server more of its options, by their
+  long names, as a Hash (`settings: {"memory-limit": 256}`, passed as
+  `--memory-limit=256`, and a flag's value is `true`:
+  `"disable-cas": true`), in place of `args:`, a list of them, as
+  duel-postgresql's and duel-mysql's `settings:` do. They come last, so
+  they win over the plugin's own.
 - `Duel::Memcached.flush` is `Duel::Memcached.reset`, as MySQL's and
   PostgreSQL's plugins name what empties a worker's server.
 

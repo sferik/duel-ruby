@@ -22,7 +22,7 @@ class DatabaseTest < PluginTest
   # the plugin's own, and the options given).
   def test_a_server_from_its_plugin
     {postgresql: [:postgresql, {}, {}], mysql2: [:mysql, {}, {}],
-     trilogy: [:mysql, {args: ["--x"]}, {scheme: "trilogy", args: ["--x"]}]}.each do |database, (plugin, options, used)|
+     trilogy: [:mysql, {settings: {x: 1}}, {scheme: "trilogy", settings: {x: 1}}]}.each do |database, (plugin, options, used)|
       c = config
       given = []
       c.define_singleton_method(:use) { |name, **opts| (given << [name, opts]) && :used }
@@ -34,9 +34,9 @@ class DatabaseTest < PluginTest
 
   # A file takes no server's options.
   def test_sqlite_takes_no_options
-    error = assert_raises(ArgumentError) { Duel::Rails::Database.configure(config, :sqlite, {sql: "SELECT 1", args: []}) }
+    error = assert_raises(ArgumentError) { Duel::Rails::Database.configure(config, :sqlite, {sql: "SELECT 1", settings: {}}) }
 
-    assert_equal "database_options: sql, args: :sqlite is a file, which takes none", error.message
+    assert_equal "database_options: sql, settings: :sqlite is a file, which takes none", error.message
   end
 
   def test_a_database_there_isnt

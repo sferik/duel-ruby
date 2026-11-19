@@ -46,12 +46,12 @@ module Duel
     type row = Array[untyped]
 
     # Configures Duel for the plugin (c.use :mysql): the server (+server+
-    # the program, +args+ more of its options, +sql+ what each worker's
-    # database runs when it's started, +env+ the variables besides
+    # the program, +settings+ more of its system variables, +sql+ what each
+    # worker's database runs when it's started, +env+ the variables besides
     # DUEL_MYSQL_URL given its URL, +scheme+ the URL's, +tcp+ on a port
     # of 127.0.0.1's: by default on Windows) and its metrics. Returns the
     # plugin's own connection to it, a worker's.
-    def self.configure: (Config config, ?server: String, ?args: Array[String], ?sql: String?, ?env: Array[String],
+    def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?sql: String?, ?env: Array[String],
                          ?scheme: String, ?tcp: bool) -> InWorker[Connection]
 
     # The most memory a worker's server takes.

@@ -76,7 +76,7 @@ Options:
 ```ruby
 c.use :memcached,
   server: "/opt/memcached/bin/memcached", # the program (default: DUEL_MEMCACHED_SERVER, or memcached)
-  args: ["-m", "256"],                    # more of its options (they win)
+  settings: {"memory-limit": 256},        # more of its options, as --memory-limit=256 (they win: a flag's true)
   env: %w[CACHE_SERVERS],                 # variables given its socket besides DUEL_MEMCACHED_SERVERS (default: MEMCACHE_SERVERS)
   cpu: true,                              # judge memcached_cpu too
   tcp: true                               # on a port of 127.0.0.1's, its server 127.0.0.1:PORT (default: on Windows only)

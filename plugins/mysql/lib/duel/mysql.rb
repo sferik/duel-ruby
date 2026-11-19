@@ -71,15 +71,15 @@ module Duel
     def self.worker_memory = 450 << 20
 
     # Configures Duel for the plugin (c.use :mysql): the server and its
-    # metrics. +server+ is the program, +args+ more of its options,
-    # +sql+ what each worker's database runs when it's started (a
+    # metrics. +server+ is the program, +settings+ more of its system
+    # variables (sort_buffer_size: "4M", as --sort_buffer_size=4M), +sql+ what each worker's database runs when it's started (a
     # schema, say), +env+ the variables given its URL besides
     # DUEL_MYSQL_URL, and +scheme+ the URL's (Rails takes it for the
     # adapter). A data directory is initialized once (Resource#cached),
     # and each worker's is a copy. Returns the plugin's own connection
     # to it, a worker's (see Config#in_worker, and in tests,
     # Duel::Testing.in_worker).
-    def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], sql: nil, env: %w[DATABASE_URL],
+    def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), settings: {}, sql: nil, env: %w[DATABASE_URL],
       scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         program = Duel.find_program(server) ||
@@ -106,7 +106,10 @@ module Duel
         # its port, for 127.0.0.1, and its socket, which it takes for
         # localhost, wherever there's one, even with +tcp+.)
         vars[UNIX_PORT] = socket if Duel.unix_sockets?
-        w.spawn(program, *(DataDir.options(data) + listen), "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}", *(RUNNING + args))
+        # (+settings+' last: of an option given twice, mysqld takes the
+        # last.)
+        w.spawn(program, *(DataDir.options(data) + listen), "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}", *RUNNING,
+          *settings.map { |name, value| "--#{name}=#{value}" })
         # (Stopped with SHUTDOWN, before it's killed: on Windows, mysqld is
         # a monitor, the server its child, which killing it would leave
         # running.)

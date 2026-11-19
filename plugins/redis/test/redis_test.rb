@@ -57,7 +57,7 @@ class RedisTest < PluginTest
   # 127.0.0.1's alone, in the worker's directory all the same, and no
   # Unix socket.
   def test_a_server_on_a_port
-    url = Duel::Testing.prepare(config(tcp: true, args: ["--databases", "4"])) do |env|
+    url = Duel::Testing.prepare(config(tcp: true, settings: {databases: 4})) do |env|
       url = env.fetch("DUEL_REDIS_URL")
       redis = Duel::Redis::Connection.new(url)
       dir = redis.call("CONFIG", "GET", "dir").last
@@ -99,10 +99,11 @@ class RedisTest < PluginTest
   end
 
   def test_its_options
-    Duel::Testing.prepare(config(args: ["--databases", "4"], env: %w[CACHE_URL])) do |env|
+    Duel::Testing.prepare(config(settings: {"databases" => 4, "save" => "60 1"}, env: %w[CACHE_URL])) do |env|
       redis = Duel::Redis::Connection.new(env.fetch("CACHE_URL"))
 
       assert_equal %w[CACHE_URL DUEL_REDIS_URL], env.keys.sort
+      assert_equal ["save", "60 1"], redis.call("CONFIG", "GET", "save"), "over its own"
       assert_raises(RuntimeError) { redis.call("SELECT", 4) }
       redis.call("SELECT", 3)
     end
@@ -112,7 +113,7 @@ class RedisTest < PluginTest
   # it write (an append-only file, here) goes there, not in the project.
   def test_its_directory
     unix_sockets!
-    Duel::Testing.prepare(config(tcp: false, args: ["--appendonly", "yes"])) do |env|
+    Duel::Testing.prepare(config(tcp: false, settings: {appendonly: "yes"})) do |env|
       dir = File.dirname(env.fetch("REDIS_URL").delete_prefix("unix://"))
       redis = Duel::Redis::Connection.new(env.fetch("REDIS_URL"))
 

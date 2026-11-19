@@ -41,7 +41,7 @@ directory (or with `tcp: true`, on a port of 127.0.0.1's alone, as it
 does by default on Windows, whose builds of Redis have Unix sockets
 Windows's Ruby can't reach), with persistence off, and works in that
 directory too
-(`--dir`): if your `args:` turn persistence on, its snapshots and
+(`--dir`): if your `settings:` turn persistence on, its snapshots and
 append-only files go there, never in your project. Its URL is in
 `DUEL_REDIS_URL`, and in `REDIS_URL` too, so a client that reads that
 finds it and nothing reaches another Redis. Benchmarks can call
@@ -69,7 +69,7 @@ Options:
 ```ruby
 c.use :redis,
   server: "valkey-server",        # the program (default: DUEL_REDIS_SERVER, or redis-server)
-  args: ["--maxmemory", "64mb"],  # more of its options
+  settings: {maxmemory: "64mb"},  # more of its directives, as --maxmemory 64mb (they win)
   env: %w[CACHE_URL],             # variables given its URL besides DUEL_REDIS_URL (default: REDIS_URL)
   tcp: true                       # on a port of 127.0.0.1's, its URL redis://127.0.0.1:PORT (default: on Windows only)
 ```
