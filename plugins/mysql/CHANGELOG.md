@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a schema, say), in place of `setup:`, which is a hook's name
   everywhere else in Duel.
 
+### Fixed
+
+- With a `server:` path that isn't there, the error no longer says
+  it's not on the PATH, and it asks for mysqld's path, as
+  duel-postgresql's does for postgres's.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

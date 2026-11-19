@@ -109,7 +109,12 @@ class MySQLTest < PluginTest
   def test_no_server
     error = assert_raises(Duel::Failed) { prepare(config(server: "no-such-mysqld")) { flunk "started" } }
 
-    assert_equal "head-1's resource: no no-such-mysqld on the PATH (give it as server:, or DUEL_MYSQL_SERVER)", error.message
+    assert_equal "head-1's resource: no no-such-mysqld on the PATH (give mysqld's path as server:, or DUEL_MYSQL_SERVER)", error.message
+    %W[#{@dir}/mysqld C:\\mysql\\mysqld].each do |path|
+      error = assert_raises(Duel::Failed) { prepare(config(server: path)) { flunk "started" } }
+
+      assert_equal "head-1's resource: no #{path} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)", error.message, "a path's not on the PATH"
+    end
   end
 
   def test_finding_the_server

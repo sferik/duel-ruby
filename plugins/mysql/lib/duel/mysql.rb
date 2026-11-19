@@ -83,7 +83,8 @@ module Duel
     def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], sql: nil, env: %w[DATABASE_URL],
       scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
-        program = DataDir.find_server(server) || w.failed("no #{server} on the PATH (give it as server:, or DUEL_MYSQL_SERVER)")
+        program = DataDir.find_server(server) ||
+          w.failed("no #{server}#{" on the PATH" unless server.match?(%r{[/\\]})} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")
         DataDir.new(w, program).create(data)
         # (A Unix socket even with +tcp+, which MySQL can't do without:
