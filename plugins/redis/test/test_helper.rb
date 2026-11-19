@@ -94,8 +94,12 @@ module SharedServer
 end
 
 class PluginTest < Minitest::Test
+  # The server the tests run, found as the plugin finds it
+  # (Duel.find_program).
+  REDIS_SERVER = Duel.find_program(ENV.fetch("DUEL_REDIS_SERVER", "redis-server"))
+
   def setup
-    skip "redis-server isn't installed" unless system("redis-server", "--version", out: File::NULL, err: File::NULL)
+    skip "Redis isn't installed" unless REDIS_SERVER
     @dir = Dir.mktmpdir("dr", Duel::Lane.short_tmp)
   end
 

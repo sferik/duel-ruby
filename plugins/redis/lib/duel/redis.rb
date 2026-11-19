@@ -16,7 +16,8 @@ module Duel
   #   # .duel.rb
   #   Duel.configure { |c| c.use :redis }
   #
-  # Benchmarks can call Duel::Redis.url and Duel::Redis.reset.
+  # Benchmarks can call Duel::Redis.url, and Duel::Redis.reset in setup
+  # (or untimed blocks): while a benchmark is measured, it fails.
   #
   # The server listens only on a Unix socket in the worker's directory
   # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,

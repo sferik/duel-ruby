@@ -105,6 +105,15 @@ When you write a plugin, follow these guidelines:
   isn't on the `PATH`, for example
   `Duel.find_program(server) || w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)}")`.
   A version of Duel before 0.2.1 doesn't have them.
+- Give a plugin that starts a server the options that Duel's own server
+  plugins share, by the same names:
+  - `server:`, its program (by default `DUEL_<NAME>_SERVER`, or the
+    program's name), found with `Duel.find_program`.
+  - `settings:`, a Hash of more of the server's settings, by the
+    server's own names, passed after the plugin's own so that they win.
+  - `env:`, the variables given its address besides the plugin's own
+    `DUEL_<NAME>_*` one.
+  - `tcp:` (see above).
 - To read a project's settings outside a run, as a generator that writes
   its files might, load its `.duel.rb` with `Duel.load_config(path)`,
   which returns its configuration. Before 0.2.0, it was private.

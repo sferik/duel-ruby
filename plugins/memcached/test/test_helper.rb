@@ -94,8 +94,12 @@ module SharedServer
 end
 
 class PluginTest < Minitest::Test
+  # The server the tests run, found as the plugin finds it
+  # (Duel.find_program).
+  MEMCACHED = Duel.find_program(ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"))
+
   def setup
-    skip "memcached isn't installed" unless system("memcached", "--version", out: File::NULL, err: File::NULL)
+    skip "memcached isn't installed" unless MEMCACHED
     @dir = Dir.mktmpdir("dm", Duel::Lane.short_tmp)
   end
 
