@@ -65,8 +65,13 @@ module Duel
       connection
     end
 
+    # redis_cpu is the server's time on the clock (Redis times each
+    # command so), and another process's, so what else the machine does
+    # shows in it: it's judged on each benchmark, but left out across the
+    # board, where the margin is too small for it, as duel-mysql's and
+    # duel-postgresql's time are.
     METRICS = {
-      "redis_cpu" => {kind: :ratio, unit: "µs", floor: 300},
+      "redis_cpu" => {kind: :ratio, unit: "µs", floor: 300, across: false},
       "redis_commands" => {kind: :counted, unit: %w[command commands]},
       "redis_round_trips" => {kind: :counted, unit: ["round trip", "round trips"]}
     }

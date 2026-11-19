@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `redis_cpu` is left out of Duel's across-the-board check
+  (`across: false`), as duel-mysql's and duel-postgresql's server time
+  is: it's the server's time on the clock, another process's, so what
+  else the machine does shows in it, too much for that check's margin.
+  It's still judged on each benchmark.
 - `server:` is found by `Duel.find_program`, as every Duel plugin's
   is: a path (`~` expanded) as it is, or a name on the `PATH`. With
   none, the error says so (`no redis-server on the PATH (give

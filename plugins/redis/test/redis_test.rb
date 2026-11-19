@@ -32,6 +32,8 @@ class RedisTest < PluginTest
     assert_equal [:redis], config.plugins
     assert_equal [1, 0, 1], [config.prepares.fetch(:worker).size, config.prepares.fetch(:version).size, config.in_workers.size]
     assert_equal [%w[redis_cpu redis_commands redis_round_trips]], config.metrics.map { |metric| metric.measures.keys }
+    assert_equal [[:ratio, 300, false], [:counted, 0, true], [:counted, 0, true]],
+      config.metrics.first.settings.values.map { |s| s.values_at(:kind, :floor, :across) }, "redis_cpu judged on each benchmark alone"
   end
 
   # Unix sockets: there's no Redis for Windows whose Windows's Ruby can

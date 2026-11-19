@@ -83,3 +83,13 @@ too (`connection.value`, in a worker only). Each reading is a command and a
 reply itself, so Duel learns what readings add, and takes it away. Reports
 count them: `redis_commands 4→6`, `redis_round_trips: 1 round trip → 2
 round trips an iteration`.
+
+`redis_cpu` is the server's time on the clock (Redis times each command
+so, though it calls it CPU time), and another process's, so what else
+the machine does shows in it: it's judged for each benchmark, but left
+out of Duel's across-the-board check (`across: false`), whose margin is
+a quarter of its limit.
+
+Like any measure, each can be tuned or left out in `.duel.rb`:
+`c.measure("redis_cpu", limit: 1.1)`,
+`c.measure("redis_round_trips", skip: true)`.
