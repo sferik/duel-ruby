@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Its measures are named after the plugin, as every other Duel
+  plugin's are (`mysql_*`, `redis_*`): `postgresql_queries`,
+  `postgresql_rows`, `postgresql_blocks` and `postgresql_time`, in
+  place of `postgres_queries`, `postgres_rows`, `postgres_blocks` and
+  `postgres_time`. A `.duel.rb` that tunes one
+  (`c.measure("postgres_time", limit: 1.1)`) needs the new name.
 - `sql:` is what each worker's database runs once its server starts
   (a schema, say), in place of `setup:`, which is a hook's name
   everywhere else in Duel.

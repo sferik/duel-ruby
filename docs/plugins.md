@@ -398,7 +398,7 @@ rolled_back = lambda do |iteration|
   pg.exec("ROLLBACK")
 end
 Duel::Testing.measure(config, n: 20, around_iteration: rolled_back) { pg.exec("INSERT INTO items VALUES (1)") }
-# => {"postgres_queries" => 20, "postgres_rows" => 20, ...}
+# => {"postgresql_queries" => 20, "postgresql_rows" => 20, ...}
 ```
 
 To test or benchmark what a metric says of a sample, without a worker,

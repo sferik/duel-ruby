@@ -1,7 +1,7 @@
 module Duel
   # A PostgreSQL server of each worker's own, and what it did for each
-  # benchmark (postgres_queries, postgres_rows, postgres_blocks,
-  # postgres_time).
+  # benchmark (postgresql_queries, postgresql_rows, postgresql_blocks,
+  # postgresql_time).
   module PostgreSQL
     VERSION: String
 

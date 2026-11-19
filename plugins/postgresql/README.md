@@ -10,10 +10,10 @@ every benchmark is judged on what PostgreSQL did for it too.
 
 | Metric | What it is | A regression |
 |---|---|---|
-| `postgres_queries` | the statements it ran (`BEGIN` and `COMMIT` too) | any increase |
-| `postgres_rows` | the rows they returned or changed | any increase |
-| `postgres_blocks` | the shared buffer blocks they touched, cached or not | judged like CPU time |
-| `postgres_time` | the time it spent planning and running them, in µs | judged like CPU time |
+| `postgresql_queries` | the statements it ran (`BEGIN` and `COMMIT` too) | any increase |
+| `postgresql_rows` | the rows they returned or changed | any increase |
+| `postgresql_blocks` | the shared buffer blocks they touched, cached or not | judged like CPU time |
+| `postgresql_time` | the time it spent planning and running them, in µs | judged like CPU time |
 
 So a change that adds a query per record (an N+1), or fetches rows it
 doesn't use, fails even when its CPU time on the Ruby side doesn't
@@ -25,19 +25,19 @@ on paired ratios, not counted.
 A regression says which statements did it: under each version's
 numbers, the three that did the most of that measure (Duel's
 `details`), with how many times each ran an iteration for
-`postgres_queries`, and their shares of it for the rest:
+`postgresql_queries`, and their shares of it for the rest:
 
 ```
-postgres_queries: 2 queries → 6 queries an iteration
-postgres_queries (candidate): an iteration: 5× SELECT count(*) FROM comments WHERE post_id = $1; 1× SELECT * FROM posts
-postgres_queries (baseline): an iteration: 1× SELECT * FROM comments WHERE post_id = ANY($1); 1× SELECT * FROM posts
+postgresql_queries: 2 queries → 6 queries an iteration
+postgresql_queries (candidate): an iteration: 5× SELECT count(*) FROM comments WHERE post_id = $1; 1× SELECT * FROM posts
+postgresql_queries (baseline): an iteration: 1× SELECT * FROM comments WHERE post_id = ANY($1); 1× SELECT * FROM posts
 ```
 
 They're of the sample the numbers came from, but for its `untimed`
 blocks, if it has any. Queries, rows and blocks are counted in their
 units (`1 query`, `12 rows`, though the summary line leaves out the one
-a name ends in: `postgres_rows 12→40`), and `postgres_time` is shown as time
-(`postgres_time: 412µs → 1.31ms an iteration`).
+a name ends in: `postgresql_rows 12→40`), and `postgresql_time` is
+shown as time (`postgresql_time: 412µs → 1.31ms an iteration`).
 
 ## Installation
 
@@ -132,17 +132,17 @@ over a connection of the plugin's own, opened as each worker starts
 `c.metric`). `c.use` returns that connection, for a `.duel.rb` that
 reads the server too (`connection.value`, in a worker only). The
 reading's own statement is left out (by its query id), so there's
-nothing to take away (`calibrate: false`). `postgres_time` counts
+nothing to take away (`calibrate: false`). `postgresql_time` counts
 planning too (`pg_stat_statements.track_planning`), as a change that
 stops reusing prepared statements plans every time. Up to 10,000
 distinct statements are kept: a benchmark that makes more (with `IN`
 lists of every length, say) loses the oldest, and its counts with them.
 
-`postgres_time` is the server's time on the clock, not CPU time, and
+`postgresql_time` is the server's time on the clock, not CPU time, and
 another process's, so what else the machine does shows in it: it's
 judged for each benchmark, but left out of Duel's across-the-board
 check (`across: false`), whose margin is a quarter of its limit.
 
 Like any measure, each can be tuned or left out in `.duel.rb`:
-`c.measure("postgres_time", limit: 1.1)`,
-`c.measure("postgres_rows", skip: true)`.
+`c.measure("postgresql_time", limit: 1.1)`,
+`c.measure("postgresql_rows", skip: true)`.

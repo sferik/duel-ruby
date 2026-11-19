@@ -9,12 +9,12 @@ module Duel
   # A PostgreSQL server of each worker's own, and what it did for each
   # benchmark, from pg_stat_statements:
   #
-  # - postgres_queries: the statements it ran (counted)
-  # - postgres_rows: the rows they returned or changed (counted)
-  # - postgres_blocks: the shared buffer blocks they touched, from the
+  # - postgresql_queries: the statements it ran (counted)
+  # - postgresql_rows: the rows they returned or changed (counted)
+  # - postgresql_blocks: the shared buffer blocks they touched, from the
   #   cache or not (judged like CPU time: nearly steady, but a table
   #   that grows, say, takes more)
-  # - postgres_time: the time it spent planning and running them, in
+  # - postgresql_time: the time it spent planning and running them, in
   #   microseconds (judged like CPU time)
   #
   # Where one regressed, it says which statements did the most of it, on
@@ -150,10 +150,10 @@ module Duel
     # too small for it. Its readings leave themselves out (STATEMENTS), so
     # there's nothing to take away.
     METRICS = {
-      "postgres_queries" => {kind: :counted, unit: %w[query queries], calibrate: false},
-      "postgres_rows" => {kind: :counted, unit: %w[row rows], calibrate: false},
-      "postgres_blocks" => {kind: :ratio, unit: %w[block blocks], floor: 100, sizes_samples: false},
-      "postgres_time" => {kind: :ratio, unit: "µs", floor: 300, across: false}
+      "postgresql_queries" => {kind: :counted, unit: %w[query queries], calibrate: false},
+      "postgresql_rows" => {kind: :counted, unit: %w[row rows], calibrate: false},
+      "postgresql_blocks" => {kind: :ratio, unit: %w[block blocks], floor: 100, sizes_samples: false},
+      "postgresql_time" => {kind: :ratio, unit: "µs", floor: 300, across: false}
     }
 
     # What the worker's server has done so far, by statement (query id),
@@ -285,7 +285,7 @@ module Duel
       # A statement's numbers, or several's added up, by measure (time in
       # µs).
       def self.by_measure(numbers)
-        NAMES.each_with_index.to_h { |name, i| [name, (name == "postgres_time") ? numbers.fetch(i).fdiv(1000) : numbers.fetch(i)] }
+        NAMES.each_with_index.to_h { |name, i| [name, (name == "postgresql_time") ? numbers.fetch(i).fdiv(1000) : numbers.fetch(i)] }
       end
 
       # Read over +connection+, the plugin's own (a worker's).

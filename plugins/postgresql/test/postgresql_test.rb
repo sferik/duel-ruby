@@ -382,14 +382,14 @@ class PostgreSQLTest < PluginTest
       pg&.close
     end
 
-    assert_equal [["postgres_queries", :counted, "query", "queries", 1, true], ["postgres_rows", :counted, "row", "rows", 1, true],
-      ["postgres_blocks", :ratio, "block", "blocks", 1, true], ["postgres_time", :ratio, "µs", "µs", 1000, false]],
+    assert_equal [["postgresql_queries", :counted, "query", "queries", 1, true], ["postgresql_rows", :counted, "row", "rows", 1, true],
+      ["postgresql_blocks", :ratio, "block", "blocks", 1, true], ["postgresql_time", :ratio, "µs", "µs", 1000, false]],
       config.metrics.first.settings.map { |name, s| [name, *s.values_at(:kind, :unit, :plural, :unit_ns, :across)] }
-    assert_equal 4, measured.fetch("postgres_queries"), "the readings' own left out"
-    assert_equal 2 + 10, measured.fetch("postgres_rows"), "ids 1 and 2, and the 10 updated"
-    assert_operator measured.fetch("postgres_blocks"), :>, 0
-    assert_operator measured.fetch("postgres_time"), :>, 0
-    assert_equal({"postgres_queries" => 0, "postgres_rows" => 0, "postgres_blocks" => 0, "postgres_time" => 0}, nothing)
+    assert_equal 4, measured.fetch("postgresql_queries"), "the readings' own left out"
+    assert_equal 2 + 10, measured.fetch("postgresql_rows"), "ids 1 and 2, and the 10 updated"
+    assert_operator measured.fetch("postgresql_blocks"), :>, 0
+    assert_operator measured.fetch("postgresql_time"), :>, 0
+    assert_equal({"postgresql_queries" => 0, "postgresql_rows" => 0, "postgresql_blocks" => 0, "postgresql_time" => 0}, nothing)
   end
 
   # What's untimed isn't measured, but what's measured before it is.
@@ -406,8 +406,8 @@ class PostgreSQLTest < PluginTest
       pg&.close
     end
 
-    assert_equal 2, measured.fetch("postgres_queries")
-    assert_equal 2, measured.fetch("postgres_rows")
+    assert_equal 2, measured.fetch("postgresql_queries")
+    assert_equal 2, measured.fetch("postgresql_rows")
   end
 
   # A regression is explained by the statements that did the most of it,
@@ -430,17 +430,17 @@ class PostgreSQLTest < PluginTest
         end
       end.details
 
-      assert_equal %w[postgres_queries postgres_rows postgres_blocks postgres_time], details.keys
+      assert_equal %w[postgresql_queries postgresql_rows postgresql_blocks postgresql_time], details.keys
       long = "SELECT $1 AS #{"a" * 40}, $2 AS #{"b" * 18}…"
 
       assert_equal "an iteration: 1× SELECT name FROM items WHERE id = $1; 0.5× SELECT $1; 0.5× #{long}",
-        details.fetch("postgres_queries"), "what's before the untimed block, not the untimed one's"
-      assert_equal "SELECT name FROM items WHERE id = $1 (50%); SELECT $1 (25%); #{long} (25%)", details.fetch("postgres_rows")
-      assert_match(/\ASELECT name FROM items WHERE id = \$1 \([\d.]+%\)/, details.fetch("postgres_blocks"), "the scan's the most")
-      assert_match(/SELECT name FROM items WHERE id = \$1 \([\d.]+%\)/, details.fetch("postgres_time"))
+        details.fetch("postgresql_queries"), "what's before the untimed block, not the untimed one's"
+      assert_equal "SELECT name FROM items WHERE id = $1 (50%); SELECT $1 (25%); #{long} (25%)", details.fetch("postgresql_rows")
+      assert_match(/\ASELECT name FROM items WHERE id = \$1 \([\d.]+%\)/, details.fetch("postgresql_blocks"), "the scan's the most")
+      assert_match(/SELECT name FROM items WHERE id = \$1 \([\d.]+%\)/, details.fetch("postgresql_time"))
       details = Duel::Testing.measure(config) { pg.exec("SELECT 1 WHERE false") }.details
 
-      assert_equal({"postgres_queries" => "an iteration: 1× SELECT $1 WHERE $2"}, details.slice("postgres_queries", "postgres_rows"))
+      assert_equal({"postgresql_queries" => "an iteration: 1× SELECT $1 WHERE $2"}, details.slice("postgresql_queries", "postgresql_rows"))
       assert_empty Duel::Testing.measure(config) {}.details, "nothing: the readings are left out"
     ensure
       pg&.close
@@ -457,7 +457,7 @@ class PostgreSQLTest < PluginTest
         pg.exec("SELECT name FROM items WHERE id = 7") # (planned)
         before = statements.read.first
         pg.exec("SELECT name FROM items WHERE id = 7")
-        statements.read.first.fetch("postgres_blocks") - before.fetch("postgres_blocks")
+        statements.read.first.fetch("postgresql_blocks") - before.fetch("postgresql_blocks")
       end
       scan = find.call
       pg.exec("CREATE INDEX ON items (id)")
@@ -554,9 +554,9 @@ class PostgreSQLTest < PluginTest
   def test_sums
     assert_equal [2, 2, 8, 4500], Duel::PostgreSQL::Statements.sum([[1, 2, 3, 4000], [1, 0, 5, 500]])
     assert_equal [0, 0, 0, 0], Duel::PostgreSQL::Statements.sum([])
-    assert_equal({"postgres_queries" => 2, "postgres_rows" => 2, "postgres_blocks" => 8, "postgres_time" => 4.5},
+    assert_equal({"postgresql_queries" => 2, "postgresql_rows" => 2, "postgresql_blocks" => 8, "postgresql_time" => 4.5},
       Duel::PostgreSQL::Statements.by_measure([2, 2, 8, 4500]))
-    assert_equal({"postgres_queries" => 0, "postgres_rows" => 0, "postgres_blocks" => 0, "postgres_time" => 0.0},
+    assert_equal({"postgresql_queries" => 0, "postgresql_rows" => 0, "postgresql_blocks" => 0, "postgresql_time" => 0.0},
       Duel::PostgreSQL::Statements.by_measure([0, 0, 0, 0]))
   end
 
@@ -588,9 +588,9 @@ class PostgreSQLTest < PluginTest
     stretches = [[started, reading({"1" => [3, 1, 2, 3], "2" => [2, 2, 2, 2], "9" => [1, 0, 0, 0]})]]
     texts = ->(_connection, ids) { read << ids and ids.grep_v("9").to_h { |id| [id, "SELECT  #{id}\n  FROM t"] } }
     replacing(Duel::PostgreSQL, :texts, texts) do
-      assert_equal({"postgres_queries" => "an iteration: 1× SELECT 1 FROM t; 0.5× 9", "postgres_blocks" => "SELECT 1 FROM t (100%)",
-                    "postgres_time" => "SELECT 1 FROM t (100%)"}, statements.details(stretches, 2))
-      assert_equal({"postgres_queries" => "an iteration: 1× SELECT 1 FROM t"},
+      assert_equal({"postgresql_queries" => "an iteration: 1× SELECT 1 FROM t; 0.5× 9", "postgresql_blocks" => "SELECT 1 FROM t (100%)",
+                    "postgresql_time" => "SELECT 1 FROM t (100%)"}, statements.details(stretches, 2))
+      assert_equal({"postgresql_queries" => "an iteration: 1× SELECT 1 FROM t"},
         statements.details([[started, reading({"1" => [2, 1, 1, 1]})]], 1))
     end
 
@@ -602,7 +602,7 @@ class PostgreSQLTest < PluginTest
   def test_a_first_reading
     totals, first = reader(ROWS.dup).call
 
-    assert_equal({"postgres_queries" => 4 + BIG, "postgres_rows" => 5, "postgres_blocks" => 6, "postgres_time" => 1250.0}, totals)
+    assert_equal({"postgresql_queries" => 4 + BIG, "postgresql_rows" => 5, "postgresql_blocks" => 6, "postgresql_time" => 1250.0}, totals)
     assert_equal({"1" => [1, 2, 3, 500_000], "2" => [1, 1, 1, 250_000], "3" => [1, 1, 1, 250_000], "4" => [1, 1, 1, 250_000],
                   "5" => [BIG, 0, 0, 0]}, first.numbers)
     assert_equal [{}, %w[1 2 3 4 5]], [first.previous, first.changed]
@@ -618,7 +618,7 @@ class PostgreSQLTest < PluginTest
     rows["5"] = [2**70, 0, 0, 0.0] # (another Integer, the same)
     totals, same = read.call
 
-    assert_equal [4 + BIG, 1250.0], totals.values_at("postgres_queries", "postgres_time")
+    assert_equal [4 + BIG, 1250.0], totals.values_at("postgresql_queries", "postgresql_time")
     assert_same first.numbers, same.numbers
     assert_same first.numbers, same.previous
     assert_empty same.changed
@@ -634,7 +634,7 @@ class PostgreSQLTest < PluginTest
     rows.merge!("1" => [2, 2, 3, 0.5], "2" => [1, 3, 1, 0.25], "3" => [1, 1, 4, 0.25], "4" => [1, 1, 1, 0.75], "6" => [0, 0, 0, 0.0])
     totals, changed = read.call
 
-    assert_equal({"postgres_queries" => 5 + BIG, "postgres_rows" => 7, "postgres_blocks" => 9, "postgres_time" => 1750.0}, totals)
+    assert_equal({"postgresql_queries" => 5 + BIG, "postgresql_rows" => 7, "postgresql_blocks" => 9, "postgresql_time" => 1750.0}, totals)
     assert_equal [%w[1 2 3 4 6], first.numbers], [changed.changed, changed.previous], "each in one measure, or new"
     assert_equal({"1" => [2, 2, 3, 500_000], "2" => [1, 3, 1, 250_000], "3" => [1, 1, 4, 250_000], "4" => [1, 1, 1, 750_000],
                   "5" => [BIG, 0, 0, 0], "6" => [0, 0, 0, 0]}, changed.numbers)
@@ -654,12 +654,12 @@ class PostgreSQLTest < PluginTest
     rows["7"] = [1, 1, 1, 0.5]
     totals, gone = read.call
 
-    assert_equal({"postgres_queries" => 4, "postgres_rows" => 4, "postgres_blocks" => 4, "postgres_time" => 1250.0}, totals)
+    assert_equal({"postgresql_queries" => 4, "postgresql_rows" => 4, "postgresql_blocks" => 4, "postgresql_time" => 1250.0}, totals)
     assert_equal [%w[2 3 4 7], %w[7], first.numbers], [gone.numbers.keys, gone.changed, gone.previous]
     rows.delete("7")
     totals, = read.call
 
-    assert_equal({"postgres_queries" => 3, "postgres_rows" => 3, "postgres_blocks" => 3, "postgres_time" => 750.0}, totals)
+    assert_equal({"postgresql_queries" => 3, "postgresql_rows" => 3, "postgresql_blocks" => 3, "postgresql_time" => 750.0}, totals)
   end
 
   # What a sample's statements did is told from what changed in each of
@@ -671,13 +671,13 @@ class PostgreSQLTest < PluginTest
     after = {"1" => [2, 1, 1, 1], "2" => [3, 1, 1, 1]}
     texts = ->(_connection, ids) { ids.to_h { |id| [id, "SELECT #{id}"] } }
     replacing(Duel::PostgreSQL, :texts, texts) do
-      assert_equal({"postgres_queries" => "an iteration: 1× SELECT 1"},
+      assert_equal({"postgresql_queries" => "an iteration: 1× SELECT 1"},
         statements.details([[reading(before), reading(after, before, %w[1])]], 1), "right after: what it says changed")
-      assert_equal({"postgres_queries" => "an iteration: 2× SELECT 2; 1× SELECT 1"},
+      assert_equal({"postgresql_queries" => "an iteration: 2× SELECT 2; 1× SELECT 1"},
         statements.details([[reading(before), reading(after, before.dup, %w[1])]], 1), "after another: every one")
       later = {"1" => [5, 1, 1, 1], "2" => [3, 1, 1, 1]}
 
-      assert_equal({"postgres_queries" => "an iteration: 4× SELECT 1"},
+      assert_equal({"postgresql_queries" => "an iteration: 4× SELECT 1"},
         statements.details([[reading(before), reading(after, before, %w[1])], [reading(after), reading(later, after, %w[1])]], 1),
         "every stretch's, added up")
     end
@@ -690,13 +690,13 @@ class PostgreSQLTest < PluginTest
     same = Duel::Testing.compare(base, project("same", 1), timeout: 120.0)
 
     assert_predicate same, :passed?, same.output
-    assert_equal 1, same["find"].counted.fetch("postgres_queries").then { |c| c.fetch("candidate") / c.fetch("n") }
+    assert_equal 1, same["find"].counted.fetch("postgresql_queries").then { |c| c.fetch("candidate") / c.fetch("n") }
     more = Duel::Testing.compare(base, project("more", 2), timeout: 120.0)
 
-    assert_equal %w[postgres_queries postgres_rows], more["find"].regressed & %w[postgres_queries postgres_rows], more.output
-    assert_includes more.output, "postgres_queries: 1 query → 2 queries an iteration"
-    assert_includes more.output, "postgres_queries (candidate): an iteration: 2× SELECT id FROM items WHERE id = $1", "explained"
-    assert_includes more.output, "postgres_queries (baseline): an iteration: 1× SELECT id FROM items WHERE id = $1"
+    assert_equal %w[postgresql_queries postgresql_rows], more["find"].regressed & %w[postgresql_queries postgresql_rows], more.output
+    assert_includes more.output, "postgresql_queries: 1 query → 2 queries an iteration"
+    assert_includes more.output, "postgresql_queries (candidate): an iteration: 2× SELECT id FROM items WHERE id = $1", "explained"
+    assert_includes more.output, "postgresql_queries (baseline): an iteration: 1× SELECT id FROM items WHERE id = $1"
   end
 
   # Its metrics are costly to read, so a benchmark with an
@@ -721,7 +721,7 @@ class PostgreSQLTest < PluginTest
     end
 
     assert_predicate config.metrics.first, :costly?
-    assert_equal [20, 40], measured.values_at("postgres_queries", "postgres_rows")
+    assert_equal [20, 40], measured.values_at("postgresql_queries", "postgresql_rows")
   end
 
   # An iteration's last query, sent with the extended protocol (as
@@ -736,7 +736,7 @@ class PostgreSQLTest < PluginTest
     measured = shared_worker(config) { |env| in_a_transaction(env) { |measure| measure.call(config) } }
 
     assert_predicate config.metrics.first, :costly?
-    assert_equal [20, 40], measured.values_at("postgres_queries", "postgres_rows")
+    assert_equal [20, 40], measured.values_at("postgresql_queries", "postgresql_rows")
   end
 
   # So it is with a metric read around each iteration, not costly to
@@ -751,7 +751,7 @@ class PostgreSQLTest < PluginTest
     end
 
     refute_predicate config.metrics.first, :costly?
-    assert_equal [20, 40], measured.values_at("postgres_queries", "postgres_rows")
+    assert_equal [20, 40], measured.values_at("postgresql_queries", "postgresql_rows")
   end
 
   # Each of the process's connections in a transaction has its unnamed

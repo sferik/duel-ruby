@@ -312,7 +312,7 @@ module Duel
       # around_iteration hooks, and what they add to it is taken away
       # instead (see Metric). Returns the metric.
       #
-      #   c.metric("postgres_queries") { queries }.costly
+      #   c.metric("postgresql_queries") { queries }.costly
       def costly
         @costly = true
         self
