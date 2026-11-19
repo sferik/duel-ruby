@@ -141,14 +141,26 @@ class MemcachedTest < PluginTest
   def test_a_server_that_doesnt_start
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: "false")) { flunk "started" } }
 
-    assert_equal "head-1's resource: false exited before it was ready", error.message
+    assert_match(/\Ahead-1's resource: false(\.exe)? exited before it was ready\z/, error.message)
+  end
+
+  # No server on the PATH, or at the path given.
+  def test_no_server
+    error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: "no-such-memcached")) { flunk "started" } }
+
+    assert_equal "head-1's resource: no no-such-memcached on the PATH (give memcached's path as server:, or DUEL_MEMCACHED_SERVER)", error.message
+    %W[#{@dir}/memcached C:\\memcached\\memcached].each do |path|
+      error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: path)) { flunk "started" } }
+
+      assert_equal "head-1's resource: no #{path} (give memcached's path as server:, or DUEL_MEMCACHED_SERVER)", error.message, "a path's not on the PATH"
+    end
   end
 
   def test_the_server_from_the_environment
     ENV["DUEL_MEMCACHED_SERVER"] = "false"
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config) { flunk "started" } }
 
-    assert_equal "head-1's resource: false exited before it was ready", error.message
+    assert_match(/\Ahead-1's resource: false(\.exe)? exited before it was ready\z/, error.message)
   ensure
     ENV.delete("DUEL_MEMCACHED_SERVER")
   end

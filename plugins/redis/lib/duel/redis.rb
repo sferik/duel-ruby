@@ -42,6 +42,8 @@ module Duel
     def self.configure(config, server: ENV.fetch("DUEL_REDIS_SERVER", "redis-server"), settings: {}, env: %w[REDIS_URL],
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
+        program = Duel.find_program(server) ||
+          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give redis-server's path as server:, or DUEL_REDIS_SERVER)")
         if tcp
           port = w.port
           listen = ["--port", port.to_s, "--bind", "127.0.0.1"]
@@ -54,7 +56,7 @@ module Duel
         # (Where it listens after OPTIONS, whose port of 0 a port takes the
         # place of, and +settings+ last: of a directive given twice, the
         # server takes the last.)
-        w.spawn(server, "--dir", w.dir, *OPTIONS, *listen, *settings.flat_map { |name, value| ["--#{name}", value.to_s] })
+        w.spawn(program, "--dir", w.dir, *OPTIONS, *listen, *settings.flat_map { |name, value| ["--#{name}", value.to_s] })
         w.wait_until { Connection.ping(url) }
         ([URL] + env).to_h { |name| [name, url] }
       end

@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `Duel.find_program` finds a plugin's server program, as
-  duel-postgresql and duel-mysql now both do: a path (one with a `/` or
-  a `\` in it, `~` expanded) as it is, or a name in the first of the
-  `PATH`'s directories that has it, either one ending with `.exe` on
-  Windows too. `Duel.path?` says which it takes a server for, for the
-  plugin's error that it isn't there.
+  duel-postgresql, duel-mysql, duel-redis and duel-memcached now all
+  do: a path (one with a `/` or a `\` in it, `~` expanded) as it is,
+  or a name in the first of the `PATH`'s directories that has it,
+  either one ending with `.exe` on Windows too. `Duel.path?` says which
+  it takes a server for, for the plugin's error that it isn't there.
 - Duel's reusable Perf workflow runs on Windows (`runs-on:
   windows-latest`): the Duel job's steps run in bash on every runner (on
   Windows, not PowerShell), and paths it hands Ruby are Windows's there.

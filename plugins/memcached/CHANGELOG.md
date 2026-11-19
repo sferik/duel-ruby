@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `server:` is found by `Duel.find_program`, as every Duel plugin's
+  is: a path (`~` expanded) as it is, or a name on the `PATH`. With
+  none, the error says so (`no memcached on the PATH (give
+  memcached's path as server:, or DUEL_MEMCACHED_SERVER)`), as
+  duel-mysql's and duel-postgresql's do, where it was Ruby's
+  `Errno::ENOENT`.
 - `settings:` gives each worker's server more of its options, by their
   long names, as a Hash (`settings: {"memory-limit": 256}`, passed as
   `--memory-limit=256`, and a flag's value is `true`:

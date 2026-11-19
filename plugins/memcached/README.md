@@ -35,7 +35,8 @@ end
 ```
 
 > [!NOTE]
-> It needs `memcached` (1.6 or later) on the `PATH`.
+> It needs `memcached` (1.6 or later) on the `PATH`, or its path as
+> `server:`.
 
 ## Usage
 

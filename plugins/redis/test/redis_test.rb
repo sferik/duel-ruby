@@ -139,7 +139,7 @@ class RedisTest < PluginTest
     ENV["DUEL_REDIS_SERVER"] = "false"
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config) { flunk "started" } }
 
-    assert_equal "head-1's resource: false exited before it was ready", error.message
+    assert_match(/\Ahead-1's resource: false(\.exe)? exited before it was ready\z/, error.message)
   ensure
     ENV.delete("DUEL_REDIS_SERVER")
   end
@@ -147,7 +147,19 @@ class RedisTest < PluginTest
   def test_a_server_that_doesnt_start
     error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: "false")) { flunk "started" } }
 
-    assert_equal "head-1's resource: false exited before it was ready", error.message
+    assert_match(/\Ahead-1's resource: false(\.exe)? exited before it was ready\z/, error.message)
+  end
+
+  # No server on the PATH, or at the path given.
+  def test_no_server
+    error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: "no-such-redis-server")) { flunk "started" } }
+
+    assert_equal "head-1's resource: no no-such-redis-server on the PATH (give redis-server's path as server:, or DUEL_REDIS_SERVER)", error.message
+    %W[#{@dir}/redis-server C:\\redis-server\\redis-server].each do |path|
+      error = assert_raises(Duel::Failed) { Duel::Testing.prepare(config(server: path)) { flunk "started" } }
+
+      assert_equal "head-1's resource: no #{path} (give redis-server's path as server:, or DUEL_REDIS_SERVER)", error.message, "a path's not on the PATH"
+    end
   end
 
   def test_measures_what_redis_did

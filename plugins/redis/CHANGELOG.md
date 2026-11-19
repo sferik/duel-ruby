@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `server:` is found by `Duel.find_program`, as every Duel plugin's
+  is: a path (`~` expanded) as it is, or a name on the `PATH`. With
+  none, the error says so (`no redis-server on the PATH (give
+  redis-server's path as server:, or DUEL_REDIS_SERVER)`), as
+  duel-mysql's and duel-postgresql's do, where it was Ruby's
+  `Errno::ENOENT`.
 - `settings:` gives each worker's server more of its configuration's
   directives, as a Hash (`settings: {maxmemory: "64mb"}`, passed as
   `--maxmemory 64mb`), in place of `args:`, a list of its options, as

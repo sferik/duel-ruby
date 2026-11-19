@@ -45,6 +45,8 @@ module Duel
     def self.configure(config, server: ENV.fetch("DUEL_MEMCACHED_SERVER", "memcached"), settings: {}, env: %w[MEMCACHE_SERVERS], cpu: false,
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
+        program = Duel.find_program(server) ||
+          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give memcached's path as server:, or DUEL_MEMCACHED_SERVER)")
         if tcp
           port = w.port
           listen = ["-l", "127.0.0.1", "-p", port.to_s]
@@ -55,7 +57,7 @@ module Duel
         end
         # (+settings+ last: of an option given twice, the server takes the
         # last.)
-        w.spawn(server, *listen, "-m", "32", "-t", "1", *settings.map { |name, value| (value == true) ? "--#{name}" : "--#{name}=#{value}" })
+        w.spawn(program, *listen, "-m", "32", "-t", "1", *settings.map { |name, value| (value == true) ? "--#{name}" : "--#{name}=#{value}" })
         w.wait_until { Connection.ready?(address) }
         ([SERVERS] + env).to_h { |name| [name, address] }
       end

@@ -27,7 +27,8 @@ end
 ```
 
 > [!NOTE]
-> It needs `redis-server` (Redis 6.2 or later, or Valkey) on the `PATH`.
+> It needs `redis-server` (Redis 6.2 or later, or Valkey) on the `PATH`,
+> or its path as `server:`.
 
 ## Usage
 

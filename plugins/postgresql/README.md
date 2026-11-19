@@ -111,9 +111,11 @@ c.use :postgresql,
 > fail, so give one of them other names (`env: %w[PRIMARY_URL]`, or
 > `env: []`).
 
-`bin` is found as the directory of the `postgres` on the `PATH`, links
-followed (Homebrew's `initdb` on the `PATH` may be libpq's, of another
-version), or Debian's newest under `/usr/lib/postgresql`.
+Its other programs (`initdb`, `pg_ctl`) are the ones in the directory
+of its `postgres` (`server:`, found as every Duel plugin finds its
+server, by `Duel.find_program`), links followed (Homebrew's `initdb` on
+the `PATH` may be libpq's, of another version). For a name that isn't
+on the `PATH`, they're Debian's newest, under `/usr/lib/postgresql`.
 
 A database cluster takes `initdb`, and that's slow, so it's done once
 (Duel's `w.cached`): the first worker to start makes one, with the
