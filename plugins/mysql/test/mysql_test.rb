@@ -60,8 +60,8 @@ class MySQLTest < PluginTest
           url = "mysql2://root@localhost/duel?socket=#{socket}"
 
           assert_equal "mysqld.sock", File.basename(socket)
-          assert_equal url, env.fetch("DUEL_MYSQL_URL")
-          assert_equal url, env.fetch("DATABASE_URL")
+          assert_equal [url, url], env.values_at("DUEL_MYSQL_URL", "DATABASE_URL")
+          assert_equal [socket, nil], env.values_at("MYSQL_UNIX_PORT", "MYSQL_TCP_PORT"), "libmysqlclient's socket, and no port"
           assert_equal [["duel", 0, 0, dir, 2, 151]],
             query("SELECT DATABASE(), @@skip_networking - 1, @@log_bin, @@tmpdir, @@innodb_fast_shutdown, @@max_connections")
           assert_path_exists File.join(dir, "mysqld.pid")
@@ -94,7 +94,7 @@ class MySQLTest < PluginTest
     config = config(server: MYSQLD, args: ["--max-connections=17"], env: %w[PRIMARY_URL], tcp: false,
       scheme: "trilogy", sql: "CREATE TABLE items (id int); INSERT INTO items VALUES (1), (2)")
     prepare(config) do |env|
-      assert_equal %w[DUEL_MYSQL_SOCKET DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort
+      assert_equal %w[DUEL_MYSQL_SOCKET DUEL_MYSQL_URL MYSQL_UNIX_PORT PRIMARY_URL], env.keys.sort
       assert_equal "trilogy://root@localhost/duel?socket=#{Duel::MySQL.socket}", env.fetch("PRIMARY_URL")
       assert_equal [[17, 2, 1]], query("SELECT @@max_connections, (SELECT COUNT(*) FROM items), @@skip_networking"), "no network"
     end
@@ -646,12 +646,14 @@ class MySQLTest < PluginTest
       port = url[/:(\d+)\//, 1]
 
       assert_equal "mysql2://root@127.0.0.1:#{port}/duel", url
-      assert_equal %w[DUEL_MYSQL_URL PRIMARY_URL], env.keys.sort, "no socket"
+      assert_equal (%w[DUEL_MYSQL_URL MYSQL_TCP_PORT PRIMARY_URL] + (Duel.unix_sockets? ? %w[MYSQL_UNIX_PORT] : [])).sort, env.keys.sort, "no socket of Duel's"
       assert_equal "127.0.0.1:#{port}", Duel::MySQL.address
       networking, bind, listening, database, socket = query("SELECT @@skip_networking, @@bind_address, @@port, DATABASE(), @@socket").first
 
       assert_equal [0, "127.0.0.1", Integer(port), "duel"], [networking, bind, listening, database]
       assert_equal "mysqld.sock", File.basename(socket), "its socket the worker's (MySQL can't do without one)"
+      assert_equal [port, (socket if Duel.unix_sockets?)], env.values_at("MYSQL_TCP_PORT", "MYSQL_UNIX_PORT"),
+        "libmysqlclient's port, and its socket, for localhost, where there are Unix sockets"
       assert_equal [["root@localhost"]], Duel::MySQL.execute("SELECT CURRENT_USER()").rows
       Duel::MySQL.address
     end
@@ -663,9 +665,10 @@ class MySQLTest < PluginTest
   def test_on_a_port_on_windows
     windows = Duel.method(:windows?)
     Duel.define_singleton_method(:windows?) { true }
-    url = prepare(config) { |env| env.fetch("DUEL_MYSQL_URL") }
+    url, port, socket = prepare(config) { |env| env.values_at("DUEL_MYSQL_URL", "MYSQL_TCP_PORT", "MYSQL_UNIX_PORT") }
 
-    assert_match %r{\Amysql2://root@127\.0\.0\.1:\d+/duel\z}, url
+    assert_match %r{\Amysql2://root@127\.0\.0\.1:#{port}/duel\z}, url
+    assert_nil socket, "no Unix socket for libmysqlclient"
   ensure
     Duel.define_singleton_method(:windows?, windows)
   end

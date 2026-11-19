@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- libmysqlclient's `MYSQL_UNIX_PORT` (but on Windows) and, with `tcp`,
+  `MYSQL_TCP_PORT` point at each worker's server, as duel-postgresql's
+  `PGHOST` and `PGPORT` do, so a mysql2 client given no socket or port
+  connects to it, not to the machine's MySQL.
+
 ### Changed
 
 - `sql:` is what each worker's database runs once its server starts

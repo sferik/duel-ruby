@@ -67,9 +67,13 @@ does by default on Windows, whose MySQL has no Unix socket). No
 nothing written to disk that needn't be, and InnoDB's statistics left as
 they are (recalculated on their own, they'd change a query's plan while
 it's measured: `ANALYZE TABLE` in a setup if you need them). Its URL is
-in `DUEL_MYSQL_URL`, and in `DATABASE_URL` too, so a client that reads
-that finds it and nothing reaches another database. The socket's path
-is in `DUEL_MYSQL_SOCKET` (with `tcp`, there's none). Benchmarks can call `Duel::MySQL.url`,
+in `DUEL_MYSQL_URL`, and in `DATABASE_URL` too, and libmysqlclient's
+`MYSQL_UNIX_PORT` (but on Windows) and, with `tcp`, `MYSQL_TCP_PORT`
+point at it, so a client that reads any of them finds it and nothing
+reaches another database. (mysql2 reads the last two when it's given no
+socket or port, though not its user, `root`. Trilogy reads none of
+them.) The socket's path is in `DUEL_MYSQL_SOCKET` (with `tcp`, there's
+none). Benchmarks can call `Duel::MySQL.url`,
 `Duel::MySQL.socket`, `Duel::MySQL.execute` and `Duel::MySQL.reset`
 (each of these two opens a connection of its own to the worker's
 server, and closes it).

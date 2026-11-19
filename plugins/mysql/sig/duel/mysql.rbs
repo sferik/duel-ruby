@@ -7,6 +7,10 @@ module Duel
 
     URL: String
     SOCKET: String
+
+    # Where libmysqlclient connects when it's given no socket or port.
+    UNIX_PORT: String
+    TCP_PORT: String
     DATABASE: String
     USER: String
 

@@ -31,13 +31,21 @@ module Duel
   # (or with +tcp+, on a port of 127.0.0.1's alone: by default on Windows,
   # whose MySQL has none); its URL is in DUEL_MYSQL_URL, and in
   # DATABASE_URL too (unless +env+ names others), and the socket's path
-  # in DUEL_MYSQL_SOCKET (with +tcp+, none). The plugin's connections are
-  # a client of its own (see Connection): no gem's.
+  # in DUEL_MYSQL_SOCKET (with +tcp+, none). libmysqlclient's
+  # MYSQL_UNIX_PORT (where there are Unix sockets) and MYSQL_TCP_PORT
+  # (with +tcp+) point at it too. The plugin's connections are a client
+  # of its own (see Connection): no gem's.
   module MySQL
     Duel.plugin(:mysql, self)
 
     URL = "DUEL_MYSQL_URL"
     SOCKET = "DUEL_MYSQL_SOCKET"
+
+    # Where libmysqlclient (mysql2's, the mysql command's) connects when
+    # it's given no socket or port.
+    UNIX_PORT = "MYSQL_UNIX_PORT"
+    TCP_PORT = "MYSQL_TCP_PORT"
+
     DATABASE = "duel"
     USER = "root"
 
@@ -86,7 +94,7 @@ module Duel
           listen = ["--port=#{port}", "--bind-address=127.0.0.1", "--socket=#{socket}"]
           address = "127.0.0.1:#{port}"
           url = "#{scheme}://#{USER}@#{address}/#{DATABASE}"
-          vars = {URL => url}
+          vars = {URL => url, TCP_PORT => port.to_s}
         else
           # (No network at all.)
           address = socket
@@ -94,6 +102,10 @@ module Duel
           url = "#{scheme}://#{USER}@localhost/#{DATABASE}?socket=#{address}"
           vars = {URL => url, SOCKET => address}
         end
+        # (libmysqlclient's defaults, for a client given no socket or port:
+        # its port, for 127.0.0.1, and its socket, which it takes for
+        # localhost, wherever there's one, even with +tcp+.)
+        vars[UNIX_PORT] = socket if Duel.unix_sockets?
         w.spawn(program, *(DataDir.options(data) + listen), "--pid-file=#{w.path("mysqld.pid")}", "--tmpdir=#{w.dir}", *(RUNNING + args))
         # (Stopped with SHUTDOWN, before it's killed: on Windows, mysqld is
         # a monitor, the server its child, which killing it would leave
