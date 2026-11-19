@@ -217,6 +217,15 @@ module Duel
   # Resource#port).
   def self.unix_sockets?: () -> bool
 
+  # Whether +program+ is a path, with a / or a \ in it, not a name to
+  # look for on the PATH.
+  def self.path?: (String program) -> bool
+
+  # A plugin's server program: +program+ if it's a path, expanded, or
+  # the one by that name in +path+'s directories, as it is or ending with
+  # +exe+. Nil if there's none.
+  def self.find_program: (String program, ?String path, ?exe: String) -> String?
+
   # Whether Duel runs on Windows: for a plugin to do what it does
   # differently there.
   def self.windows?: () -> bool

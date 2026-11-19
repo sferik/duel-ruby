@@ -19,6 +19,10 @@ module Duel
     WINDOWS_OS = /mingw|mswin/
     WINDOWS = OS.match?(WINDOWS_OS)
 
+    # What a program's file ends with: on Windows, .exe (see
+    # Duel.find_program).
+    EXE = RbConfig::CONFIG["EXEEXT"]
+
     CRUBY = RUBY_ENGINE == "ruby"
     JRUBY = RUBY_ENGINE == "jruby"
 

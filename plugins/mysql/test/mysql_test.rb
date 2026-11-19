@@ -117,61 +117,6 @@ class MySQLTest < PluginTest
     end
   end
 
-  def test_finding_the_server
-    unix!
-    bin = File.join(@dir, "bin")
-    FileUtils.mkdir_p(bin)
-    File.write(File.join(bin, "mysqld"), "")
-    File.chmod(0o755, File.join(bin, "mysqld"))
-
-    assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld", [@dir, bin].join(File::PATH_SEPARATOR))
-    assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server(File.join(bin, "mysqld"), "")
-    assert_nil Duel::MySQL::DataDir.find_server("mysqld", @dir)
-    assert_nil Duel::MySQL::DataDir.find_server(File.join(@dir, "mysqld"), bin)
-    with_env("PATH" => bin) { assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld"), "the PATH's" }
-    with_env("PATH" => nil) { assert_nil Duel::MySQL::DataDir.find_server("mysqld"), "no PATH" }
-    assert_equal File.join(bin, "mysqld"), Duel::MySQL::DataDir.find_server("mysqld", bin, exe: ".exe"), "without its .exe too"
-  end
-
-  # A path of Windows's, with a \ in it, is a path, not a name looked up
-  # on the PATH. (Off Windows, a file's name can have one: it's the one
-  # in the working directory that's found, not the one on the PATH.)
-  def test_finding_the_server_by_a_windows_path
-    skip "no file's name has a \\ in it on Windows" if Duel.windows?
-    path = File.join(@dir, "bin")
-    FileUtils.mkdir_p(path)
-    [@dir, path].each do |dir|
-      File.write(File.join(dir, "C:\\mysql\\bin\\mysqld"), "")
-      File.chmod(0o755, File.join(dir, "C:\\mysql\\bin\\mysqld"))
-    end
-
-    assert_equal "C:\\mysql\\bin\\mysqld", Duel::MySQL::DataDir.find_server("C:\\mysql\\bin\\mysqld", path), "the working directory's"
-  end
-
-  # Windows's, by its .exe (this system's suffix, by default).
-  def test_finding_the_server_by_its_exe
-    windows = File.join(@dir, "windows")
-    FileUtils.mkdir_p(windows)
-    File.write(File.join(windows, "mysqld.exe"), "")
-    File.chmod(0o755, File.join(windows, "mysqld.exe"))
-
-    assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ".exe"), "Windows's, by its .exe"
-    assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server(File.join(windows, "mysqld"), "", exe: ".exe")
-    assert_nil Duel::MySQL::DataDir.find_server("mysqld", windows, exe: ""), "no .exe, off Windows"
-    exe = Duel::MySQL::DataDir::EXE
-    begin
-      Duel::MySQL::DataDir.send(:remove_const, :EXE)
-      Duel::MySQL::DataDir.const_set(:EXE, ".exe")
-
-      assert_equal File.join(windows, "mysqld.exe"), Duel::MySQL::DataDir.find_server("mysqld", windows), "EXE's, by default"
-    ensure
-      Duel::MySQL::DataDir.send(:remove_const, :EXE)
-      Duel::MySQL::DataDir.const_set(:EXE, exe)
-    end
-
-    assert_equal RbConfig::CONFIG["EXEEXT"], Duel::MySQL::DataDir::EXE
-  end
-
   # The first worker's data directory is initialized (Resource#cached);
   # the others copy it.
   def test_a_data_directory_made_once

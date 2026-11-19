@@ -6,6 +6,7 @@ module Duel
     CPU: String
     WINDOWS_OS: Regexp
     WINDOWS: bool
+    EXE: String
     CRUBY: bool
     JRUBY: bool
     JRUBY_ON_WINDOWS: bool

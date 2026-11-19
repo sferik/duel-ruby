@@ -27,8 +27,8 @@ Duel.configure do |c|
 
   c.prepare(:worker) do |w|
     server = ENV.fetch("DUEL_MYSQL_SERVER", "mysqld")
-    files = server.include?(File::SEPARATOR) ? [server] : ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
-    program = files.find { |file| File.executable?(file) } || w.failed("no #{server} on the PATH (or DUEL_MYSQL_SERVER)")
+    program = Duel.find_program(server) ||
+      w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give mysqld's path as DUEL_MYSQL_SERVER)")
     # (Its options come first: mysqld takes --no-defaults only there.)
     run = ->(data) { [program, "--no-defaults", "--datadir=#{data}", *options] }
 

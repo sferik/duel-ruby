@@ -39,10 +39,10 @@ module Duel
     type numbers = Array[Integer]
 
     # Configures Duel for the plugin (c.use :postgresql): the server
-    # (+bin+ the directory of its programs, +settings+ more of its
-    # settings, +sql+ what each worker's database runs when it's started,
-    # +env+ the variables besides DUEL_POSTGRESQL_URL given its URL) and
-    # its metrics. Returns the plugin's own connection to it, a worker's.
+    # (+server+ its postgres, its other programs next to it, +settings+
+    # more of its settings, +sql+ what each worker's database runs when
+    # it's started, +env+ the variables besides DUEL_POSTGRESQL_URL given
+    # its URL) and its metrics. Returns the plugin's own connection to it, a worker's.
     # +pg_ctl+: started and stopped by pg_ctl, on a port of 127.0.0.1's
     # (by default on Windows).
     def self.configure: (Config config, ?server: String, ?settings: Hash[String | Symbol, String | Integer], ?sql: String?,
@@ -157,16 +157,13 @@ module Duel
       # Where pg_ctl's cluster is in its build.
       PG_CTL: String
 
-      # The real directory of the postgres on +path+, or of the newest
-      # Debian's; nil if there's none.
-      # A program's file ends with +EXE+ (.exe, on Windows).
-      EXE: String
+      # Debian's programs, by version.
+      DEBIAN: String
 
-      def self.find_bin: (?String path, ?debian: String, ?exe: String, ?name: String) -> String?
-
-      # The directory of a server's programs: a path's, or a name's on
-      # the PATH.
-      def self.programs: (String server, ?exe: String) -> String?
+      # The directory of a server's programs: the real directory of the
+      # postgres at a path, or by a name on +path+, or the newest
+      # Debian's. Nil if there's none.
+      def self.programs: (String server, ?String path, ?debian: String) -> String?
 
       def initialize: (Resource resource, String bin, ?pg_ctl: bool) -> void
 

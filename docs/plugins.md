@@ -97,6 +97,14 @@ When you write a plugin, follow these guidelines:
   `Duel::Platform` or `RbConfig` yourself: Duel's internals can change
   in any release, and `Duel.windows?` won't. A version of Duel before
   0.2.0 doesn't have it.
+- If the plugin starts a server program, find it with
+  `Duel.find_program(server)`, which takes a path (anything with a `/`
+  or a `\` in it, expanded) as it is, and looks for a name on the
+  `PATH`, adding `.exe` on Windows. It returns `nil` if there's none,
+  and `Duel.path?(server)` tells the plugin's error whether to say it
+  isn't on the `PATH`, for example
+  `Duel.find_program(server) || w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)}")`.
+  A version of Duel before 0.2.1 doesn't have them.
 - To read a project's settings outside a run, as a generator that writes
   its files might, load its `.duel.rb` with `Duel.load_config(path)`,
   which returns its configuration. Before 0.2.0, it was private.

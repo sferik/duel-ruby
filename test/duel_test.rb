@@ -9,6 +9,8 @@ class DuelModuleTest < DuelTest
   cover "Duel.benchmarks"
   cover "Duel.unix_sockets?"
   cover "Duel.windows?"
+  cover "Duel.path?"
+  cover "Duel.find_program"
 
   # What a plugin rescues is there with Duel alone, before a run loads
   # the runner.
@@ -67,11 +69,82 @@ class DuelModuleTest < DuelTest
     refute with_constants(Duel::Control, UNIX: false) { stub(Duel, :windows?, -> { false }) { Duel.unix_sockets? } }, "where Ruby has none"
   end
 
+  # A plugin's server by a path, with a / or a \ in it (Windows's), or
+  # by a name, on the PATH.
+  def test_a_program_by_a_path_or_a_name
+    assert_equal [true, true, true, false], ["bin/mysqld", "/usr/sbin/mysqld", "C:\\mysql\\bin\\mysqld", "mysqld"].map { |program| Duel.path?(program) }
+  end
+
+  # A plugin's server program by name: in the first of the PATH's
+  # directories that has it, as it is or ending with EXE (mysqld.exe, on
+  # Windows), and a file, not a directory. (Files ending in .bat, which
+  # Windows runs, and others can once they may.)
+  def test_finding_a_program_by_name
+    first, second, _, find = programs
+
+    assert_equal File.join(first, "server.bat"), find.call("server.bat"), "the first directory's that has it"
+    assert_equal File.join(second, "other.bat"), find.call("other.bat")
+    assert_equal File.join(first, "both.bat"), find.call("both.bat"), "as it is, before with EXE"
+    assert_equal File.join(second, "exe.bat.exe"), find.call("exe.bat"), "or with EXE"
+    assert_nil find.call("exe.bat", exe: ".cmd")
+    assert_nil find.call("dir.bat"), "a directory"
+    assert_nil find.call("none.bat")
+    assert_nil find.call("server.bat", ""), "no PATH, no directories"
+  end
+
+  # A plugin's server program by a path: as it is (expanded), or ending
+  # with EXE, and not the PATH's. And by default, the PATH's, with
+  # Platform::EXE.
+  def test_finding_a_program_by_a_path
+    first, second, empty, find = programs
+    # (The PATH as ENV.fetch reads it, not the process's own: on JRuby on
+    # Windows, a PATH taken away and given back leaves processes that the
+    # tests start after it without one.)
+    fetch = ENV.method(:fetch)
+    path = ->(value) { ->(name, *default, &block) { (name == "PATH") ? (value || default.fetch(0)) : fetch.call(name, *default, &block) } }
+
+    assert_equal File.join(second, "both.bat.exe"), find.call(File.join(second, "both.bat")), "a path, with EXE"
+    assert_equal File.join(second, "server.bat"), find.call(File.join(second, "server.bat"), first), "a path, not the PATH's"
+    assert_nil find.call(File.join(empty, "server.bat")), "a path that isn't there"
+    with_env("HOME" => tmpdir) { assert_equal File.join(File.expand_path(first), "server.bat"), find.call("~/first/server.bat"), "expanded" }
+    stub(ENV, :fetch, path.call(second)) { assert_equal File.join(second, "server.bat"), Duel.find_program("server.bat", exe: ""), "the PATH's, by default" }
+    stub(ENV, :fetch, path.call(nil)) { assert_nil Duel.find_program("server.bat", exe: ""), "no PATH" }
+    with_constants(Duel::Platform, EXE: ".exe") do
+      assert_equal File.join(second, "exe.bat.exe"), Duel.find_program("exe.bat", [empty, first, second].join(File::PATH_SEPARATOR)), "Platform::EXE, by default"
+    end
+    assert_equal RbConfig::CONFIG["EXEEXT"], Duel::Platform::EXE
+  end
+
+  # Not a file it can't run.
+  def test_finding_no_program_it_cant_run
+    skip "JRuby's File.executable? is true of every file on Windows" if Duel::Platform::JRUBY_ON_WINDOWS
+    first, _, _, find = programs
+    FileUtils.touch(File.join(first, "plain.txt"))
+
+    assert_nil find.call("plain.txt")
+  end
+
   # Whether it's Windows, for a plugin.
   def test_windows
     assert_equal Duel::Platform::WINDOWS, Duel.windows?
     assert with_constants(Duel::Platform, WINDOWS: true) { Duel.windows? }
     refute with_constants(Duel::Platform, WINDOWS: false) { Duel.windows? }
+  end
+
+  private
+
+  # Directories of programs (first, second, and an empty one), and a
+  # finder of a program in them, in that order (or in +path+), with
+  # +exe+.
+  def programs
+    first, second, empty = %w[first second empty].map { |name| FileUtils.mkdir_p(File.join(tmpdir, name)).first }
+    {first => %w[server.bat both.bat], second => %w[server.bat other.bat both.bat.exe exe.bat.exe]}.each do |dir, names|
+      names.each { |name| FileUtils.touch(File.join(dir, name)) and FileUtils.chmod(0o755, File.join(dir, name)) }
+    end
+    FileUtils.mkdir_p(File.join(first, "dir.bat"))
+    FileUtils.chmod(0o755, File.join(first, "dir.bat"))
+    path = [empty, first, second].join(File::PATH_SEPARATOR)
+    [first, second, empty, ->(program, path_ = path, exe: ".exe") { Duel.find_program(program, path_, exe:) }]
   end
 end
 

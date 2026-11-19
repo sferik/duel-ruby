@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alone, with no Unix socket, as the other server plugins' does, and is
   the default on Windows. It was a side effect of `pg_ctl: true`, which
   only says what starts the server now.
+- `server:` is found by Duel's `Duel.find_program`, as duel-mysql's
+  is: one with a `\` in it is a path off Windows too, and a name on the
+  `PATH` is taken as it is as well as with `.exe`.
 
 ## [0.2.0] - 2026-11-16
 

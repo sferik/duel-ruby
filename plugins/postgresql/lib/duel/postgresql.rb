@@ -3,7 +3,6 @@
 require "duel"
 require "digest"
 require "fileutils"
-require "rbconfig"
 require_relative "postgresql/version"
 
 module Duel
@@ -86,7 +85,7 @@ module Duel
       config.prepare(:worker) do |w|
         require_pg
         programs = Cluster.programs(server) ||
-          w.failed("no #{server}#{" on the PATH" if File.basename(server) == server} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)")
+          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)")
         data = w.path("data")
         cluster = Cluster.new(w, programs, pg_ctl: pg_ctl)
         cluster.create(data)
@@ -393,29 +392,20 @@ module Duel
     # A worker's database cluster: a copy of one initdb'd once, with the
     # database and pg_stat_statements created in it.
     class Cluster
-      # A program's file ends with +EXE+: on Windows, .exe.
-      EXE = RbConfig::CONFIG["EXEEXT"]
+      # Debian's programs, by version (/usr/lib/postgresql/17/bin).
+      DEBIAN = "/usr/lib/postgresql/*/bin"
 
-      # The directory of +server+'s programs (see PostgreSQL.configure): a
-      # path's real directory (the path as it is, or ending with +exe+, as
-      # C:/.../bin/postgres is postgres.exe), or for a name, as postgres
-      # is (see .find_bin), the PATH's. Nil if there's none.
-      def self.programs(server, exe: EXE)
-        return find_bin(name: server, exe:) if File.basename(server) == server
-
-        postgres = [server, "#{server}#{exe}"].map { |path| File.expand_path(path) }.find { |path| File.executable?(path) }
-        File.dirname(File.realpath(postgres)) if postgres
-      end
-
-      # The real directory of the postgres (+name+) on +path+ (where its
+      # The directory of +server+'s programs (see PostgreSQL.configure):
+      # the real directory, links followed, of the postgres
+      # Duel.find_program finds, a path's or a name's on +path+ (where its
       # initdb is: the one on the PATH may be another version's, libpq's,
-      # say), or of the newest Debian's; nil if there's none. (Its file
-      # ends with +exe+: postgres.exe, on Windows.)
-      def self.find_bin(path = ENV.fetch("PATH", ""), debian: "/usr/lib/postgresql/*/bin", exe: EXE, name: "postgres")
-        postgres = path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, "#{name}#{exe}") }.find { |file| File.executable?(file) }
+      # say), or for a name it doesn't find, the newest Debian's
+      # (+debian+). Nil if there's none.
+      def self.programs(server, path = ENV.fetch("PATH", ""), debian: DEBIAN)
+        postgres = Duel.find_program(server, path)
         return File.dirname(File.realpath(postgres)) if postgres
 
-        Dir[debian].max_by { |dir| File.basename(File.dirname(dir)).to_i }
+        Dir[debian].max_by { |dir| File.basename(File.dirname(dir)).to_i } unless Duel.path?(server)
       end
 
       # Where pg_ctl's cluster is in its build (see #make).
@@ -471,7 +461,8 @@ module Duel
       # What a cluster is good for: these programs (until they change),
       # this version of the plugin, and how it's made (with pg_ctl or not).
       def key
-        postgres = File.realpath(File.join(@bin, "postgres#{EXE}"))
+        # (postgres.exe, on Windows: there's one, as .programs found it.)
+        postgres = File.realpath(Duel.find_program("postgres", @bin)) # steep:ignore ArgumentTypeMismatch
         made = [postgres, File.mtime(postgres).to_f, *(PG_CTL if @pg_ctl)]
         "postgresql-#{VERSION}-#{Digest::SHA256.hexdigest(made.join("\0"))[0, 16]}"
       end

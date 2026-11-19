@@ -140,7 +140,7 @@ class PostgreSQLTest < PluginTest
     cache = own_cache
     databases = prepare(config(pg_ctl: true), cache:) { query("SELECT count(*) FROM pg_database WHERE datname = 'duel'") }
     built = Dir.children(cache)
-    postgres = File.realpath(File.join(POSTGRES, "postgres#{Duel::PostgreSQL::Cluster::EXE}"))
+    postgres = File.realpath(Duel.find_program("postgres", POSTGRES))
     key = Digest::SHA256.hexdigest("#{postgres}\0#{File.mtime(postgres).to_f}\0cluster")[0, 16]
 
     assert_equal [["1"]], databases
@@ -190,7 +190,7 @@ class PostgreSQLTest < PluginTest
 
   # No postgres on the PATH, or at the path given.
   def test_no_postgres
-    error = replacing(Duel::PostgreSQL::Cluster, :find_bin, ->(**) {}) do
+    error = replacing(Duel::PostgreSQL::Cluster, :programs, ->(_) {}) do
       assert_raises(Duel::Failed) { prepare(config) { flunk "started" } }
     end
 
@@ -212,7 +212,10 @@ class PostgreSQLTest < PluginTest
     end
   end
 
-  def test_finding_postgres
+  # A server's programs: the real directory of the postgres on the PATH
+  # (the initdb on the PATH may be another version's), or at a path, or
+  # of the newest Debian's.
+  def test_a_servers_programs
     unix!
     bin = File.realpath(POSTGRES)
     linked = linked_bin
@@ -220,64 +223,34 @@ class PostgreSQLTest < PluginTest
     %w[9 10 16 latest].each { |version| FileUtils.mkdir_p(File.join(@dir, "lib", version, "bin")) }
     debian = File.join(@dir, "lib", "*", "bin")
     nothing = File.join(@dir, "nothing", "*")
-    find = Duel::PostgreSQL::Cluster.method(:find_bin)
+    programs = Duel::PostgreSQL::Cluster.method(:programs)
 
-    assert_equal bin, find.call([@dir, linked].join(File::PATH_SEPARATOR), debian: nothing),
-      "the real directory: the initdb on the PATH may be another version's"
-    assert_equal File.join(@dir, "lib", "16", "bin"), find.call(@dir, debian:), "the newest Debian's"
-    assert_nil find.call(@dir, debian: nothing)
-    with_env("PATH" => linked) { assert_equal bin, find.call(debian: nothing), "the PATH's" }
-    with_env("PATH" => nil) { assert_equal File.join(@dir, "lib", "16", "bin"), find.call(debian:), "no PATH" }
+    assert_equal bin, programs.call("postgres", [@dir, linked].join(File::PATH_SEPARATOR), debian: nothing), "the real directory"
+    assert_equal bin, programs.call(File.join(linked, "postgres"), @dir, debian:), "a path's"
+    assert_equal File.join(@dir, "lib", "16", "bin"), programs.call("postgres", @dir, debian:), "the newest Debian's"
+    assert_nil programs.call(File.join(@dir, "postgres"), @dir, debian:), "but for a name"
+    assert_nil programs.call("postgres", @dir, debian: nothing)
+    with_env("PATH" => linked) { assert_equal bin, programs.call("postgres", debian: nothing), "the PATH's" }
+    with_env("PATH" => nil) { assert_equal File.join(@dir, "lib", "16", "bin"), programs.call("postgres", debian:), "no PATH" }
     patterns = []
-    replacing(Dir, :[], ->(pattern) { [].tap { patterns << pattern } }) { find.call(@dir) }
+    replacing(Dir, :[], ->(pattern) { [].tap { patterns << pattern } }) { programs.call("postgres", @dir) }
 
     assert_equal ["/usr/lib/postgresql/*/bin"], patterns, "Debian's, by default"
-    windows = FileUtils.mkdir_p(File.join(@dir, "windows")).first
-    File.write(File.join(windows, "postgres.exe"), "")
-    File.chmod(0o755, File.join(windows, "postgres.exe"))
-
-    assert_equal File.realpath(windows), find.call(windows, debian: nothing, exe: ".exe"), "Windows's, by its .exe"
-    assert_nil find.call(windows, debian: nothing, exe: ""), "no .exe, off Windows"
-    assert_equal RbConfig::CONFIG["EXEEXT"], Duel::PostgreSQL::Cluster::EXE
-    exe(".exe") { assert_equal File.realpath(windows), find.call(windows, debian: nothing), "EXE's, by default" }
   end
 
-  # A server's programs: a name's, on the PATH, or a path's real
-  # directory.
-  def test_a_servers_programs
-    unix!
-    linked = linked_bin
-    bin = File.realpath(POSTGRES)
-
-    with_env("PATH" => linked) do
-      assert_equal bin, Duel::PostgreSQL::Cluster.programs("postgres")
-      assert_nil Duel::PostgreSQL::Cluster.find_bin(debian: File.join(@dir, "nothing", "*"), name: "postgres17"), "by its name"
-    end
-    assert_equal bin, Duel::PostgreSQL::Cluster.programs(File.join(linked, "postgres"))
-    assert_nil Duel::PostgreSQL::Cluster.programs(File.join(linked, "initdb.sql")), "nothing there"
-  end
-
-  # A name's programs are find_bin's, by that name, and a path's are
-  # where it is, with EXE (as C:/.../bin/postgres is postgres.exe on
-  # Windows) or without.
-  def test_a_servers_programs_by_name_or_exe
-    found = replacing(Duel::PostgreSQL::Cluster, :find_bin, ->(**options) { options }) do
-      [Duel::PostgreSQL::Cluster.programs("postgres17"), Duel::PostgreSQL::Cluster.programs("pg", exe: ".exe")]
-    end
-
-    assert_equal [{name: "postgres17", exe: Duel::PostgreSQL::Cluster::EXE}, {name: "pg", exe: ".exe"}], found
+  # A server's programs by its .exe, as Windows's are, whatever it's
+  # called.
+  def test_a_servers_programs_by_its_exe
     bin = FileUtils.mkdir_p(File.join(@dir, "windows", "bin")).first
-    File.write(File.join(bin, "postgres.exe"), "")
-    FileUtils.chmod(0o755, File.join(bin, "postgres.exe"))
-    server = File.join(bin, "postgres")
+    %w[postgres.exe postgres16.bat].each { |name| File.write(File.join(bin, name), "") and FileUtils.chmod(0o755, File.join(bin, name)) }
+    nothing = File.join(@dir, "nothing", "*")
 
-    assert_equal [File.realpath(bin)] * 3, [Duel::PostgreSQL::Cluster.programs(server, exe: ".exe"), Duel::PostgreSQL::Cluster.programs("#{server}.exe"),
-      exe(".exe") { Duel::PostgreSQL::Cluster.programs(server) }]
-    assert_nil Duel::PostgreSQL::Cluster.programs(server, exe: ".bat"), "nothing there"
-    File.write(File.join(bin, "postgres16.bat"), "")
-    FileUtils.chmod(0o755, File.join(bin, "postgres16.bat"))
-
-    assert_equal File.realpath(bin), Duel::PostgreSQL::Cluster.programs(File.join(bin, "postgres16.bat"), exe: ".exe"), "the path as it is"
+    exe(".exe") do
+      assert_equal [File.realpath(bin)] * 4, [Duel::PostgreSQL::Cluster.programs("postgres", bin, debian: nothing),
+        Duel::PostgreSQL::Cluster.programs(File.join(bin, "postgres"), debian: nothing), Duel::PostgreSQL::Cluster.programs(File.join(bin, "postgres.exe")),
+        Duel::PostgreSQL::Cluster.programs("postgres16.bat", bin, debian: nothing)]
+    end
+    exe(".cmd") { assert_nil Duel::PostgreSQL::Cluster.programs("postgres", bin, debian: nothing), "nothing there" }
   end
 
   # pg_ctl starts the servers by default on Windows (where postgres won't
@@ -802,15 +775,16 @@ class PostgreSQLTest < PluginTest
 
   private
 
-  # Runs the block with Cluster::EXE +exe+ (as Windows's is, say).
+  # Runs the block with Duel's EXE +exe+ (as Windows's is, say), which
+  # Duel.find_program adds to a program's name.
   def exe(exe)
-    saved = Duel::PostgreSQL::Cluster::EXE
-    Duel::PostgreSQL::Cluster.send(:remove_const, :EXE)
-    Duel::PostgreSQL::Cluster.const_set(:EXE, exe)
+    saved = Duel::Platform::EXE
+    Duel::Platform.send(:remove_const, :EXE)
+    Duel::Platform.const_set(:EXE, exe)
     yield
   ensure
-    Duel::PostgreSQL::Cluster.send(:remove_const, :EXE)
-    Duel::PostgreSQL::Cluster.const_set(:EXE, saved)
+    Duel::Platform.send(:remove_const, :EXE)
+    Duel::Platform.const_set(:EXE, saved)
   end
 
   # A directory with an icacls that writes its arguments to a file, and

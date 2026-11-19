@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sql:` is what each worker's database runs once its server starts
   (a schema, say), in place of `setup:`, which is a hook's name
   everywhere else in Duel.
+- `server:` is found by Duel's `Duel.find_program`, as duel-postgresql's
+  is: a path is expanded (`~/mysql/bin/mysqld`, say), and a directory
+  named `mysqld` on the `PATH` isn't taken for the program.
 
 ### Fixed
 

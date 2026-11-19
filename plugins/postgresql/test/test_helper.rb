@@ -173,8 +173,8 @@ module SharedServer
 end
 
 class PluginTest < Minitest::Test
-  # The directory of the postgres the tests run, found as they load (so a
-  # mutation of find_bin fails them, rather than skipping them all).
+  # The directory of the postgres the tests run, found as the plugin
+  # finds it (Cluster.programs).
   POSTGRES = Duel::PostgreSQL::Cluster.programs(ENV.fetch("DUEL_POSTGRESQL_SERVER", "postgres"))
 
   # Where prepare blocks' builds (Resource#cached: the clusters initdb'd) are

@@ -117,9 +117,9 @@ class PluginTest < Minitest::Test
   # The project's directory, where the tests start.
   ROOT = File.expand_path("..", __dir__)
 
-  # The server the tests run, found as they load (so a mutation of
-  # find_server fails them, rather than skipping them all).
-  MYSQLD = Duel::MySQL::DataDir.find_server(ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"))
+  # The server the tests run, found as the plugin finds it
+  # (Duel.find_program).
+  MYSQLD = Duel.find_program(ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"))
 
   # Where prepare blocks' builds (Resource#cached: the data directories
   # initialized) are kept, for every test, removed when they're done.

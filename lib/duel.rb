@@ -269,6 +269,24 @@ module Duel
     #   def self.configure(config, tcp: !Duel.unix_sockets?)
     def unix_sockets? = Control.unix_sockets?(windows: windows?)
 
+    # Whether +program+ (a plugin's server: postgres, mysqld) is a path,
+    # with a / or a \ in it (as Windows's have), not a name to look for on
+    # the PATH (see .find_program): for a plugin's error that it isn't
+    # there.
+    def path?(program) = program.match?(%r{[/\\]})
+
+    # A plugin's server program: +program+ if it's a path (see .path?),
+    # expanded (~/mysql/bin/mysqld, say), or the one by that name in one
+    # of +path+'s directories, the first one's, as it is or ending with
+    # +exe+ (on Windows, .exe: mysqld for mysqld.exe). Nil if there's
+    # none.
+    #
+    #   program = Duel.find_program(server) || w.failed("no #{server}")
+    def find_program(program, path = ENV.fetch("PATH", ""), exe: Platform::EXE)
+      files = path?(program) ? [File.expand_path(program)] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, program) }
+      files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.file?(file) && File.executable?(file) }
+    end
+
     # The file of benchmarks that called the DSL method running (see
     # DSL.add), if one is: the file that what it defines is filed
     # under, so it gets that file's hooks, not those of the file the

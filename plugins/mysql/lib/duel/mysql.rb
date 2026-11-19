@@ -3,7 +3,6 @@
 require "duel"
 require "digest"
 require "fileutils"
-require "rbconfig"
 require "socket"
 require_relative "mysql/version"
 
@@ -83,8 +82,8 @@ module Duel
     def self.configure(config, server: ENV.fetch("DUEL_MYSQL_SERVER", "mysqld"), args: [], sql: nil, env: %w[DATABASE_URL],
       scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
-        program = DataDir.find_server(server) ||
-          w.failed("no #{server}#{" on the PATH" unless server.match?(%r{[/\\]})} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)")
+        program = Duel.find_program(server) ||
+          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")
         DataDir.new(w, program).create(data)
         # (A Unix socket even with +tcp+, which MySQL can't do without:
@@ -792,18 +791,6 @@ module Duel
     # A worker's data directory: a copy of one initialized once, with the
     # database created in it.
     class DataDir
-      # A program's file ends with +EXE+: on Windows, .exe.
-      EXE = RbConfig::CONFIG["EXEEXT"]
-
-      # The server program: +server+ if it's a path (a / or, on Windows, a
-      # \ in it), or the one by that name on +path+; nil if there's none.
-      # Either may end with +exe+ too (on Windows, .exe: mysqld.exe, for
-      # mysqld).
-      def self.find_server(server, path = ENV.fetch("PATH", ""), exe: EXE)
-        files = server.match?(%r{[/\\]}) ? [server] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, server) }
-        files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.executable?(file) }
-      end
-
       # The options the server's run with, initializing +data+ or not.
       # (They come first: mysqld takes --no-defaults only there.)
       def self.options(data) = ["--no-defaults", "--datadir=#{data}", *OPTIONS]
