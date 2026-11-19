@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Changed
 
 - `postgresql_blocks`' settings say `size_samples: false`, as Duel 0.3.0
@@ -32,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server:` is found by Duel's `Duel.find_program`, as duel-mysql's
   is: one with a `\` in it is a path off Windows too, and a name on the
   `PATH` is taken as it is as well as with `.exe`.
+- It requires Duel 0.3.0 or later (`~> 0.3.0`), the release it's
+  tested with, as Duel 0.3.0 changes what plugins and benchmarks call.
 
 ## [0.2.0] - 2026-11-16
 
@@ -154,7 +158,8 @@ later, with `pg_stat_statements`.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.2.0...duel-postgresql-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.8...duel-postgresql-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.7...duel-postgresql-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.6...duel-postgresql-v0.1.7

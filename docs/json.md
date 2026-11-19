@@ -43,7 +43,7 @@ A run that found one regression, abridged to two benchmarks:
 ```json
 {
   "schema": 2,
-  "duel_version": "0.2.1",
+  "duel_version": "0.3.0",
   "status": "failed",
   "exit": 1,
   "passed_anyway": null,
@@ -189,7 +189,7 @@ A run with nothing to compare has the same keys, with nothing compared:
 ```json
 {
   "schema": 2,
-  "duel_version": "0.2.1",
+  "duel_version": "0.3.0",
   "status": "nothing_to_compare",
   "exit": 0,
   "passed_anyway": null,

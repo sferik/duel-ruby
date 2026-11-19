@@ -104,7 +104,7 @@ When you write a plugin, follow these guidelines:
   and `Duel.path?(server)` tells the plugin's error whether to say it
   isn't on the `PATH`, for example
   `Duel.find_program(server) || w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)}")`.
-  A version of Duel before 0.2.1 doesn't have them.
+  A version of Duel before 0.3.0 doesn't have them.
 - Give a plugin that starts a server the options that Duel's own server
   plugins share, by the same names:
   - `server:`, its program (by default `DUEL_<NAME>_SERVER`, or the

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Changed
 
 - `memcached_bytes`' slack is `per_iteration:`, as Duel 0.3.0 names it,
@@ -26,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they win over the plugin's own.
 - `Duel::Memcached.flush` is `Duel::Memcached.reset`, as MySQL's and
   PostgreSQL's plugins name what empties a worker's server.
+- It requires Duel 0.3.0 or later (`~> 0.3.0`), the release it's
+  tested with, as Duel 0.3.0 changes what plugins and benchmarks call.
 
 ## [0.2.0] - 2026-11-16
 
@@ -108,7 +112,8 @@ the MIT license. It needs Ruby 3.4 or later, Duel 0.1, and `memcached`
   `Duel::Memcached.sum` takes that reply.
 
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.2.0...duel-memcached-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.1.8...duel-memcached-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.1.7...duel-memcached-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-memcached-v0.1.6...duel-memcached-v0.1.7

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Added
 
 - `c.release_tags` and `c.benchmarks` take a list of globs too:
@@ -113,8 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Comment on the commit, Mark the commit passed, Update the badge, and
   the Perf comment workflow's), reusable or as `duel init` writes them,
   install exactly the release of Duel that wrote them
-  (`gem install duel --version '0.2.1'`), not the newest of its minor
-  version (`~> 0.2.1`), and every action Duel's workflows use is named
+  (`gem install duel --version '0.3.0'`), not the newest of its minor
+  version (`~> 0.2.0`), and every action Duel's workflows use is named
   by its commit, with its release beside it
   (`ruby/setup-ruby@f9c4492… # v1.342.0`), as a tag can be moved.
   `docs/ci.md` shows how to name Duel's reusable workflows by commit
@@ -1149,7 +1151,8 @@ needs Ruby 3.4 or later (or JRuby 10, or TruffleRuby 40).
   Anything marked `@api private`, in lib/ and sig/, may change in any
   release.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/v0.1.6...v0.1.7

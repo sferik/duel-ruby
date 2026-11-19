@@ -171,7 +171,7 @@ jobs:
           DUEL_COMMENT: ${{ needs.duel.outputs.comment }}
           DUEL_STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '0.2.0' --no-document
+          gem install duel --version '0.3.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker 'duel'
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
@@ -206,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
-          gem install duel --version '0.2.0' --no-document
+          gem install duel --version '0.3.0' --no-document
           duel mark-passed "$BRANCH"
 ```
 
@@ -375,7 +375,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gem install duel --version '0.2.0' --no-document
+          gem install duel --version '0.3.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel'
 
   again:
@@ -591,7 +591,7 @@ keeps `.duel.rb`), or add the job yourself:
           RESULT: ${{ needs.duel.result }}
           STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '0.2.0' --no-document
+          gem install duel --version '0.3.0' --no-document
           duel badge duel/badge --status "$STATUS" --result "$RESULT"
 ```
 
@@ -648,7 +648,7 @@ Duel release you run it with, and pass on what your `.duel.rb` sets
 # .github/workflows/perf.yml
 jobs:
   duel:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read # for the pull request's labels (see c.accept_label)
@@ -657,7 +657,7 @@ jobs:
   push:
     needs: duel
     if: ${{ !cancelled() && github.event_name == 'push' }}
-    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.3.0
     permissions:
       contents: write # to comment on the commit, move the passed branch, and the badge's
     with:
@@ -718,7 +718,7 @@ more than once, each call with a `report` of its own:
 ```yaml
 jobs:
   yjit:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read
@@ -726,7 +726,7 @@ jobs:
       jit: yjit
       report: yjit
   zjit:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read
@@ -735,7 +735,7 @@ jobs:
       jit: zjit
       report: zjit
   interpreter:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read
@@ -754,7 +754,7 @@ it said and its `report`:
   yjit-push:
     needs: yjit
     if: ${{ !cancelled() && github.event_name == 'push' }}
-    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.3.0
     permissions:
       contents: write
     with:
@@ -784,14 +784,14 @@ for Windows next to the one for Linux, say:
 ```yaml
 jobs:
   linux:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read
     with:
       report: linux
   windows:
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.3.0
     permissions:
       contents: read
       pull-requests: read
@@ -832,13 +832,13 @@ A tag can be moved, so you can name the commit it's at instead, with
 the tag beside it, as Dependabot keeps them:
 
 ```yaml
-    uses: sferik/duel-ruby/.github/workflows/duel.yml@<commit> # v0.2.1
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@<commit> # v0.3.0
 ```
 
 Duel's workflows, the reusable ones and those `duel init` writes, name
 each action they use by its commit too, and the jobs that write to the
 repository (or comment) install exactly the release of Duel that wrote
-them (`gem install duel --version '0.2.1'`), not the newest one.
+them (`gem install duel --version '0.3.0'`), not the newest one.
 
 ## Run Duel on GitLab CI
 
@@ -977,7 +977,7 @@ duel:comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '0.2.0' --no-document
+    - gem install duel --version '0.3.0' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
     - duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
@@ -997,7 +997,7 @@ duel:commit-comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '0.2.0' --no-document
+    - gem install duel --version '0.3.0' --no-document
     - duel comment --report . --commit "$CI_COMMIT_SHA" --marker 'duel'
 
 # With c.push_base = :last_passed in .duel.rb, a push is compared with the
@@ -1021,7 +1021,7 @@ duel:passed:
     GIT_STRATEGY: none # it runs none of the code
   script:
     - '[ -n "$DUEL_PASSED" ] || exit 0'
-    - gem install duel --version '0.2.0' --no-document
+    - gem install duel --version '0.3.0' --no-document
     - duel mark-passed "$DUEL_PASSED"
 ```
 
