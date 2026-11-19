@@ -2,7 +2,7 @@
 
 require_relative "test_helper"
 require "generators/duel/install/install_generator"
-require "duel/comment" # (for the templates' Duel::Comment::SINCE)
+require "duel/version" # (for the templates' Duel::VERSION)
 require "yaml"
 
 # `rails generate duel:install`, in a directory of the test's own, for the
@@ -196,7 +196,7 @@ class GeneratorTest < PluginTest
       assert_equal own("perf.yml")[/^  #{job}:\n.*?^        run: \|\n/m], workflow[/^  #{job}:\n.*?^        run: \|\n/m], "Duel's own job, #{job}"
     end
     jobs = YAML.safe_load(workflow).fetch("jobs")
-    gem = "gem install duel --version '~> 0.2.1' --no-document\n"
+    gem = "gem install duel --version '#{Duel::VERSION}' --no-document\n"
 
     assert_equal ["#{gem}duel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", "#{gem}duel mark-passed \"$BRANCH\"\n",
       "#{gem}duel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], %w[commit-comment passed badge].map { |job| jobs.dig(job, "steps").last.fetch("run") }
@@ -205,7 +205,7 @@ class GeneratorTest < PluginTest
       .gsub(/<% if reusable\? -%>\n.*?<% end -%>\n/m, "")
 
     badge = badge.gsub("<%= badge_branch %>", "duel/badge").gsub(%(<%= reusable? ? '"$branch"' : badge_branch %>), "duel/badge")
-      .gsub("<%= Duel::Comment::SINCE %>", Duel::Comment::SINCE)
+      .gsub("<%= Duel::VERSION %>", Duel::VERSION)
 
     assert_equal badge.delete_suffix("<% end -%>\n"), workflow[/^  # Duel's badge.*\z/m], "Duel's own, updating the badge"
   end
@@ -269,7 +269,7 @@ class GeneratorTest < PluginTest
     regenerate(app, badge: true)
     workflow = read(".github/workflows/perf-apps-blog.yml")
 
-    assert_includes workflow, "      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0 ", "the whole repository"
+    assert_includes workflow, "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          fetch-depth: 0 ", "the whole repository"
     assert_includes workflow, "    defaults:\n      run:\n        working-directory: apps/blog\n"
     assert_includes workflow, "        with:\n          working-directory: apps/blog\n"
     assert_equal [%(          duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker 'duel apps/blog'),

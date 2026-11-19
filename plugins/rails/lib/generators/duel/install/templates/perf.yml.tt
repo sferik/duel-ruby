@@ -43,7 +43,7 @@ jobs:
         working-directory: <%= working_directory %>
 <% end -%>
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
           persist-credentials: false
@@ -87,7 +87,7 @@ jobs:
             sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
           fi
 <% end -%>
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: ruby
         with:
 <% if working_directory -%>
@@ -120,7 +120,7 @@ jobs:
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
           echo "ruby=$ruby" >> "$GITHUB_OUTPUT"
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: baseline-ruby
         if: steps.baseline.outputs.ruby != ''
         with:
@@ -176,7 +176,7 @@ jobs:
       # The report, for the comments.
       - name: Keep the report
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: duel-report
           path: ${{ runner.temp }}/duel/
@@ -200,11 +200,11 @@ jobs:
       - name: Get the report
         id: report
         continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: duel-report
           path: ${{ runner.temp }}/report
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         if: steps.report.outcome == 'success'
         with:
           ruby-version: ruby
@@ -216,7 +216,7 @@ jobs:
           DUEL_COMMENT: ${{ needs.duel.outputs.comment }}
           DUEL_STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '<%= Duel::VERSION %>' --no-document
           duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker '<%= marker.gsub("'") { "'\\''" } %>'
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
@@ -242,7 +242,7 @@ jobs:
     permissions:
       contents: write # to move the branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -251,7 +251,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '<%= Duel::VERSION %>' --no-document
           duel mark-passed "$BRANCH"
 <% if badge? -%>
 
@@ -284,7 +284,7 @@ jobs:
     permissions:
       contents: write # to move the badge's branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -294,6 +294,6 @@ jobs:
           RESULT: ${{ needs.duel.result }}
           STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '<%= Duel::VERSION %>' --no-document
           duel badge duel/badge<%= "-#{working_directory.tr("/", "-")}" if working_directory %> --status "$STATUS" --result "$RESULT"
 <% end -%>

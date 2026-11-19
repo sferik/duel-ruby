@@ -4,6 +4,7 @@ require "erb"
 require "open3"
 require "pathname"
 require "rails/generators"
+require "duel/version" # (the templates install exactly this release)
 
 module Duel
   module Generators

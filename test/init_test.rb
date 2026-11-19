@@ -9,6 +9,26 @@ require "shellwords"
 class InitTest < DuelTest
   cover "Duel::Init*"
 
+  # The actions the workflows use, each at a commit (a tag can be moved).
+  SETUP_RUBY = "ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0"
+  DOWNLOAD_ARTIFACT = "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333"
+
+  # Every action the workflows Duel writes use (and the reusable ones,
+  # made from the same templates) is at a commit, with its release
+  # beside it: a tag can be moved, and the jobs that use them hold
+  # write permissions. (Duel's own reusable workflows are at the tag of
+  # the release that writes them.)
+  def test_every_action_at_a_commit
+    templates = Dir[File.expand_path("../lib/duel/templates/*.erb", __dir__)] +
+      Dir[File.expand_path("../plugins/rails/lib/generators/duel/install/templates/*.tt", __dir__)]
+    # (With LF line endings, as Init#render reads them: JRuby on Windows
+    # reads a CRLF checkout's as they are.)
+    uses = templates.flat_map { |template| File.read(template).gsub("\r\n", "\n").scan(/uses: (.*)$/).flatten }.reject { |use| use.start_with?("<%= REUSABLE %>") }
+
+    refute_empty uses
+    assert_empty uses.grep_v(%r{\A[\w.-]+/[\w.-]+@\h{40} # v\d+\.\d+\.\d+\z})
+  end
+
   def root = @root ||= FileUtils.mkdir_p(File.join(tmpdir, "my_gem")).first
 
   def init(*argv, at: root, input: StringIO.new) = Duel::Init.new(argv, out: (@out = StringIO.new), err: (@err = StringIO.new), input: input, root: at)
@@ -143,7 +163,7 @@ class InitTest < DuelTest
     jobs = YAML.safe_load(workflow).fetch("jobs")
 
     assert_equal %w[duel commit-comment passed], jobs.keys
-    assert_equal [["actions/download-artifact@v8", "ruby/setup-ruby@v1", "Comment"], ["ruby/setup-ruby@v1", "Move"]],
+    assert_equal [[DOWNLOAD_ARTIFACT, SETUP_RUBY, "Comment"], [SETUP_RUBY, "Move"]],
       %w[commit-comment passed].map { |job| jobs.dig(job, "steps").map { |step| step["uses"] || step.fetch("name").split.first } }
     assert_equal 1, workflow.scan(%(--commit "$GITHUB_SHA" --marker 'duel'\n)).size, "the Comment on the commit job's"
     assert_includes read(".github/workflows/perf-comment.yml"), %(--marker 'duel'\n), "the comment workflow's"
@@ -246,10 +266,10 @@ class InitTest < DuelTest
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.fetch("permissions"))
     assert_equal({"name" => "duel-report", "path" => "${{ runner.temp }}/report", "run-id" => "${{ github.event.workflow_run.id }}",
                   "github-token" => "${{ github.token }}"}, get.fetch("with"))
-    assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
+    assert_equal [SETUP_RUBY, {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
     assert_equal ["steps.report.outcome == 'success'"] * 2, [ruby, post].map { |step| step.fetch("if") }
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "HEAD_SHA" => "${{ github.event.workflow_run.head_sha }}"}, post.fetch("env"))
-    assert_equal "gem install duel --version '~> 0.2.1' --no-document\n" \
+    assert_equal "gem install duel --version '#{Duel::VERSION}' --no-document\n" \
       "duel comment --report \"$RUNNER_TEMP/report\" --head \"$HEAD_SHA\" --marker 'duel'\n", post.fetch("run")
     refute_includes comment.to_s, "checkout"
     refute_includes comment.to_s, "bundle"
@@ -409,8 +429,8 @@ class InitTest < DuelTest
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "BRANCH" => "${{ needs.duel.outputs.passed }}"}, step.fetch("env"), "the branch Duel names")
     assert_equal "bundle exec duel --markdown \"$RUNNER_TEMP/duel/duel.md\"", jobs.dig("duel", "steps").find { |s| s["name"] == "Compare" }.fetch("run"),
       "Duel says when there's no commit before a push"
-    assert_equal ["ruby/setup-ruby@v1", {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
-    assert_equal "gem install duel --version '~> 0.2.1' --no-document\nduel mark-passed \"$BRANCH\"\n", step.fetch("run"), "Duel's own code, from RubyGems"
+    assert_equal [SETUP_RUBY, {"ruby-version" => "ruby"}], ruby.values_at("uses", "with")
+    assert_equal "gem install duel --version '#{Duel::VERSION}' --no-document\nduel mark-passed \"$BRANCH\"\n", step.fetch("run"), "Duel's own code, from RubyGems"
     refute_includes passed.to_s, "checkout"
   end
 
@@ -429,7 +449,7 @@ class InitTest < DuelTest
       "(needs.duel.result == 'failure' || needs.duel.outputs.status == 'passed' || needs.duel.outputs.status == 'failed') }}", badge.fetch("if")
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "RESULT" => "${{ needs.duel.result }}", "STATUS" => "${{ needs.duel.outputs.status }}"},
       step.fetch("env"))
-    assert_equal ["ruby/setup-ruby@v1", "gem install duel --version '~> 0.2.1' --no-document\nduel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], [ruby.fetch("uses"), step.fetch("run")],
+    assert_equal [SETUP_RUBY, "gem install duel --version '#{Duel::VERSION}' --no-document\nduel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], [ruby.fetch("uses"), step.fetch("run")],
       "Duel's own code, from RubyGems"
     refute badge.key?("defaults"), "nothing checked out"
     assert_equal({"group" => "${{ github.workflow }}-badge", "cancel-in-progress" => false}, badge.fetch("concurrency"),
@@ -472,8 +492,8 @@ class InitTest < DuelTest
 
     assert_equal({"GH_TOKEN" => "${{ github.token }}", "DUEL_COMMENT" => "${{ needs.duel.outputs.comment }}", "DUEL_STATUS" => "${{ needs.duel.outputs.status }}"},
       post.fetch("env"))
-    assert_equal ["ruby/setup-ruby@v1", ["steps.report.outcome == 'success'"] * 2], [ruby.fetch("uses"), [ruby, post].map { |step| step.fetch("if") }]
-    assert_equal "gem install duel --version '~> 0.2.1' --no-document\nduel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", post.fetch("run"),
+    assert_equal [SETUP_RUBY, ["steps.report.outcome == 'success'"] * 2], [ruby.fetch("uses"), [ruby, post].map { |step| step.fetch("if") }]
+    assert_equal "gem install duel --version '#{Duel::VERSION}' --no-document\nduel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", post.fetch("run"),
       "Duel's own code, from RubyGems"
     assert_equal [true, {"name" => "duel-report", "path" => "${{ runner.temp }}/report"}], get.values_at("continue-on-error", "with")
     refute_includes comment.to_s, "checkout"
@@ -574,7 +594,7 @@ class InitTest < DuelTest
     steps = repo_file("docs/ci.md")[/^```yaml\n      # \(After the step that sets up the candidate's Ruby, id: ruby\.\)\n(.*?)^```$/m, 1]
 
     assert_includes whole.files.fetch(".github/workflows/perf.yml"),
-      "      - uses: ruby/setup-ruby@v1\n        id: ruby\n        with:\n          bundler-cache: true\n#{steps}      # Against the branch it targets"
+      "      - uses: #{SETUP_RUBY} # v1.342.0\n        id: ruby\n        with:\n          bundler-cache: true\n#{steps}      # Against the branch it targets"
   end
 
   # Without a gemspec: lib/'s only file is the library, or there's none
@@ -842,7 +862,7 @@ class InitTest < DuelTest
       assert_equal [["duel"], {"GIT_STRATEGY" => "none"}], jobs.fetch(name).values_at("needs", "variables"), name
     end
     assert_includes jobs.dig("duel:comment", "rules", 0, "if"), "$DUEL_COMMENT_TOKEN"
-    gem = "gem install duel --version '~> 0.2.1' --no-document"
+    gem = "gem install duel --version '#{Duel::VERSION}' --no-document"
 
     assert_equal ["ruby:slim", [gem, %(duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel')]],
       jobs.fetch("duel:comment").values_at("image", "script"), "Duel's own code, from RubyGems"
@@ -856,7 +876,7 @@ class InitTest < DuelTest
     gem
     init("--gitlab").run
     jobs = YAML.safe_load(read(".gitlab/duel.gitlab-ci.yml"))
-    gem = "gem install duel --version '~> 0.2.1' --no-document"
+    gem = "gem install duel --version '#{Duel::VERSION}' --no-document"
 
     assert_equal ["ruby:slim", [gem, %(duel comment --report . --commit "$CI_COMMIT_SHA" --marker 'duel')]],
       jobs.fetch("duel:commit-comment").values_at("image", "script")

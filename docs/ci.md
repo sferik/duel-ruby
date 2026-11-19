@@ -61,7 +61,7 @@ jobs:
       status: ${{ steps.compare.outputs.status }}
       passed: ${{ steps.compare.outputs.passed }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
           persist-credentials: false
@@ -93,7 +93,7 @@ jobs:
           fi
           echo "labels=$labels" >> "$GITHUB_OUTPUT"
       # (And whatever else your tests need set up: packages, services.)
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: ruby
         with:
           ruby-version: "3.4" # (or none, with a .ruby-version)
@@ -131,7 +131,7 @@ jobs:
       # The report, for the comments.
       - name: Keep the report
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: duel-report
           path: ${{ runner.temp }}/duel/
@@ -155,11 +155,11 @@ jobs:
       - name: Get the report
         id: report
         continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: duel-report
           path: ${{ runner.temp }}/report
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         if: steps.report.outcome == 'success'
         with:
           ruby-version: ruby
@@ -171,7 +171,7 @@ jobs:
           DUEL_COMMENT: ${{ needs.duel.outputs.comment }}
           DUEL_STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker 'duel'
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
@@ -197,7 +197,7 @@ jobs:
     permissions:
       contents: write # to move the branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -206,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel mark-passed "$BRANCH"
 ```
 
@@ -296,10 +296,11 @@ the pull request's number, `comment`, and `status`. A second workflow,
 the Perf workflow completes (`workflow_run`), with your repository's
 own copy of the workflow and a token that can write, so a pull request
 from a fork gets a comment too. It checks nothing out and runs none of
-the pull request's code. It installs Duel from RubyGems (the newest
-0.2 release, 0.2.1 or later) and runs `duel comment`, so a fix to how
-it comments comes with a release of Duel, without a change to the
-workflow. The pull
+the pull request's code. It installs Duel from RubyGems, exactly the
+release that wrote the workflow (or for Duel's reusable one, the
+release it's from), and runs `duel comment`, so what runs with a token
+that can write can't change under it: a fix to how it comments comes
+with a new release of Duel and the workflow it writes. The pull
 request's code ran in the Duel job, and could have written anything
 into the artifact, so `duel comment` trusts only what Duel could have
 said there: a number that names the pull request whose head the run
@@ -356,13 +357,13 @@ jobs:
       - name: Get the report
         id: report
         continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: duel-report
           path: ${{ runner.temp }}/report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         if: steps.report.outcome == 'success'
         with:
           ruby-version: ruby
@@ -374,7 +375,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker 'duel'
 
   again:
@@ -580,7 +581,7 @@ keeps `.duel.rb`), or add the job yourself:
     permissions:
       contents: write # to move the badge's branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -590,7 +591,7 @@ keeps `.duel.rb`), or add the job yourself:
           RESULT: ${{ needs.duel.result }}
           STATUS: ${{ needs.duel.outputs.status }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel badge duel/badge --status "$STATUS" --result "$RESULT"
 ```
 
@@ -783,6 +784,18 @@ your job and Duel's, as in `duel / Duel`. To update Duel's workflows,
 change the tag. `duel init --check` compares the workflows that call
 them, and `duel init --check --standalone` the whole ones.
 
+A tag can be moved, so you can name the commit it's at instead, with
+the tag beside it, as Dependabot keeps them:
+
+```yaml
+    uses: sferik/duel-ruby/.github/workflows/duel.yml@<commit> # v0.2.1
+```
+
+Duel's workflows, the reusable ones and those `duel init` writes, name
+each action they use by its commit too, and the jobs that write to the
+repository (or comment) install exactly the release of Duel that wrote
+them (`gem install duel --version '0.2.1'`), not the newest one.
+
 ## Run Duel on GitLab CI
 
 `duel init --gitlab` writes GitLab CI jobs, in
@@ -920,7 +933,7 @@ duel:comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '~> 0.2.1' --no-document
+    - gem install duel --version '0.2.0' --no-document
     # (The merge request's head: in a merged results pipeline, not the
     # commit that merges it.)
     - duel comment --report . --head "${CI_MERGE_REQUEST_SOURCE_BRANCH_SHA:-$CI_COMMIT_SHA}" --marker 'duel'
@@ -940,7 +953,7 @@ duel:commit-comment:
   variables:
     GIT_STRATEGY: none # it runs none of the code
   script:
-    - gem install duel --version '~> 0.2.1' --no-document
+    - gem install duel --version '0.2.0' --no-document
     - duel comment --report . --commit "$CI_COMMIT_SHA" --marker 'duel'
 
 # With c.push_base = :last_passed in .duel.rb, a push is compared with the
@@ -964,7 +977,7 @@ duel:passed:
     GIT_STRATEGY: none # it runs none of the code
   script:
     - '[ -n "$DUEL_PASSED" ] || exit 0'
-    - gem install duel --version '~> 0.2.1' --no-document
+    - gem install duel --version '0.2.0' --no-document
     - duel mark-passed "$DUEL_PASSED"
 ```
 
@@ -1021,7 +1034,7 @@ compare. `duel init` adds these steps for a project that has a
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
           echo "ruby=$ruby" >> "$GITHUB_OUTPUT"
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: baseline-ruby
         if: steps.baseline.outputs.ruby != ''
         with:

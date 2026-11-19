@@ -7,9 +7,6 @@ module Duel
 
     USAGE: String
 
-    # The first release whose `duel comment` the workflow can run.
-    SINCE: String
-
     # Where GitLab CI has what Duel said.
     GITLAB: Hash[String, String]
 

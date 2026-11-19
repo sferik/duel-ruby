@@ -39,7 +39,7 @@ jobs:
       - name: Get the report
         id: report
         continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           # (Every call's, where the Perf workflow called Duel's more than
           # once, each in a directory of its own, which make one comment.)
@@ -47,7 +47,7 @@ jobs:
           path: ${{ runner.temp }}/report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         if: steps.report.outcome == 'success'
         with:
           ruby-version: ruby
@@ -60,7 +60,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MARKER: ${{ inputs.marker }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --head "$HEAD_SHA" --marker "$MARKER"
 
   again:

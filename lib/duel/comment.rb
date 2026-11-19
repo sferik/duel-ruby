@@ -36,13 +36,6 @@ module Duel
       "on a merge request, with DUEL_COMMENT_TOKEN: the comment job). With --commit, on the pushed commit SHA, as\n" \
       "DUEL_COMMENT and DUEL_STATUS say: what the Comment on the commit job runs.\n\n"
 
-    # The first release of Duel whose `duel comment`, `duel mark-passed`
-    # and `duel badge` the workflows that this one writes can run (0.2.1's
-    # comments on a pushed commit, and has the other two): they install
-    # the newest release of the same minor version (~>), so a fix comes
-    # with one.
-    SINCE = "0.2.1"
-
     # Where GitLab CI has what Duel said (comment.env's, on GitHub): the
     # merge request's, and the Duel job's dotenv report's.
     GITLAB = {"pr" => "CI_MERGE_REQUEST_IID", "comment" => "DUEL_COMMENT", "status" => "DUEL_STATUS"}.freeze

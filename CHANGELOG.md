@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The jobs of Duel's workflows that write to the repository or comment
+  (Comment on the commit, Mark the commit passed, Update the badge, and
+  the Perf comment workflow's), reusable or as `duel init` writes them,
+  install exactly the release of Duel that wrote them
+  (`gem install duel --version '0.2.1'`), not the newest of its minor
+  version (`~> 0.2.1`), and every action Duel's workflows use is named
+  by its commit, with its release beside it
+  (`ruby/setup-ruby@f9c4492… # v1.342.0`), as a tag can be moved.
+  `docs/ci.md` shows how to name Duel's reusable workflows by commit
+  too.
 - `duel init` writes short workflows that call Duel's reusable ones, at
   the tag of the release that writes them, as `--reusable` did, which
   is gone. `--standalone` writes the whole workflows, as `duel init`

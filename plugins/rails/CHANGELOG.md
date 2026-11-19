@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Perf workflows that `bin/rails generate duel:install` writes
+  install exactly the release of Duel they were written with, in their
+  jobs that write or comment, and name each action they use by its
+  commit, as Duel's own do.
 - The badge's Markdown, in a comment of the Perf workflow that
   `bin/rails generate duel:install` writes, links to the list of
   projects using Duel (USERS.md, in Duel's repository), as Duel's own
@@ -36,8 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments on a pushed commit, marks a push passed, and updates the
   badge with Duel 0.2.1's `duel comment --commit`, `duel mark-passed`
   and `duel badge`, from RubyGems, as Duel's own does, in place of the
-  shell they ran. Its comment workflow installs Duel 0.2.1 or later
-  (`~> 0.2.1`).
+  shell they ran.
 
 ## [0.2.0] - 2026-11-16
 

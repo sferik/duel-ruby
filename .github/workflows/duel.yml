@@ -100,7 +100,7 @@ jobs:
         shell: bash # (on every runner: on Windows, not PowerShell, but Git's, and once Ruby's set up, its devkit's)
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the baseline comes from history, tags included
           persist-credentials: false
@@ -160,7 +160,7 @@ jobs:
             zjit) echo "RUBY_ZJIT_ENABLE=1" >> "$GITHUB_ENV" ;;
             *) echo "::error::jit: $JIT: give none, yjit or zjit" && exit 1 ;;
           esac
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: ruby
         with:
           working-directory: ${{ inputs.working-directory }}
@@ -203,7 +203,7 @@ jobs:
             [ "$ruby" = "$(ruby_of HEAD)" ] && ruby=
           fi
           echo "ruby=$ruby" >> "$GITHUB_OUTPUT"
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         id: baseline-ruby
         if: steps.baseline.outputs.ruby != ''
         with:
@@ -263,7 +263,7 @@ jobs:
       # The report, for the comments.
       - name: Keep the report
         if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: duel-report${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}
           path: ${{ runner.temp }}/duel/
@@ -287,11 +287,11 @@ jobs:
       - name: Get the report
         id: report
         continue-on-error: true # there's none when the Duel job failed before comparing
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: duel-report${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}
           path: ${{ runner.temp }}/report
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         if: steps.report.outcome == 'success'
         with:
           ruby-version: ruby
@@ -305,7 +305,7 @@ jobs:
           # (duel, or for a project in a subdirectory, duel and its path.)
           MARKER: ${{ inputs.working-directory == '.' && 'duel' || format('duel {0}', inputs.working-directory) }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker "$MARKER"
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
@@ -331,7 +331,7 @@ jobs:
     permissions:
       contents: write # to move the branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -340,7 +340,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.duel.outputs.passed }}
         run: |
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel mark-passed "$BRANCH"
 
   # Duel's badge, for the README: green (perf guarded), red (perf
@@ -372,7 +372,7 @@ jobs:
     permissions:
       contents: write # to move the badge's branch
     steps:
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0 # v1.342.0
         with:
           ruby-version: ruby
       # Duel's own code, from RubyGems (none of the push's).
@@ -387,5 +387,5 @@ jobs:
           # path>.)
           branch=duel/badge
           if [ "$DIRECTORY" != . ]; then branch="duel/badge-$(printf %s "$DIRECTORY" | tr / -)"; fi
-          gem install duel --version '~> 0.2.1' --no-document
+          gem install duel --version '0.2.0' --no-document
           duel badge "$branch" --status "$STATUS" --result "$RESULT"
