@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-20
+
 ### Changed
 
 - `redis_cpu` is left out of Duel's across-the-board check
@@ -27,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they win over the plugin's own.
 - `Duel::Redis.flush` is `Duel::Redis.reset`, as MySQL's and
   PostgreSQL's plugins name what empties a worker's server.
+- It requires Duel 0.3.0 or later (`~> 0.3.0`), the release it's
+  tested with, as Duel 0.3.0 changes what plugins and benchmarks call.
 
 ## [0.2.0] - 2026-11-16
 
@@ -114,7 +118,8 @@ license. It needs Ruby 3.4 or later, Duel 0.1, and `redis-server`
   read the next reply out of step.
 
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.2.0...duel-redis-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.8...duel-redis-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.7...duel-redis-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-redis-v0.1.6...duel-redis-v0.1.7

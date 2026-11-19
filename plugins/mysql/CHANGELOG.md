@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-20
+
 ### Added
 
 - libmysqlclient's `MYSQL_UNIX_PORT` (but on Windows) and, with `tcp`,
@@ -28,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server:` is found by Duel's `Duel.find_program`, as duel-postgresql's
   is: a path is expanded (`~/mysql/bin/mysqld`, say), and a directory
   named `mysqld` on the `PATH` isn't taken for the program.
+- It requires Duel 0.3.0 or later (`~> 0.3.0`), the release it's
+  tested with, as Duel 0.3.0 changes what plugins and benchmarks call.
 
 ### Fixed
 
@@ -167,7 +171,8 @@ or later (not MariaDB).
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.2.0...duel-mysql-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.8...duel-mysql-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.7...duel-mysql-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-mysql-v0.1.6...duel-mysql-v0.1.7

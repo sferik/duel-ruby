@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-20
+
 ### Changed
 
 - `gvl_wait`'s settings say `size_samples: false`, as Duel 0.3.0 names
   `sizes_samples:`.
 - `gvl_wait` measures the benchmarks judged on their timings alone,
   `judge: :timed`, which Duel's `only: :timing` became.
+- It requires Duel 0.3.0 or later (`~> 0.3.0`), the release it's
+  tested with, as Duel 0.3.0 changes what plugins and benchmarks call.
 
 ## [0.2.0] - 2026-11-16
 
@@ -68,7 +72,8 @@ nothing).
   (`unit: "ns"`), so reports show it as time (`51.16µs → 817.9µs an
   iteration`).
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.2.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.3.0...HEAD
+[0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.2.0...duel-gvl-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.1.8...duel-gvl-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.1.7...duel-gvl-v0.1.8
 [0.1.7]: https://github.com/sferik/duel-ruby/compare/duel-gvl-v0.1.6...duel-gvl-v0.1.7

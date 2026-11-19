@@ -24,6 +24,6 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*.rb", "sig/**/*.rbs", "LICENSE", "README.md", "CHANGELOG.md"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "duel", "~> 0.2"
+  spec.add_dependency "duel", "~> 0.3.0"
   spec.add_dependency "pg", "~> 1.5"
 end
