@@ -193,7 +193,7 @@ class GeneratorTest < PluginTest
     assert_equal own("perf.yml")[/^      - name: Say whether to comment\n.*?^      - name: Keep/m],
       workflow[/^      - name: Say whether to comment\n.*?^      - name: Keep/m], "Duel's own"
     %w[commit-comment passed badge].each do |job|
-      assert_equal own("perf.yml")[/^  #{job}:\n.*?^        run: \|\n/m], workflow[/^  #{job}:\n.*?^        run: \|\n/m], "Duel's own job, #{job}"
+      assert_equal own("perf-push-jobs.yml")[/^  #{job}:\n.*?^        run: \|\n/m], workflow[/^  #{job}:\n.*?^        run: \|\n/m], "Duel's own job, #{job}"
     end
     jobs = YAML.safe_load(workflow).fetch("jobs")
     gem = "gem install duel --version '#{Duel::VERSION}' --no-document\n"
@@ -201,7 +201,7 @@ class GeneratorTest < PluginTest
     assert_equal ["#{gem}duel comment --report \"$RUNNER_TEMP/report\" --commit \"$GITHUB_SHA\" --marker 'duel'\n", "#{gem}duel mark-passed \"$BRANCH\"\n",
       "#{gem}duel badge duel/badge --status \"$STATUS\" --result \"$RESULT\"\n"], %w[commit-comment passed badge].map { |job| jobs.dig(job, "steps").last.fetch("run") }
     # (Its whole workflow's, without the reusable one's.)
-    badge = own("perf.yml")[/^  # Duel's badge.*\z/m].gsub(/<% if reusable\? -%>\n.*?<% else -%>\n(.*?)<% end -%>\n/m, '\\1')
+    badge = own("perf-push-jobs.yml")[/^  # Duel's badge.*\z/m].gsub(/<% if reusable\? -%>\n.*?<% else -%>\n(.*?)<% end -%>\n/m, '\\1')
       .gsub(/<% if reusable\? -%>\n.*?<% end -%>\n/m, "")
 
     badge = badge.gsub("<%= badge_branch %>", "duel/badge").gsub(%(<%= reusable? ? '"$branch"' : badge_branch %>), "duel/badge")

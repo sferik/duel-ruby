@@ -1,0 +1,50 @@
+name: Duel push
+
+# Duel's jobs for a push, reusable: a project's own Perf workflow (as
+# `duel init` writes it) calls it once Duel's Perf workflow (duel.yml)
+# has compared the push, with what its Duel job said (its outputs, and
+# how it ended). They comment on the pushed commit, mark it passed, and
+# keep the badge, as the whole Perf workflow's jobs that
+# `duel init --standalone` writes do. They write to the repository, so
+# they're apart from the Duel job, which runs the branch's code: the
+# caller grants contents: write to this call alone, and only runs it for
+# a push, so a pull request's run is granted nothing more than reading.
+# None of them checks anything out or runs any of the code. See Duel's
+# docs/ci.md.
+on:
+  workflow_call:
+    inputs:
+      comment:
+        description: Whether Duel said to comment (post or change), or nothing, as duel.yml's comment output says
+        type: string
+        default: ""
+      status:
+        description: The run's status (passed, failed or neutral), or nothing, as duel.yml's status output says
+        type: string
+        default: ""
+      passed:
+        description: The branch to mark the push passed on, or nothing, as duel.yml's passed output says
+        type: string
+        default: ""
+      result:
+        description: How the call of duel.yml ended (success or failure, say), as needs.<job>.result says
+        type: string
+        required: true
+      working-directory:
+        description: The project's directory, from the repository's root, as given to duel.yml
+        type: string
+        default: .
+      report:
+        description: The name of the report, as given to duel.yml
+        type: string
+        default: ""
+      badge:
+        description: Whether to keep a badge for the README
+        type: boolean
+        default: false
+
+# (Each job asks for what it needs.)
+permissions: {}
+
+jobs:
+<%= push_jobs -%>

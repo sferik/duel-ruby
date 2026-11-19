@@ -25,19 +25,36 @@ concurrency:
 permissions: {}
 
 jobs:
+  # Duel's job, which runs the branch's code, so it only reads.
   duel:
     uses: <%= REUSABLE %>/duel.yml@v<%= Duel::VERSION %>
-    # (Its Duel job, which runs the branch's code, only reads: the
-    # workflow keeps it to contents: read. GitHub checks what each of its
-    # jobs asks for against what's granted here, run or not, and those
-    # that mark a push passed, comment on it, or keep the badge ask for
-    # contents: write.)
     permissions:
-      contents: write
+      contents: read
       pull-requests: read # for the pull request's labels (see c.accept_label)
     # (And with setup:, shell commands that set up whatever else your
     # tests need: packages, services.)
     with:
 <% perf_inputs.each do |name, value| -%>
+      <%= name %>: <%= value %>
+<% end -%>
+
+  # For a push, the jobs that comment on the commit, mark it passed, or
+  # keep the badge, as the Duel job says, which run none of the code.
+  # They write, so they're a call of their own, and run only for a push:
+  # GitHub checks what each job of a workflow it calls asks for against
+  # what's granted, run or not, so the Duel job's call grants reading
+  # alone.
+  push:
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    uses: <%= REUSABLE %>/duel-push.yml@v<%= Duel::VERSION %>
+    permissions:
+      contents: write # to comment on the commit, move the passed branch, and the badge's
+    with:
+      comment: ${{ needs.duel.outputs.comment }}
+      status: ${{ needs.duel.outputs.status }}
+      passed: ${{ needs.duel.outputs.passed }}
+      result: ${{ needs.duel.result }}
+<% push_inputs.each do |name, value| -%>
       <%= name %>: <%= value %>
 <% end -%>

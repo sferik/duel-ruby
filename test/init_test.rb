@@ -1175,18 +1175,16 @@ class InitTest < DuelTest
   def test_the_reusable_workflows
     files = Duel::Init::Reusable.new([]).files
 
-    assert_equal [".github/workflows/duel.yml", ".github/workflows/duel-comment.yml"], files.keys
+    assert_equal %w[.github/workflows/duel.yml .github/workflows/duel-comment.yml .github/workflows/duel-push.yml], files.keys
     files.each { |path, content| assert_equal content, repo_file(path), "#{path}: run `rake workflows`" }
-    perf, comment = files.values.map { |content| YAML.safe_load(content) }
+    perf, comment, push = files.values.map { |content| YAML.safe_load(content) }
 
-    assert_equal "Duel", perf.fetch("name")
-    inputs = %w[ruby-version version-file jit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report badge]
+    assert_equal ["Duel", "Duel push"], [perf, push].map { |workflow| workflow.fetch("name") }
+    inputs = %w[ruby-version version-file jit runs-on timeout-minutes working-directory gemfile submodules setup setup-after-ruby report]
 
     assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
     refute perf.key?("concurrency"), "the caller's: one of its own would wait for the caller's run"
-    assert_equal %w[duel commit-comment passed badge], perf.fetch("jobs").keys, "every job"
-    assert_equal [nil, nil, "inputs.badge"], perf.fetch("jobs").values.drop(1).map { |job| job.fetch("if")[/inputs\.[a-z-]+/] },
-      "the jobs for pushes where Duel says, and the badge's where its input says to"
+    assert_equal %w[duel], perf.fetch("jobs").keys, "the Duel job alone: the push workflow's write"
     steps = perf.dig("jobs", "duel", "steps")
 
     assert_equal "inputs.version-file", steps.find { |step| step["name"] == "Find the baseline's Ruby" }.fetch("if")
@@ -1200,6 +1198,24 @@ class InitTest < DuelTest
     assert_equal %w[accept-label perf-workflow marker], comment.dig(true, "workflow_call", "inputs").keys
     assert_includes comment.dig("jobs", "comment", "steps", 2, "run"), %(--marker "$MARKER"\n)
     assert_includes comment.dig("jobs", "again", "if"), "github.event.label.name == inputs.accept-label"
+  end
+
+  # Duel's push workflow has the whole Perf workflow's jobs for a push,
+  # each run where what the Duel job said (its inputs) says to, and the
+  # badge's where its input says to, none of them needing a job of their
+  # own workflow's.
+  def test_the_reusable_push_workflow
+    content = Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel-push.yml")
+    push = YAML.safe_load(content)
+    jobs = push.fetch("jobs")
+
+    assert_equal %w[comment status passed result working-directory report badge], push.dig(true, "workflow_call", "inputs").keys
+    assert push.dig(true, "workflow_call", "inputs", "result", "required"), "how the Duel job ended, for the badge"
+    assert_equal %w[commit-comment passed badge], jobs.keys
+    assert_equal [false, false, "inputs.badge"], jobs.values.map { |job| job.fetch("if")[/inputs\.badge/] || job.key?("needs") }
+    assert_equal ["inputs.comment", "inputs.passed", "inputs.result"], jobs.values.map { |job| job.fetch("if")[/inputs\.(comment|passed|result)/] },
+      "what the Duel job said, from the push workflow's inputs"
+    refute_includes content, "needs.duel", "none of the Duel job's own"
   end
 
   # The JIT the caller says (jit:, one of them, as Ruby runs one at
@@ -1221,15 +1237,18 @@ class InitTest < DuelTest
     assert_includes @shell, "::error::jit: both: give none, yjit or zjit"
   end
 
-  # The reusable Perf workflow narrows what its caller grants (the
-  # contents: write its jobs that write ask for) to reading, for every job
-  # that doesn't ask for more: the Duel job, which runs the branch's code.
+  # The reusable Perf workflow's Duel job, which runs the branch's code,
+  # only reads, and asks for nothing more: the jobs that write
+  # (contents: write) are the push workflow's, which the caller grants
+  # that to alone.
   def test_the_reusable_workflows_permissions
-    perf = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml"))
+    files = Duel::Init::Reusable.new([]).files
+    perf, push = files.values_at(".github/workflows/duel.yml", ".github/workflows/duel-push.yml").map { |content| YAML.safe_load(content) }
 
     assert_equal({"contents" => "read", "pull-requests" => "read"}, perf.fetch("permissions"))
     refute perf.dig("jobs", "duel").key?("permissions"), "the Duel job's, as the workflow's"
-    assert_equal [{"contents" => "write"}] * 3, perf.fetch("jobs").values.drop(1).map { |job| job.fetch("permissions") }
+    assert_equal({}, push.fetch("permissions"))
+    assert_equal [{"contents" => "write"}] * 3, push.fetch("jobs").values.map { |job| job.fetch("permissions") }
   end
 
   # The reusable Perf workflow's Duel job runs where the caller says (on
@@ -1238,7 +1257,7 @@ class InitTest < DuelTest
   # the caller's own jobs. The Perf comment workflow comments with every
   # call's report.
   def test_the_reusable_workflows_calls
-    perf, comment = Duel::Init::Reusable.new([]).files.values.map { |content| YAML.safe_load(content) }
+    perf, comment, push = Duel::Init::Reusable.new([]).files.values.map { |content| YAML.safe_load(content) }
     job = perf.dig("jobs", "duel")
     named = "duel-report${{ inputs.report != '' && format('-{0}', inputs.report) || '' }}"
 
@@ -1248,7 +1267,7 @@ class InitTest < DuelTest
       perf.dig(true, "workflow_call", "inputs").values_at("runs-on", "timeout-minutes", "submodules").map { |input| input.values_at("type", "default") }
     assert_equal "${{ inputs.submodules }}", job.dig("steps", 0, "with", "submodules")
     assert_equal [named, named], [job.fetch("steps").find { |step| step["name"] == "Keep the report" }.dig("with", "name"),
-      perf.dig("jobs", "commit-comment", "steps", 0, "with", "name")]
+      push.dig("jobs", "commit-comment", "steps", 0, "with", "name")]
     assert_equal(%w[comment status passed].to_h { |name| [name, "${{ jobs.duel.outputs.#{name} }}"] },
       perf.dig(true, "workflow_call", "outputs").transform_values { |output| output.fetch("value") })
     assert_equal({"pattern" => "duel-report*"}, comment.dig("jobs", "comment", "steps", 0, "with").slice("pattern", "name"))
@@ -1256,8 +1275,9 @@ class InitTest < DuelTest
 
   # By default, workflows that call Duel's (at this release), with
   # what .duel.rb sets that isn't an input's default, and the
-  # permissions their jobs need: contents: write, as GitHub checks every
-  # job of Duel's against it, whether it runs or not.
+  # permissions their jobs need: reading for the Duel job, which runs the
+  # branch's code, and contents: write for the push workflow's alone,
+  # which runs only for a push, with what the Duel job said.
   def test_reusable
     gem
 
@@ -1266,9 +1286,16 @@ class InitTest < DuelTest
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
     job = perf.dig("jobs", "duel")
 
+    push = perf.dig("jobs", "push")
+
+    assert_equal %w[duel push], perf.fetch("jobs").keys
     assert_equal "sferik/duel-ruby/.github/workflows/duel.yml@v#{Duel::VERSION}", job.fetch("uses")
-    assert_equal({"contents" => "write", "pull-requests" => "read"}, job.fetch("permissions"), "though nothing it turns on writes")
+    assert_equal({"contents" => "read", "pull-requests" => "read"}, job.fetch("permissions"), "no write for a pull request's run")
     assert_equal({"ruby-version" => ruby_version}, job.fetch("with"), "nothing of .duel.rb's: Duel reads it")
+    assert_equal ["sferik/duel-ruby/.github/workflows/duel-push.yml@v#{Duel::VERSION}", "duel", "${{ !cancelled() && github.event_name == 'push' }}",
+      {"contents" => "write"}], push.values_at("uses", "needs", "if", "permissions")
+    assert_equal(%w[comment status passed].to_h { |name| [name, "${{ needs.duel.outputs.#{name} }}"] }.merge("result" => "${{ needs.duel.result }}"),
+      push.fetch("with"), "what the Duel job said, and how it ended")
     assert_equal %w[pull_request merge_group push schedule workflow_dispatch], perf.fetch(true).keys
     assert perf.key?("concurrency")
     assert_equal "sferik/duel-ruby/.github/workflows/duel-comment.yml@v#{Duel::VERSION}", comment.dig("jobs", "comment", "uses")
@@ -1287,11 +1314,11 @@ class InitTest < DuelTest
     write(".duel.rb", "Duel.configure do |c|\n  c.fail_on = :pull_requests\n  c.push_base = :last_passed\n  c.accept_label = nil\n" \
       "  c.release_tags = \"my_gem-v*\"\nend\n")
     init("--badge").run
-    job = YAML.safe_load(read(".github/workflows/perf.yml")).dig("jobs", "duel")
+    jobs = YAML.safe_load(read(".github/workflows/perf.yml")).fetch("jobs")
     comment = YAML.safe_load(read(".github/workflows/perf-comment.yml"))
 
-    assert_equal({"version-file" => true, "badge" => true}, job.fetch("with"))
-    assert_equal "write", job.dig("permissions", "contents")
+    assert_equal({"version-file" => true}, jobs.dig("duel", "with"))
+    assert_equal [true, "write"], [jobs.dig("push", "with", "badge"), jobs.dig("push", "permissions", "contents")], "the badge, the push workflow's"
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"))
     refute comment.fetch("jobs").fetch("comment").key?("with"), "nothing to pass on"
     assert_equal %w[workflow_run], comment.fetch(true).keys, "no label to run it again for"
@@ -1312,7 +1339,7 @@ class InitTest < DuelTest
   # working-directory: duel/badge and duel at the root, and for a project
   # in a subdirectory, its path's, as Init names them.
   def test_the_reusable_workflows_names
-    jobs = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel.yml")).fetch("jobs")
+    jobs = YAML.safe_load(Duel::Init::Reusable.new([]).files.fetch(".github/workflows/duel-push.yml")).fetch("jobs")
     named = jobs.dig("badge", "steps", 1, "run")[/^branch=duel\/badge\n.*?\n/m]
     out = File.join(tmpdir, "out")
     branch = ->(directory) { shell({"DIRECTORY" => directory}, "#{named}echo \"$branch\"", out: out) && File.read(out).chomp }
@@ -1334,7 +1361,10 @@ class InitTest < DuelTest
     perf = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml"))
     comment = YAML.safe_load_file(File.join(tmpdir, ".github", "workflows", "perf-gems-parser-comment.yml"))
 
-    assert_equal({"ruby-version" => ruby_version, "working-directory" => "gems/parser", "badge" => true}, perf.dig("jobs", "duel", "with"))
+    assert_equal({"ruby-version" => ruby_version, "working-directory" => "gems/parser"}, perf.dig("jobs", "duel", "with"))
+    assert_equal({"working-directory" => "gems/parser", "badge" => true}, perf.dig("jobs", "push", "with").slice("working-directory", "badge"))
+    assert_includes File.read(File.join(tmpdir, ".github", "workflows", "perf-gems-parser.yml")),
+      %(      result: ${{ needs.duel.result }}\n      working-directory: "gems/parser"\n      badge: true\n), "as YAML strings: a directory named yes, say, isn't true"
     assert_equal({"accept-label" => "duel: accept", "perf-workflow" => "Perf (gems/parser)", "marker" => "duel gems/parser"}, comment.dig("jobs", "comment", "with"))
     assert_equal ["Perf (gems/parser)", ["Perf (gems/parser)"]], [perf.fetch("name"), comment.dig(true, "workflow_run", "workflows")]
   end

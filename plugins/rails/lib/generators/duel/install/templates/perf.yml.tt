@@ -29,7 +29,7 @@ jobs:
     name: Duel
     runs-on: ubuntu-latest
     # Whether to comment (post, change or none), the run's status (passed,
-    # failed or neutral), and whether to mark a push passed (true, or
+    # failed or neutral), and the branch to mark a push passed on (or
     # nothing), from Duel.
     outputs:
       comment: ${{ steps.compare.outputs.comment }}

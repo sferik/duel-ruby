@@ -336,10 +336,12 @@ module Duel
       {
         "ruby-version" => ruby_version,
         "version-file" => (true if version_file),
-        "working-directory" => working_directory,
-        "badge" => (true if badge?)
+        "working-directory" => working_directory
       }.compact.transform_values(&:to_json)
     end
+
+    # The same, for Duel's push workflow, besides what the Duel job said.
+    def push_inputs = {"working-directory" => working_directory, "badge" => (true if badge?)}.compact.transform_values(&:to_json)
 
     # The same, for Duel's Perf comment workflow.
     def comment_inputs
@@ -465,10 +467,15 @@ module Duel
       # The files, from the repository's root, to what's in them.
       def files
         workflows = File.join(".github", "workflows")
-        {File.join(workflows, "duel.yml") => render("perf.yml"), File.join(workflows, "duel-comment.yml") => render("perf-comment.yml")}
+        {File.join(workflows, "duel.yml") => render("perf.yml"), File.join(workflows, "duel-comment.yml") => render("perf-comment.yml"),
+         File.join(workflows, "duel-push.yml") => render("perf-push.yml")}
       end
 
       private
+
+      # The whole Perf workflow's jobs for a push, as the push workflow's:
+      # what they take from the Duel job (needs.duel), its inputs.
+      def push_jobs = render("perf-push-jobs.yml").gsub(/^    needs: duel\n/, "").gsub("needs.duel.outputs.", "inputs.").gsub("needs.duel.result", "inputs.result")
 
       def reusable? = true
 

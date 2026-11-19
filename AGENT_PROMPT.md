@@ -195,11 +195,12 @@ at the API.
 6. **Check CI.** `duel init` wrote two GitHub Actions workflows, short
    ones that call Duel's reusable workflows, at the tag of the Duel
    release that wrote them, with what `.duel.rb` sets that they need.
-   - `.github/workflows/perf.yml` runs Duel. Its Duel job runs the
-     branch's code, and Duel's workflow keeps that job to
-     `contents: read`. Keep the permissions as `duel init` wrote them:
-     GitHub checks every job of Duel's workflow against them, whether
-     it runs or not.
+   - `.github/workflows/perf.yml` runs Duel. Its `duel` job runs the
+     branch's code, so it only reads (`contents: read`), and its `push`
+     job, which runs only for a push and none of the code, writes
+     (`contents: write`). Keep the permissions as `duel init` wrote
+     them: GitHub checks every job of Duel's workflows against them,
+     whether it runs or not.
    - `.github/workflows/perf-comment.yml` comments on a pull request
      with Duel's report once the first has run (`c.comment` in
      `.duel.rb` chooses when, and Duel also adds the report to the

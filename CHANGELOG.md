@@ -51,6 +51,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The jobs of Duel's reusable Perf workflow for a push, which write to
+  the repository (Comment on the commit, Mark the commit passed and
+  Update the badge), are a reusable workflow of their own,
+  `.github/workflows/duel-push.yml`, so a Perf workflow that calls
+  Duel's grants `contents: read` to the Duel job's call, which runs the
+  branch's code, and `contents: write` to the push workflow's alone,
+  which it calls only for a push. Before, its one call granted
+  `contents: write`, for a pull request's run too, as GitHub checks
+  every job of a called workflow against what the caller grants,
+  whether it runs or not. `duel init` writes both calls, the second
+  passing on what the Duel job said (`comment`, `status`, `passed`, and
+  `result`, how its call ended). The `badge` input is the push
+  workflow's, not the Perf workflow's: a Perf workflow that passes it
+  to `duel.yml` fails, so run `duel init --force` (or
+  `duel init --check` to see the change).
 - The jobs of Duel's workflows that write to the repository or comment
   (Comment on the commit, Mark the commit passed, Update the badge, and
   the Perf comment workflow's), reusable or as `duel init` writes them,
@@ -174,14 +189,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The Perf workflow `duel init --reusable` writes grants
-  `contents: write`. It granted `contents: read` unless it turned on a
-  job that writes (marking a push passed, commenting on one, or the
-  badge), but GitHub checks every job of a workflow it calls against
-  what the caller grants, whether the job runs or not, so the run failed
-  before it started. The Duel job, which runs the branch's code, still
-  only reads. In a Perf workflow it wrote, grant `contents: write` in
-  the job that calls Duel's (`duel init --check --reusable` shows where).
+- The Perf workflow that `duel init --reusable` wrote granted
+  `contents: read` unless it turned on a job that writes (marking a
+  push passed, commenting on one, or the badge), but GitHub checks every
+  job of a workflow it calls against what the caller grants, whether
+  the job runs or not, so the run failed before it started. The jobs
+  that write are now Duel's push workflow's, which the Perf workflow
+  that `duel init` writes calls apart, with `contents: write`, and only
+  for a push, while the Duel job's call still only reads (see Changed).
+  Run `duel init --force` for a workflow that calls both
+  (`duel init --check` shows the change).
 
 ## [0.2.0] - 2026-11-16
 

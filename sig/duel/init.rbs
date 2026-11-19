@@ -121,6 +121,8 @@ module Duel
     # Duel's, as its inputs, each as YAML has it.
     def perf_inputs: () -> Hash[String, String]
 
+    def push_inputs: () -> Hash[String, String]
+
     def comment_inputs: () -> Hash[String, String]
 
     # The project's configuration, as the conventions have it.
@@ -192,6 +194,9 @@ module Duel
       def files: () -> Hash[String, String]
 
       private
+
+      # The whole Perf workflow's jobs for a push, as the push workflow's.
+      def push_jobs: () -> String
 
       def reusable?: () -> true
 

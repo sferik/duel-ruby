@@ -54,7 +54,7 @@ jobs:
     name: Duel
     runs-on: ubuntu-latest
     # Whether to comment (post, change or none), the run's status (passed,
-    # failed or neutral), and whether to mark a push passed (true, or
+    # failed or neutral), and the branch to mark a push passed on (or
     # nothing), from Duel.
     outputs:
       comment: ${{ steps.compare.outputs.comment }}
@@ -650,16 +650,34 @@ jobs:
   duel:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write # what its jobs ask for, run or not (see below)
+      contents: read
       pull-requests: read # for the pull request's labels (see c.accept_label)
     with:
       ruby-version: "3.4"
+  push:
+    needs: duel
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.2.0
+    permissions:
+      contents: write # to comment on the commit, move the passed branch, and the badge's
+    with:
+      comment: ${{ needs.duel.outputs.comment }}
+      status: ${{ needs.duel.outputs.status }}
+      passed: ${{ needs.duel.outputs.passed }}
+      result: ${{ needs.duel.result }}
 ```
 
 Your workflows keep their triggers, their concurrency and their
-permissions, which Duel's jobs can only narrow. The job that runs the
-pull request's code only reads (`contents: read`), as it does in the
-whole workflow, whatever your Perf workflow grants.
+permissions, which Duel's jobs can only narrow. The Duel job, which runs
+the pull request's code, only reads (`contents: read`), as it does in
+the whole workflow. The jobs for a push that write to the repository
+(the [comment on a pushed commit](#comment-on-a-pushed-commit),
+[marking a push passed](#compare-a-push-with-the-last-commit-that-passed)
+and [the badge](#show-whether-the-last-push-passed)) are Duel's push
+workflow's (`.github/workflows/duel-push.yml`), which your workflow
+calls once the Duel job is done, only for a push, and grants
+`contents: write` to alone. So a pull request's run is never given a
+token that writes (see below).
 
 Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 
@@ -676,19 +694,23 @@ Duel's Perf workflow (`.github/workflows/duel.yml`) takes these inputs:
 | `setup` | none | Shell commands that set up whatever else your tests need (packages, services), before Ruby is set up. |
 | `setup-after-ruby` | none | Shell commands that set up what needs Ruby first (on Windows, a package of Ruby's devkit, from `pacman`, say), before the bundle is installed. See [On Windows](#on-windows). With them, the bundle isn't cached. |
 | `report` | none | A name for the call's report and check (`yjit`, say), where your workflow calls Duel's more than once: see below. |
-| `badge` | `false` | Whether to [keep a badge](#show-whether-the-last-push-passed) for the README. |
 
-It takes nothing that `.duel.rb` says, which Duel reads as it runs: its
-jobs for pushes, the [comment on a pushed commit](#comment-on-a-pushed-commit)
-and [marking a push passed](#compare-a-push-with-the-last-commit-that-passed),
-run where Duel's outputs say to, and the names of the branches they
-move, and of the badge's, and the marker of its comments, come from
-`working-directory`.
+It takes nothing that `.duel.rb` says, which Duel reads as it runs. It
+says what Duel said, as its outputs, for Duel's push workflow and for
+jobs of your own (a notice in a channel, say): `comment` (`post` or
+`change`, or nothing), `status` (`passed`, `failed` or `neutral`) and
+`passed` (the branch that marks the push passed, `duel/passed/main`
+say, or nothing).
 
-It says what Duel said, as its outputs, for jobs of your own (a notice
-in a channel, say): `comment` (`post` or `change`, or nothing),
-`status` (`passed`, `failed` or `neutral`) and `passed` (the branch
-that marks the push passed, `duel/passed/main` say, or nothing).
+Duel's push workflow (`.github/workflows/duel-push.yml`) takes those
+outputs as its inputs of the same names, and `result`, how the Duel
+job's call ended (`needs.duel.result`), which the badge shows where it
+failed. Its jobs run where they say to. It takes `working-directory`
+and `report` too, as given to the Duel job's call, and `badge`
+(`false` by default), whether to
+[keep a badge](#show-whether-the-last-push-passed) for the README. The
+names of the branches its jobs move, and of the badge's, and the
+marker of its comments, come from `working-directory`.
 
 To measure each version more than one way, call Duel's Perf workflow
 more than once, each call with a `report` of its own:
@@ -698,7 +720,7 @@ jobs:
   yjit:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     with:
       jit: yjit
@@ -706,7 +728,7 @@ jobs:
   zjit:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     with:
       ruby-version: "4.0"
@@ -715,7 +737,7 @@ jobs:
   interpreter:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     with:
       report: interpreter
@@ -724,10 +746,29 @@ jobs:
 Each call is a check of its own (`yjit / Duel (yjit)`), and the Perf
 comment workflow comments with every call's report, as one comment,
 each under its name. The comment's status is the most any call's
-says: failed, if any failed, and passed only if every one passed. Turn
-on `badge` in one call at most, as each call's jobs run on their own,
-and with `c.fail_on = :pull_requests` or `c.push_base = :last_passed`,
-each call comments on a push, or marks it passed, as its Duel says.
+says: failed, if any failed, and passed only if every one passed. For
+the jobs for a push, call Duel's push workflow after a call, with what
+it said and its `report`:
+
+```yaml
+  yjit-push:
+    needs: yjit
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    uses: sferik/duel-ruby/.github/workflows/duel-push.yml@v0.2.0
+    permissions:
+      contents: write
+    with:
+      comment: ${{ needs.yjit.outputs.comment }}
+      status: ${{ needs.yjit.outputs.status }}
+      passed: ${{ needs.yjit.outputs.passed }}
+      result: ${{ needs.yjit.result }}
+      report: yjit
+```
+
+Turn on `badge` in one such call at most, as each call's jobs run on
+their own, and with `c.fail_on = :pull_requests` or
+`c.push_base = :last_passed`, each one comments on a push, or marks it
+passed, as its Duel says.
 
 ### On Windows
 
@@ -745,14 +786,14 @@ jobs:
   linux:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     with:
       report: linux
   windows:
     uses: sferik/duel-ruby/.github/workflows/duel.yml@v0.2.0
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     with:
       runs-on: windows-latest
@@ -773,12 +814,15 @@ Duel's Perf comment workflow (`.github/workflows/duel-comment.yml`)
 takes `accept-label`, `marker`, and `perf-workflow` (the name of your
 Perf workflow, `Perf` by default).
 
-The jobs for pushes, and the badge's, write to the repository, so your
-Perf workflow grants `contents: write`, even where none of them runs:
-GitHub checks every job of a
-workflow it calls against what the caller grants, whether the job runs
-or not, and a run where one asks for more fails before it starts. With
-an accept label, your Perf comment workflow grants
+The jobs for pushes, and the badge's, write to the repository, so the
+call of Duel's push workflow grants `contents: write`. GitHub checks
+every job of a workflow it calls against what the caller grants,
+whether the job runs or not, and a run where one asks for more fails
+before it starts. That's why they're a workflow of their own: were they
+the Perf workflow's, its call, and so a pull request's run, would have
+to grant `contents: write` too.
+
+With an accept label, your Perf comment workflow grants
 `actions: write`, to run the Duel job again. The checks are named for
 your job and Duel's, as in `duel / Duel`. To update Duel's workflows,
 change the tag. `duel init --check` compares the workflows that call
