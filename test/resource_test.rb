@@ -35,9 +35,18 @@ class ResourceTest < DuelTest
     @hang_watch&.kill
     Process.define_singleton_method(:spawn, @spawn)
     @groups.each { |pid| end_group(pid) }
-    # (Through Open3, on JRuby on Windows, none leads a group of the test's:
-    # each resource's processes, killed with what they started.)
-    @made.flat_map { |r| r.instance_variable_get(:@processes) }.each { |process| Duel::Spawn.kill_tree(process.child.pid) } if Duel::Platform::JRUBY_ON_WINDOWS
+    # (Started through Open3, a process leads no group of the test's, so
+    # Process.spawn's above didn't kill it: each resource's processes,
+    # killed, but those that ended, whose pids may be another's now, and on
+    # JRuby on Windows, with what they started.)
+    @made.flat_map { |r| r.instance_variable_get(:@processes) }.each do |process|
+      child = process.child
+      if Duel::Platform::JRUBY_ON_WINDOWS
+        Duel::Spawn.kill_tree(child.pid)
+      elsif child.alive?
+        child.kill
+      end
+    end
     Dir.chdir(@dir)
     super
   end
