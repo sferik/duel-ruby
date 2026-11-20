@@ -11,6 +11,7 @@ if ENV["COVERAGE"] != "false" && RUBY_ENGINE == "ruby" && !defined?(Mutant)
 end
 
 require_relative "watchdog"
+require_relative "semaphores"
 
 # A postgres (or initdb) the tests start has a data directory of its own
 # (an absolute -D, or --pgdata=): without one (a mutation that leaves it
@@ -195,6 +196,7 @@ class PluginTest < Minitest::Test
   # say, for r.path("data")) is written there, not into the project.
   def setup
     skip "PostgreSQL isn't installed" unless POSTGRES
+    Semaphores.clear
     @dir = Dir.mktmpdir("dp", Duel::Lane.short_tmp)
     @cwd = Dir.pwd
     Dir.chdir(@dir)
