@@ -138,6 +138,8 @@ how to add Duel to your project. The agent does the following:
 * Checks that the benchmarks pass against the unchanged code, and that
   they catch a deliberate slowdown.
 * Adds the CI workflow.
+* Shows Duel's badge with the README's other badges, kept by a job of
+  the workflow that turns it red when Duel fails a push.
 
 To use the prompt, paste it into the agent, or point the agent at the
 file. The prompt also ships with the gem. After you install Duel, it's

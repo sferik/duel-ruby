@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- AGENT_PROMPT.md has the agent set up the badge that turns red when
+  Duel fails a push to the default branch, by default: it runs
+  `duel init --badge` (or `bin/rails generate duel:install --badge`)
+  and shows that badge in the README, linked to the Perf workflow's
+  runs. It shows Duel's own badge, which is always green, only where
+  there's no job to keep one (on GitLab CI, or where the workflow
+  doesn't run for pushes), and leaves out the badge's job where the
+  README shows no badges. Its step about the workflow's jobs for
+  pushes describes them as Duel 0.3.0 writes them.
+
 ## [0.3.0] - 2026-11-20
 
 ### Added

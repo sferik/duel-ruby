@@ -16,13 +16,14 @@ at the API.
 1. **Install and set up.** Add `gem "duel"` to the Gemfile's
    development group (unless the Gemfile has it already), and run
    `bundle install`. Then, unless the project is a Rails app (see step
-   4), run `bundle exec duel init`, and read what it wrote: `.duel.rb`,
-   an example benchmark in `duel/`, two GitHub Actions workflows
-   (`.github/workflows/perf.yml`, and `perf-comment.yml`, which comments
-   on pull requests), Duel's Rake task, if there's a Rakefile, and
-   `gem "stackprof", platforms: :mri` in the Gemfile, for profiles of
-   regressions. It lists what it did and what's next: run
-   `bundle install` again for StackProf.
+   4), run `bundle exec duel init --badge` (or, if the project's README
+   shows no badges, without `--badge`: see step 7), and read what it
+   wrote: `.duel.rb`, an example benchmark in `duel/`, two GitHub
+   Actions workflows (`.github/workflows/perf.yml`, and
+   `perf-comment.yml`, which comments on pull requests), Duel's Rake
+   task, if there's a Rakefile, and `gem "stackprof", platforms: :mri`
+   in the Gemfile, for profiles of regressions. It lists what it did and
+   what's next: run `bundle install` again for StackProf.
 
 2. **Find what's worth guarding.** Read the code and its tests to find
    the work users depend on being fast:
@@ -110,9 +111,10 @@ at the API.
 
    If the project is a Rails app, use duel-rails instead of `duel init`
    (which says so) or setting Duel up by hand: add it to the Gemfile's
-   development group, run `bin/rails generate duel:install`, read what
-   it made, and run `bundle install` again for what it added to the
-   Gemfile (StackProf, and a database server's plugin). Then:
+   development group, run `bin/rails generate duel:install --badge` (or
+   without `--badge`, as for `duel init`), read what it made, and run
+   `bundle install` again for what it added to the Gemfile (StackProf,
+   and a database server's plugin). Then:
    - Benchmark the requests that matter most with `duel_request`, not
      only the GET routes the generator found: the pages users load
      most, and the forms and API calls that write. Give each request
@@ -206,13 +208,14 @@ at the API.
      `.duel.rb` chooses when, and Duel also adds the report to the
      job's summary). It runs none of the pull request's code. Keep it as
      it is.
-   - The workflow's jobs for pushes (a comment on a pushed commit,
-     and a `duel/passed/` branch that marks the last commit Duel
-     passed) run only where `.duel.rb` sets `c.fail_on =
-     :pull_requests` or `c.push_base = :last_passed`, and `duel init`
-     writes the badge's job only with `--badge`. Each writes to the
-     repository, so don't set those settings, or ask for the badge,
-     unless I ask.
+   - The `push` job's comment on a pushed commit, and its
+     `duel/passed/` branch that marks the last commit Duel passed, run
+     only where `.duel.rb` sets `c.fail_on = :pull_requests` or
+     `c.push_base = :last_passed`. Each writes to the repository, so
+     don't set those settings unless I ask. With `--badge`, it also
+     keeps Duel's badge, after each push to the default branch that
+     Duel compares, on a branch of its own (`duel/badge`, or for a
+     project in a subdirectory, `duel/badge-<its path>`).
 
    Check that `ruby-version` is one the project supports, unless it has
    a `.ruby-version`. Give the project's other CI setup that its tests
@@ -234,20 +237,34 @@ at the API.
 
 7. **Show the badge.** If the project's README already shows badges (CI
    status, gem version), add Duel's to that row, with exactly this
-   markdown, `OWNER/REPO` the project's repository, so that it links to
-   the Perf workflow's runs (for a project in a subdirectory of its
-   repository, `perf-<its path>.yml`, the workflow `duel init` wrote, in
-   place of `perf.yml`; on GitLab CI, the link is to
-   `https://gitlab.com/OWNER/REPO/-/pipelines`):
+   markdown, `OWNER/REPO` the project's repository. The badge is the one
+   the `push` job keeps (step 6): it turns red when Duel fails a push to
+   the default branch. It links to the Perf workflow's runs, which say
+   why:
+
+   ```markdown
+   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
+   ```
+
+   For a project in a subdirectory of its repository, the badge's
+   branch is `duel/badge-<its path>` in place of `duel/badge`, and the
+   workflow `perf-<its path>.yml` in place of `perf.yml`, as `duel init`
+   named them (`duel/badge-gems-parser` and `perf-gems-parser.yml` for
+   `gems/parser`, say). The branch doesn't exist until the first push to
+   the default branch that Duel compares, so until then, the badge
+   shows no image: say so when you report back.
+
+   Where there's no job to keep the badge (on GitLab CI, or where the
+   workflow doesn't run for pushes to the default branch), use Duel's
+   own badge, which is always green, linked the same way (on GitLab CI,
+   to `https://gitlab.com/OWNER/REPO/-/pipelines`):
 
    ```markdown
    [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
    ```
 
-   If the README has no badges, don't add a row just for Duel's. This
-   badge is always green: one that turns red when Duel fails a push
-   needs the badge's job (`duel init --badge`), so add that only if I
-   ask.
+   If the README has no badges, don't add a row just for Duel's, and
+   leave out `--badge` (step 1), as nothing would show the badge.
 
 8. **Report back** with:
    - The benchmarks you wrote and what each one guards.
@@ -257,8 +274,10 @@ at the API.
    - Anything you couldn't guard reliably.
    - Every file you changed outside `duel/` and `.duel.rb`, and why.
    - The label that lets a pull request that's slower on purpose pass
-     (`c.accept_label`, `duel: accept` in the `.duel.rb` that
-     `duel init` writes), which the repository needs to have.
+     (`c.accept_label`, `duel: accept` by default), which the
+     repository needs to have.
+   - Whether the README's badge shows yet: the one that turns red
+     shows once the first push to the default branch has run.
 
 9. **Add the project to Duel's list.** If the project's repository is
    public, open a pull request in Duel's repository
