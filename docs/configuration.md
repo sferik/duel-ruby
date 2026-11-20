@@ -525,8 +525,8 @@ Every setting is optional:
 | `unit_ns:` | Ratio | Nanoseconds per unit, to size samples by the metric. A time `unit:` sets it. |
 | `sizes_samples:` | Ratio | `false` for a metric that's too noisy to size samples by. |
 | `across:` | Ratio | `false` for a metric that's too noisy to judge across the board, where the margin is a quarter of its limit. |
-| `tolerance:` | Counted | How much more per iteration still doesn't count as more. |
-| `allowance:` | Counted | How much more per sample still doesn't count as more, for noise that doesn't grow with the iterations. |
+| `per_iteration:` | Counted | How much more per iteration still doesn't count as more. |
+| `per_sample:` | Counted | How much more per sample still doesn't count as more, for noise that doesn't grow with the iterations. |
 | `calibrate:` | Counted | `false` to keep what a reading costs in the total, for a block that subtracts it itself. A reading that costs nothing needs no setting. |
 
 A setting that doesn't exist fails, such as `toleranse:`, and so does a
@@ -577,11 +577,12 @@ A metric also has the following methods to call:
 - `settings`: its settings by measure name, as the configuration has
   them after `c.measure`'s changes, with every setting filled in. A
   metric that measures one thing gets one setting with
-  `setting(:allowance)`. Otherwise, name the measure:
-  `setting(:allowance, "rows")`.
+  `setting(:per_sample)`. Otherwise, name the measure:
+  `setting(:per_sample, "rows")`.
 - `within?(more, n)`: whether a count that grew by `more` over `n`
-  iterations is still within its tolerance and allowance, as Duel judges
-  it. `Duel::Metric.within?(more, n, tolerance:, allowance:)` does the
+  iterations is still within what its `per_iteration:` and `per_sample:`
+  allow, as Duel judges
+  it. `Duel::Metric.within?(more, n, per_iteration:, per_sample:)` does the
   same for any count.
 
 To explain a regression, define `details`. It returns text, or text by

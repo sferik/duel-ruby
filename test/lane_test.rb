@@ -233,7 +233,7 @@ class LaneTest < DuelTest
       assert_equal 12, result.n, "100 µs an iteration: 12 make 1.2 ms"
       assert_equal({"cpu" => {"median" => 1.0, "limit" => 1.02, "across" => true, "interval" => [1.0, 1.0], "pairs" => 10,
                               "verdict" => "same", "baseline" => 1_200_000, "candidate" => 1_200_000, "unit" => "ns", "plural" => "ns"}}, result.timed)
-      assert_equal({"allocations" => {"baseline" => 24, "candidate" => 24, "n" => 12, "tolerance" => 0.5, "allowance" => 0, "unit" => nil, "plural" => nil}}, result.counted)
+      assert_equal({"allocations" => {"baseline" => 24, "candidate" => 24, "n" => 12, "per_iteration" => 0.5, "per_sample" => 0, "unit" => nil, "plural" => nil}}, result.counted)
       assert_nil result.memory
       assert_includes 1..30, result.seconds
       setups = workers.requests("setup").map(&:first)
@@ -875,7 +875,7 @@ class LaneTest < DuelTest
   def test_counts
     counts = {"base-1" => 5, "base-2" => 3, "base-3" => 4, "head-1" => 9, "head-2" => nil, "head-3" => 7}
     with_fake_workers do |workers|
-      workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS.merge("name" => "older", "tolerance" => 0),
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::ALLOCATIONS.merge("name" => "older", "per_iteration" => 0),
         FakeWorkers::ALLOCATIONS.merge("name" => "dropped"), FakeWorkers::ALLOCATIONS.merge("name" => "some")]
       workers.benchmark("b") do |side, n, label|
         counted = {"some" => counts.fetch(label)}.compact
@@ -883,7 +883,7 @@ class LaneTest < DuelTest
         {"timed" => {"cpu" => n * 100_000}, "counted" => counted, "heap" => 0}
       end
 
-      assert_equal({"some" => {"baseline" => 3, "candidate" => 7, "n" => 12, "tolerance" => 0.5, "allowance" => 0, "unit" => nil, "plural" => nil}}, compare(workers).first.counted)
+      assert_equal({"some" => {"baseline" => 3, "candidate" => 7, "n" => 12, "per_iteration" => 0.5, "per_sample" => 0, "unit" => nil, "plural" => nil}}, compare(workers).first.counted)
     end
   end
 
@@ -936,7 +936,7 @@ class LaneTest < DuelTest
     same = (1..5).flat_map { |i| [["base-#{i}", [110, 100, 105]], ["head-#{i}", [100, 120, 101]]] }.to_h
     counted, pairs, = count_by_process(same)
 
-    assert_equal({"baseline" => 100, "candidate" => 100, "more" => 0, "n" => 12, "tolerance" => 0.5, "allowance" => 0, "unit" => "byte",
+    assert_equal({"baseline" => 100, "candidate" => 100, "more" => 0, "n" => 12, "per_iteration" => 0.5, "per_sample" => 0, "unit" => "byte",
                   "plural" => "bytes"}, counted, "each worker's fewest")
     rounds = (0...3).flat_map do |round|
       (0...5).map do |i|
@@ -983,7 +983,7 @@ class LaneTest < DuelTest
 
       assert_equal 4, result.n, "Duel::COUNTS_ONLY"
       assert_empty result.timed
-      assert_equal({"allocations" => {"baseline" => 8, "candidate" => 8, "n" => 4, "tolerance" => 0.5, "allowance" => 0, "unit" => nil, "plural" => nil}}, result.counted)
+      assert_equal({"allocations" => {"baseline" => 8, "candidate" => 8, "n" => 4, "per_iteration" => 0.5, "per_sample" => 0, "unit" => nil, "plural" => nil}}, result.counted)
       assert_equal [4], samples(workers).map { |_, n| n }.uniq
     end
   end

@@ -88,8 +88,9 @@ never on noise, so that it can gate every pull request:
   your own, fail on any increase: one more allocation per two
   iterations. Each worker's count is its fewest in three rounds of a
   sample from every worker, and a count fails when an interval over the
-  workers, for how many more the candidate's are, lies above the
-  tolerance. Where every worker counts the same, as CRuby's workers
+  workers, for how many more the candidate's are, lies above what the
+  measure allows (`per_iteration:` an iteration and `per_sample:` a
+  sample). Where every worker counts the same, as CRuby's workers
   do, that's exactly how many more. Where workers differ, it's as few
   as they can tell apart, so one worker's luck can't fail a benchmark.
   With fewer than five workers of each version, a count is each

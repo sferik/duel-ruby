@@ -120,7 +120,7 @@ every id). That's a hash of the SQL for each query, and no copy of it
 (nothing a benchmark's allocations would count), but it holds on to the
 SQL of the first eight statements sent since a sample was last
 explained (with [duel-retained](https://github.com/sferik/duel-ruby/tree/main/plugins/retained),
-that's within its allowance), and the rest are told as others. A regression
+that's within what it lets a sample keep, its `per_sample:`), and the rest are told as others. A regression
 shows the three a sample sent most, and how many times an iteration
 (and others'), of its last 1,000 queries, but those in `untimed` blocks,
 with at most 80 characters of each.

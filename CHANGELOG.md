@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A counted metric's slack is `per_iteration:` (how much more an
+  iteration still isn't more) and `per_sample:` (how much more a
+  sample, whatever its length), in place of `tolerance:` and
+  `allowance:`, whose names didn't say which was which: in a metric's
+  `measures`, `c.measure("retained_objects", per_sample: 32)`, and
+  `Duel::Metric.within?(more, n, per_iteration:, per_sample:)`.
 - A plugin's resource fails with `w.fail!(message)`, in place of
   `w.failed(message)`, which read like a question but raised
   `Duel::Failed`: `Duel.find_program(server) || w.fail!("no #{server}")`.

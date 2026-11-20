@@ -4,14 +4,14 @@ module Duel
   module Retained
     VERSION: String
 
-    # The retained objects a sample is allowed (Duel's allowance) before
+    # The retained objects a sample is allowed (Duel's per_sample) before
     # any is counted against it.
-    ALLOWANCE: Integer
+    PER_SAMPLE: Integer
 
     # Retained objects per iteration that still aren't a regression.
-    TOLERANCE: Float
+    PER_ITERATION: Float
 
-    # The kinds of object a sample that retained more than its allowance
+    # The kinds of object a sample that retained more than it's allowed
     # shows, most first.
     SHOWN: Integer
 
@@ -54,8 +54,8 @@ module Duel
       def resume_sample: (Sample _sample) -> nil
 
       # What the sample retained, an iteration, by class and where it was
-      # made, when it retained more than its allowance and tolerance let
-      # through.
+      # made, when it retained more than its per_sample and per_iteration
+      # let through.
       def details: () -> String?
     end
   end

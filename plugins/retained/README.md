@@ -63,17 +63,18 @@ it was made (the three most): see [What it retained](#what-it-retained).
 
 Install it after any other plugin's metrics: those added after it are
 read inside its measurement, and what they keep of their readings counts
-toward its allowance.
+toward what it lets a sample keep (its `per_sample:`).
 
 A sample may leave 16 objects alive before any counts against it (its
-allowance), and beyond that it's one more per two iterations (its
-tolerance) that's a regression: see [below](#what-it-cant-help-counting).
+`per_sample:`), and beyond that it's one more per two iterations (its
+`per_iteration:`) that's a regression: see
+[below](#what-it-cant-help-counting).
 Duel's `c.measure` changes either, or leaves the metric out:
 
 ```ruby
 Duel.configure do |c|
   c.use :retained
-  c.measure("retained_objects", allowance: 32, tolerance: 1) # or skip: true
+  c.measure("retained_objects", per_sample: 32, per_iteration: 1) # or skip: true
 end
 ```
 
@@ -98,7 +99,8 @@ benchmark, for even a large application.
 What's measured is the count itself, every object more after the sample
 than before it (or fewer, for one that let go of more than it kept), and
 Duel judges it: a candidate that leaves more alive than the baseline, by
-more than the allowance a sample and the tolerance an iteration, fails.
+more than its `per_sample:` a sample and its `per_iteration:` an
+iteration, fails.
 
 ### What it can't help counting
 
@@ -136,8 +138,9 @@ What it usually makes, the input a benchmark works on, isn't.
 
 ## What it retained
 
-Where a sample retained more than Duel lets through (its allowance, and
-its tolerance for its iterations, as `c.measure` leaves them), the
+Where a sample retained more than Duel lets through (its `per_sample:`,
+and its `per_iteration:` for its iterations, as `c.measure` leaves
+them), the
 plugin says what, under the regression: the objects' classes, and where
 they were made, the three most, an iteration (`1 String
 (lib/my_formatter.rb:3)`), of the sample whose count was judged, on

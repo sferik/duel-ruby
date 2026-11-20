@@ -32,9 +32,9 @@ module Duel
   #   that's noisy whatever the length, or not in step with the work).
   # - +across+: for a ratio metric, whether it's judged across the board
   #   too: false for one too noisy for so small a margin.
-  # - +tolerance+: for a counted metric, the increase per iteration that
-  #   still isn't one (0: one more is).
-  # - +allowance+: for a counted metric, the increase per sample that
+  # - +per_iteration+: for a counted metric, the increase per iteration
+  #   that still isn't one (0: one more is).
+  # - +per_sample+: for a counted metric, the increase per sample that
   #   still isn't one, whatever its length (noise that doesn't grow with
   #   the iterations).
   #
@@ -65,7 +65,7 @@ module Duel
     # Every setting there is (see Metric), as #settings resolves them, and
     # running totals' calibrate and Config#measure's skip.
     # @api private
-    SETTINGS = %i[kind unit floor cpu_floor limit unit_ns sizes_samples across tolerance allowance calibrate skip].freeze
+    SETTINGS = %i[kind unit floor cpu_floor limit unit_ns sizes_samples across per_iteration per_sample calibrate skip].freeze
 
     # A unit that's a word (or words), which needs its plural given: one
     # that isn't (a symbol: "B", "KB", "op/s") is the same for any number.
@@ -124,10 +124,10 @@ module Duel
       end
 
       # Whether +more+ (what a count grew by, over +n+ iterations) is
-      # still within what's allowed: +tolerance+ an iteration and
-      # +allowance+ a sample. Duel judges counts so, and so can a metric, to
+      # still within what's allowed: +per_iteration+ an iteration and
+      # +per_sample+ a sample. Duel judges counts so, and so can a metric, to
       # tell whether it's worth explaining one (see #within?).
-      def within?(more, n, tolerance:, allowance:) = more <= allowance + (tolerance * n)
+      def within?(more, n, per_iteration:, per_sample:) = more <= per_sample + (per_iteration * n)
 
       # Each measure's settings, by name, every one of them filled in (as
       # declared, and the rest as by default): what a plugin's tests can
@@ -149,7 +149,7 @@ module Duel
          cpu_floor: given.fetch(:cpu_floor, 0),
          limit: given.fetch(:limit, nil), unit_ns: given.fetch(:unit_ns) { TIME_UNITS.fetch(unit, 1) },
          sizes_samples: given.fetch(:sizes_samples, true), across: given.fetch(:across, true),
-         tolerance: given.fetch(:tolerance, 0), allowance: given.fetch(:allowance, 0)}
+         per_iteration: given.fetch(:per_iteration, 0), per_sample: given.fetch(:per_sample, 0)}
       end
 
       # Its measures as the runner learns them, with +overrides+ (see
@@ -183,15 +183,16 @@ module Duel
     # @api private
     def first_measure = @first_measure ||= settings.keys.first
 
-    # The setting +key+ (:allowance, say) of +measure+: by default, of the
+    # The setting +key+ (:per_sample, say) of +measure+: by default, of the
     # one it measures (one that measures several names it).
     def setting(key, measure = only_measure) = settings.fetch(measure).fetch(key)
 
     # Whether +more+ (what +measure+'s count grew by, over +n+
-    # iterations) is still within its tolerance and allowance, as Duel
+    # iterations) is still within what its per_iteration and per_sample
+    # allow, as Duel
     # judges it (see Metric.within?): whether it's worth explaining.
     def within?(more, n, measure = only_measure)
-      Metric.within?(more, n, tolerance: setting(:tolerance, measure), allowance: setting(:allowance, measure))
+      Metric.within?(more, n, per_iteration: setting(:per_iteration, measure), per_sample: setting(:per_sample, measure))
     end
 
     # Sets up what it reads (a subscription, say), once in each worker,
@@ -566,7 +567,7 @@ module Duel
     # sample here and there some 31 bytes an iteration apart: so more by
     # 32 bytes an iteration, about a small object's, isn't more yet.
     class AllocatedBytes < Metric
-      def self.measures = {"allocated_bytes" => {tolerance: 32, unit: %w[byte bytes]}}
+      def self.measures = {"allocated_bytes" => {per_iteration: 32, unit: %w[byte bytes]}}
 
       # mutant:disable -- mutant runs on CRuby, where this is always false
       def self.available? = Platform::JRUBY
@@ -583,7 +584,7 @@ module Duel
     # a few from run to run (ids of random lengths, say), so it's one
     # more per two iterations, not one more, that's a regression.
     class Allocations < Metric
-      def self.measures = {"allocations" => {tolerance: 0.5}}
+      def self.measures = {"allocations" => {per_iteration: 0.5}}
 
       # mutant:disable -- mutant runs on CRuby, where this is always true
       def self.available? = Platform::CRUBY

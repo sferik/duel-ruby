@@ -13,7 +13,7 @@ module Duel
 
     # A counted metric's fewest, on each version, in +n+ iterations.
     type counted = { "baseline" => Metric::value, "candidate" => Metric::value, ?"more" => Metric::value?, "n" => Integer,
-                     "tolerance" => Metric::value, "allowance" => Metric::value, "unit" => String?, "plural" => String? }
+                     "per_iteration" => Metric::value, "per_sample" => Metric::value, "unit" => String?, "plural" => String? }
 
     # Where a regression's time went (see Profile#to_h), or why there's no
     # telling.

@@ -45,9 +45,9 @@ class WorkerTest < DuelTest
   # Config#measure: a measure's settings changed, or it left out (and a
   # metric whose measures all are, not made at all).
   def test_measures_changed_and_skipped
-    specs = Duel::Worker.new([Calls], {"calls" => {tolerance: 3}, "cpu" => {limit: 1.05}}).hello.fetch("metrics")
+    specs = Duel::Worker.new([Calls], {"calls" => {per_iteration: 3}, "cpu" => {limit: 1.05}}).hello.fetch("metrics")
 
-    assert_equal [3, 1.05], [specs.first.fetch("tolerance"), specs.find { |spec| spec.fetch("name") == "cpu" }.fetch("limit")]
+    assert_equal [3, 1.05], [specs.first.fetch("per_iteration"), specs.find { |spec| spec.fetch("name") == "cpu" }.fetch("limit")]
     made = 0
     counted = Class.new(Calls) do
       def self.metric_name = "calls"
@@ -76,9 +76,9 @@ class WorkerTest < DuelTest
   # Each metric gets its settings, with the config's changes. A metric's
   # own setting there isn't fails.
   def test_metrics_see_their_settings
-    metrics, = Duel::Worker.made([Calls], {"calls" => {allowance: 32}})
+    metrics, = Duel::Worker.made([Calls], {"calls" => {per_sample: 32}})
 
-    assert_equal [32, :counted], metrics.first.settings.fetch("calls").values_at(:allowance, :kind), "resolved: the rest as by default"
+    assert_equal [32, :counted], metrics.first.settings.fetch("calls").values_at(:per_sample, :kind), "resolved: the rest as by default"
     typo = Class.new(Calls) { def self.measures = {"calls" => {alowance: 1}} }
     error = assert_raises(Duel::Error) { Duel::Worker.made([typo], {}) }
 
@@ -313,7 +313,7 @@ class WorkerTest < DuelTest
           ConfigProbe.worker = Duel.benchmarks.keys
           w.at_stop { (ConfigProbe.ended << :stopped) && (ConfigProbe.stopped = true) }
         end
-        c.measure("probe_metric", tolerance: 4)
+        c.measure("probe_metric", per_iteration: 4)
         c.metric("probe_totals") { 1 }.open { ConfigProbe.ended << :opened }.close { ConfigProbe.ended << :closed }
         c.setup { ConfigProbe.ended << :setup }
         c.before_sample { ConfigProbe.ended << :before }
@@ -328,7 +328,7 @@ class WorkerTest < DuelTest
     hello = Duel::Message.read(socket)
 
     assert_equal ["configured"], hello.fetch("benchmarks").map { |b| b.fetch("name") }
-    assert_equal ["probe_metric", 4], hello.fetch("metrics").first.values_at("name", "tolerance"), "the config's metrics, and its changes"
+    assert_equal ["probe_metric", 4], hello.fetch("metrics").first.values_at("name", "per_iteration"), "the config's metrics, and its changes"
     assert_equal root, ConfigProbe.loaded
     assert_equal ["configured"], ConfigProbe.worker, "its in_worker blocks, once the benchmarks have loaded"
     refute ConfigProbe.stopped

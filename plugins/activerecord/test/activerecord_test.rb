@@ -117,7 +117,7 @@ class ActiveRecordTest < PluginTest
 
     assert_equal "active_record_query_time", name
     assert_equal({kind: :ratio, unit: "ns", plural: "ns", floor: 300_000, cpu_floor: 0, limit: 1.05, unit_ns: 1,
-                  sizes_samples: true, across: true, tolerance: 0, allowance: 0, calibrate: true}, settings)
+                  sizes_samples: true, across: true, per_iteration: 0, per_sample: 0, calibrate: true}, settings)
     assert_equal 1, measured.fetch("active_record_queries")
     assert_operator measured.fetch("active_record_query_time"), :>, 0, "BEGIN and COMMIT too"
     assert_operator measured.fetch("active_record_query_time"), :<, took

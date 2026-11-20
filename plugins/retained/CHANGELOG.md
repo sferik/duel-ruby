@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `retained_objects`' slack is `per_sample:` (16 objects a sample) and
+  `per_iteration:` (one per two iterations), as Duel 0.3.0 names them,
+  in place of `allowance:` and `tolerance:`:
+  `c.measure("retained_objects", per_sample: 32)`.
+
 ## [0.2.0] - 2026-11-16
 
 ### Changed

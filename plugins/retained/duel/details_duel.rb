@@ -4,7 +4,7 @@ require_relative "duel_helper"
 
 # What the metric says after every sample: nothing, for one that
 # retained no more than Duel lets through, but it clears the trace.
-duel "details: a sample within its allowance" do
+duel "details: a sample within what it's allowed" do
   once do
     build_metric
     @start.call(Iterations.new(1))

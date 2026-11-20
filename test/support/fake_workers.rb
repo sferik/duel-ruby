@@ -4,10 +4,10 @@
 # each answers a sample with measures worked out from its version and the
 # iterations, so every ratio is exact, and every request is logged.
 class FakeWorkers
-  CPU = {"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "tolerance" => 0,
-         "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}.freeze
+  CPU = {"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0,
+         "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}.freeze
   ALLOCATIONS = {"name" => "allocations", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil,
-                 "tolerance" => 0.5, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}.freeze
+                 "per_iteration" => 0.5, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}.freeze
 
   # Every request, as [label, op, name, args], and each worker's
   # arguments when it was made, as [label, root, candidate_root, dir,

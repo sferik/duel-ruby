@@ -44,7 +44,7 @@ class JSONReportTest < DuelTest
                            "unit" => "ns", "plural" => "ns", "limit" => 1.02, "across" => true, "pairs" => 20}
       end
       counted.each do |metric, (base, candidate)|
-        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => n, "tolerance" => 0, "allowance" => 0,
+        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => n, "per_iteration" => 0, "per_sample" => 0,
                              "unit" => "query", "plural" => "queries"}
       end
     end
@@ -117,7 +117,7 @@ class JSONReportTest < DuelTest
   # A count more within what its metric tolerates is the same.
   def test_a_count_more_within_its_tolerance
     within = result("within", counted: {"queries" => [2, 3]})
-    within.counted.fetch("queries")["tolerance"] = 1
+    within.counted.fetch("queries")["per_iteration"] = 1
 
     assert_equal "same", report([within]).dig("benchmarks", 0, "counted", "queries", "verdict")
   end

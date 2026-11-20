@@ -8,9 +8,9 @@ class ResultTest < DuelTest
   def result(name = "x", timed: {}, counted: {})
     Duel::Result.new(name).tap do |r|
       timed.each { |metric, verdict| r.timed[metric] = {"verdict" => verdict} }
-      counted.each do |metric, (base, candidate, n, tolerance, allowance)|
-        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => n || 1, "tolerance" => tolerance || 0,
-                             "allowance" => allowance || 0}
+      counted.each do |metric, (base, candidate, n, per_iteration, per_sample)|
+        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => n || 1, "per_iteration" => per_iteration || 0,
+                             "per_sample" => per_sample || 0}
       end
     end
   end
@@ -52,11 +52,11 @@ class ResultTest < DuelTest
     assert_equal %w[trips], result(counted: {"trips" => [46, 47, 46, 0]}).worse, "one more"
   end
 
-  # And by its allowance per sample, however many iterations it took.
+  # And by its per_sample, however many iterations it took.
   def test_a_counted_metric_may_rise_by_its_allowance_per_sample
     assert_empty result(counted: {"retained" => [0, 16, 1, 0, 16]}).worse
     assert_equal %w[retained], result(counted: {"retained" => [0, 17, 1, 0, 16]}).worse
-    assert_empty result(counted: {"retained" => [0, 21, 10, 0.5, 16]}).worse, "and its tolerance"
+    assert_empty result(counted: {"retained" => [0, 21, 10, 0.5, 16]}).worse, "and its per_iteration"
     assert_equal %w[retained], result(counted: {"retained" => [0, 22, 10, 0.5, 16]}).worse
   end
 

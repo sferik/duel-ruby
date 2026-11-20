@@ -9,7 +9,7 @@ module Duel
   # a full garbage collection that weren't before it (CRuby).
   #
   # - retained_objects: the objects a sample's iterations left alive
-  #   (counted; beyond ALLOWANCE a sample, one more per two iterations is
+  #   (counted; beyond PER_SAMPLE a sample, one more per two iterations is
   #   a regression)
   #
   #   # .duel.rb
@@ -31,19 +31,19 @@ module Duel
   module Retained
     Duel.plugin(:retained, self)
 
-    # The retained objects a sample is allowed (Duel's allowance) before
+    # The retained objects a sample is allowed (Duel's per_sample) before
     # any is counted against it: Duel's own record of the metrics inside
     # this one, and what's still on the machine stack when the sample
     # stops (the last iteration's result, or the block's, given n),
     # which are the same few from sample to sample, but not always to the
     # object.
-    ALLOWANCE = 16
+    PER_SAMPLE = 16
 
     # Retained objects per iteration that still aren't a regression.
-    TOLERANCE = 0.5
+    PER_ITERATION = 0.5
 
     # The kinds of object (by class, and where they were made) a sample
-    # that retained more than its allowance shows, most first.
+    # that retained more than it's allowed shows, most first.
     SHOWN = 3
 
     # Configures Duel for the plugin (c.use :retained): the metric
@@ -65,7 +65,7 @@ module Duel
     end
 
     # Where Duel's own files are: what it makes during a sample (its
-    # record of the metrics inside this one) is in the allowance, and
+    # record of the metrics inside this one) is in what it's allowed, and
     # isn't shown.
     # (Duel's metric.rb, written in Ruby: it has a source location.)
     metric_rb, = Metric.instance_method(:details).source_location #: [String, Integer]
@@ -97,9 +97,9 @@ module Duel
 
     # The metric: the objects alive after the sample less those before
     # it (fewer, when the sample let go of more than it kept). Duel takes
-    # the allowance and the tolerance into account when it compares them.
+    # its per_sample and per_iteration into account when it compares them.
     class Objects < Metric
-      def self.measures = {"retained_objects" => {unit: %w[object objects], allowance: ALLOWANCE, tolerance: TOLERANCE}}
+      def self.measures = {"retained_objects" => {unit: %w[object objects], per_sample: PER_SAMPLE, per_iteration: PER_ITERATION}}
 
       # mutant:disable -- mutant runs on CRuby, where this is always true
       def self.available? = RUBY_ENGINE == "ruby"
@@ -133,7 +133,7 @@ module Duel
 
       # What the sample retained, an iteration, by class and where it was
       # made (the SHOWN most), when it retained more than Duel lets through
-      # (its allowance a sample, and its tolerance an iteration, as
+      # (its per_sample a sample, and its per_iteration an iteration, as
       # configured): only then is it worth walking every live object for
       # (Retained.traced). Nothing for one that retained less. Duel asks
       # once, after the sample: the trace is cleared either way.

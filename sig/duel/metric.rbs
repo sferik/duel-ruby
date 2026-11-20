@@ -17,7 +17,7 @@ module Duel
     # A measure's settings, as declared: any left out as by default. (+calibrate+:
     # running totals' only, see Snapshot, and +skip+: Config#measure's only.)
     type settings = { ?kind: kind, ?unit: unit?, ?floor: value, ?cpu_floor: value, ?limit: Float?, ?unit_ns: value,
-                      ?sizes_samples: bool, ?across: bool, ?tolerance: value, ?allowance: value, ?calibrate: bool, ?skip: bool }
+                      ?sizes_samples: bool, ?across: bool, ?per_iteration: value, ?per_sample: value, ?calibrate: bool, ?skip: bool }
 
     # What #stop_sample returns: the measurement, a Hash of them (by name), or
     # nil (none this time).
@@ -26,11 +26,11 @@ module Duel
     # A measure as the runner learns it.
     # @api private
     type spec = { "name" => String, "kind" => String, "unit" => String?, "plural" => String?, "floor" => value, "cpu_floor" => value, "limit" => Float?,
-                  "unit_ns" => value, "sizes_samples" => bool, "across" => bool, "tolerance" => value, "allowance" => value }
+                  "unit_ns" => value, "sizes_samples" => bool, "across" => bool, "per_iteration" => value, "per_sample" => value }
 
     # A measure's settings, every one, resolved (see Metric.resolve).
     type resolved = { kind: kind, unit: String?, plural: String?, floor: value, cpu_floor: value, limit: Float?, unit_ns: value,
-                      sizes_samples: bool, across: bool, tolerance: value, allowance: value, ?calibrate: bool }
+                      sizes_samples: bool, across: bool, per_iteration: value, per_sample: value, ?calibrate: bool }
 
     # No measure's settings changed.
     # @api private
@@ -72,8 +72,8 @@ module Duel
     def self.measures: () -> Hash[String, settings]
 
     # Whether +more+ (what a count grew by, over +n+ iterations) is still
-    # within +tolerance+ an iteration and +allowance+ a sample.
-    def self.within?: (value more, Integer n, tolerance: value, allowance: value) -> bool
+    # within +per_iteration+ an iteration and +per_sample+ a sample.
+    def self.within?: (value more, Integer n, per_iteration: value, per_sample: value) -> bool
 
     # Fails unless +settings+ (a measure's) are settings there are, with a
     # kind there is.
@@ -109,12 +109,12 @@ module Duel
     # A setting of +measure+: by default, of the one it measures.
     def setting: (:kind key, ?String measure) -> kind
                | (:unit | :plural key, ?String measure) -> String?
-               | (:floor | :cpu_floor | :unit_ns | :tolerance | :allowance key, ?String measure) -> value
+               | (:floor | :cpu_floor | :unit_ns | :per_iteration | :per_sample key, ?String measure) -> value
                | (:limit key, ?String measure) -> Float?
                | (:sizes_samples | :across key, ?String measure) -> bool
 
     # Whether +more+ (what +measure+'s count grew by, over +n+ iterations)
-    # is still within its tolerance and allowance.
+    # is still within what its per_iteration and per_sample allow.
     def within?: (value more, Integer n, ?String measure) -> bool
 
     # Sets up what it reads, once in each worker, before it measures

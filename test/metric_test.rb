@@ -16,9 +16,9 @@ class MetricTest < DuelTest
 
   def test_defaults_and_spec
     assert_equal({"metric" => {}}, Duel::Metric.measures, "one, named for the class, counted")
-    assert_equal([{"name" => "query_count", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
+    assert_equal([{"name" => "query_count", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       QueryCount.specs)
-    assert_equal([{"name" => "wall", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 50, "unit_ns" => 1000, "limit" => 1.05, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
+    assert_equal([{"name" => "wall", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 50, "unit_ns" => 1000, "limit" => 1.05, "per_iteration" => 0, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       Wall.specs)
     assert_predicate Duel::Metric, :available?
     refute_predicate Duel::Metric, :costly?
@@ -30,8 +30,8 @@ class MetricTest < DuelTest
   end
 
   def test_measures_leave_out_what_they_take_by_default
-    assert_equal [{"name" => "a", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 5, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true},
-      {"name" => "b", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}], Partial.specs
+    assert_equal [{"name" => "a", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 5, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true},
+      {"name" => "b", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}], Partial.specs
   end
 
   # Running totals: what they grew by in a sample, less what reading them
@@ -94,7 +94,7 @@ class MetricTest < DuelTest
     assert_equal({"rows" => false}, snapshot.settings({"rows" => {calibrate: false}}).slice("rows").transform_values { |s| s.fetch(:calibrate) })
     refute snapshot.specs.any? { |spec| spec.key?("calibrate") }
     assert_equal [{"name" => "rows", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "cpu_floor" => 0, "limit" => nil,
-                   "unit_ns" => 1, "sizes_samples" => true, "across" => true, "tolerance" => 0, "allowance" => 0}], snapshot.specs.first(1)
+                   "unit_ns" => 1, "sizes_samples" => true, "across" => true, "per_iteration" => 0, "per_sample" => 0}], snapshot.specs.first(1)
   end
 
   # What Config#measure changes (as a worker's settings have them) is
@@ -173,18 +173,18 @@ class MetricTest < DuelTest
   end
 
   class Allowed < Duel::Metric
-    def self.measures = {"allowed" => {allowance: 16, sizes_samples: false, across: false, cpu_floor: 0.1}}
+    def self.measures = {"allowed" => {per_sample: 16, sizes_samples: false, across: false, cpu_floor: 0.1}}
   end
 
   # Measures' settings, changed by name (Config#measure).
   def test_settings_and_overrides
-    assert_equal [16, false, false], Allowed.specs.first.values_at("allowance", "sizes_samples", "across")
+    assert_equal [16, false, false], Allowed.specs.first.values_at("per_sample", "sizes_samples", "across")
     assert_equal({kind: :counted, unit: nil, plural: nil, floor: 0, cpu_floor: 0.1, limit: nil, unit_ns: 1, sizes_samples: false, across: false,
-                  tolerance: 0, allowance: 16},
+                  per_iteration: 0, per_sample: 16},
       Allowed.settings.fetch("allowed"), "the rest as by default")
-    specs = Partial.specs({"b" => {tolerance: 3}, "c" => {tolerance: 9}})
+    specs = Partial.specs({"b" => {per_iteration: 3}, "c" => {per_iteration: 9}})
 
-    assert_equal [0, 3], specs.map { |spec| spec.fetch("tolerance") }, "b's alone"
+    assert_equal [0, 3], specs.map { |spec| spec.fetch("per_iteration") }, "b's alone"
   end
 
   # Paused (for an untimed block) and resumed: by default, stopped and
@@ -250,11 +250,11 @@ class MetricTest < DuelTest
   end
 
   class Rows < Duel::Metric
-    def self.measures = {"rows" => {tolerance: 0.5, allowance: 2}}
+    def self.measures = {"rows" => {per_iteration: 0.5, per_sample: 2}}
   end
 
   class RowsAndBlocks < Duel::Metric
-    def self.measures = {"rows" => {allowance: 1}, "blocks" => {tolerance: 2}}
+    def self.measures = {"rows" => {per_sample: 1}, "blocks" => {per_iteration: 2}}
   end
 
   # A setting of the one measure a metric measures, or of one it names,
@@ -262,19 +262,19 @@ class MetricTest < DuelTest
   def test_a_setting_and_whats_within_it
     rows = Rows.new
 
-    assert_equal [0.5, 2, :counted], [rows.setting(:tolerance), rows.setting(:allowance), rows.setting(:kind)]
+    assert_equal [0.5, 2, :counted], [rows.setting(:per_iteration), rows.setting(:per_sample), rows.setting(:kind)]
     assert rows.within?(7, 10), "2 a sample, and half an iteration"
     assert rows.within?(2, 0)
     refute rows.within?(8, 10)
-    rows.settings = Rows.settings({"rows" => {allowance: 3}})
+    rows.settings = Rows.settings({"rows" => {per_sample: 3}})
 
     assert rows.within?(8, 10), "as configured"
     both = RowsAndBlocks.new
 
-    assert_equal [1, 2], [both.setting(:allowance, "rows"), both.setting(:tolerance, "blocks")]
+    assert_equal [1, 2], [both.setting(:per_sample, "rows"), both.setting(:per_iteration, "blocks")]
     assert both.within?(4, 2, "blocks")
     refute both.within?(2, 2, "rows")
-    error = assert_raises(Duel::Error) { both.setting(:allowance) }
+    error = assert_raises(Duel::Error) { both.setting(:per_sample) }
 
     assert_equal "MetricTest::RowsAndBlocks doesn't measure one thing (rows, blocks): name which", error.message
     assert_raises(Duel::Error) { both.within?(1, 1) }
@@ -287,10 +287,10 @@ class MetricTest < DuelTest
   def test_the_one_measure_after_new_settings
     rows = Rows.new
 
-    assert_equal 2, rows.setting(:allowance)
-    rows.settings = {"lines" => Duel::Metric.resolve({allowance: 5})}
+    assert_equal 2, rows.setting(:per_sample)
+    rows.settings = {"lines" => Duel::Metric.resolve({per_sample: 5})}
 
-    assert_equal 5, rows.setting(:allowance)
+    assert_equal 5, rows.setting(:per_sample)
   end
 
   # Asked every sample (to tell whether a count is worth explaining), it
@@ -315,15 +315,15 @@ class MetricTest < DuelTest
     GC.stat(:total_allocated_objects) - before
   end
 
-  # Whether a count is within what's allowed: a tolerance an iteration,
-  # and an allowance a sample, as Duel judges counts.
+  # Whether a count is within what's allowed: per_iteration an
+  # iteration, and per_sample a sample, as Duel judges counts.
   def test_whats_within
-    assert Duel::Metric.within?(3, 2, tolerance: 1, allowance: 1)
-    refute Duel::Metric.within?(4, 2, tolerance: 1, allowance: 1)
-    assert Duel::Metric.within?(1.5, 3, tolerance: 0.5, allowance: 0)
-    assert Duel::Metric.within?(2, 2, tolerance: 1, allowance: 1), "less than allowed"
-    assert Duel::Metric.within?(0, 0, tolerance: 0.5, allowance: 0.25)
-    refute Duel::Metric.within?(1, 4, tolerance: 0.1, allowance: 0.5)
+    assert Duel::Metric.within?(3, 2, per_iteration: 1, per_sample: 1)
+    refute Duel::Metric.within?(4, 2, per_iteration: 1, per_sample: 1)
+    assert Duel::Metric.within?(1.5, 3, per_iteration: 0.5, per_sample: 0)
+    assert Duel::Metric.within?(2, 2, per_iteration: 1, per_sample: 1), "less than allowed"
+    assert Duel::Metric.within?(0, 0, per_iteration: 0.5, per_sample: 0.25)
+    refute Duel::Metric.within?(1, 4, per_iteration: 0.1, per_sample: 0.5)
   end
 
   class InMicroseconds < Duel::Metric
@@ -447,7 +447,7 @@ class MetricTest < DuelTest
   def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? %i[timed] : Duel::JUDGE, nil, nil), [], n: 1, counting: false)
 
   def test_cpu_measures_the_threads_or_the_processes_cpu_time
-    assert_equal([{"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "tolerance" => 0, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
+    assert_equal([{"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       Duel::Metrics::CPU.specs)
     cpu = Duel::Metrics::CPU.new
     before = Duel::Clock.thread
@@ -476,7 +476,7 @@ class MetricTest < DuelTest
 
   def test_allocations_counts_objects
     assert_equal([{"name" => "allocations", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil,
-                   "tolerance" => 0.5, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}], Duel::Metrics::Allocations.specs)
+                   "per_iteration" => 0.5, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}], Duel::Metrics::Allocations.specs)
     assert_equal RUBY_ENGINE == "ruby", Duel::Metrics::Allocations.available?
     skip "CRuby counts allocations" unless RUBY_ENGINE == "ruby"
 
@@ -491,10 +491,10 @@ class MetricTest < DuelTest
 
   # JRuby's bytes allocated (it counts no objects): the benchmark
   # thread's, or for a benchmark with threads of its own, every thread's,
-  # as the JVM counts them, with 32 bytes an iteration of tolerance.
+  # as the JVM counts them, with 32 bytes allowed an iteration.
   def test_allocated_bytes_counts_bytes
     assert_equal([{"name" => "allocated_bytes", "kind" => "counted", "unit" => "byte", "plural" => "bytes", "floor" => 0, "unit_ns" => 1,
-                   "limit" => nil, "tolerance" => 32, "sizes_samples" => true, "allowance" => 0, "cpu_floor" => 0, "across" => true}],
+                   "limit" => nil, "per_iteration" => 32, "sizes_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       Duel::Metrics::AllocatedBytes.specs)
     assert_equal RUBY_ENGINE == "jruby", Duel::Metrics::AllocatedBytes.available?
     # (On JRuby on Windows, JRuby's bytes innermost: reading Windows's
@@ -677,7 +677,7 @@ class InstructionsTest < DuelTest
 
   def test_spec
     assert_equal([{"name" => "instructions", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 100_000, "unit_ns" => 1, "limit" => 1.01,
-                   "tolerance" => 0, "sizes_samples" => false, "allowance" => 0, "cpu_floor" => 0, "across" => true}], Duel::Metrics::Instructions.specs)
+                   "per_iteration" => 0, "sizes_samples" => false, "per_sample" => 0, "cpu_floor" => 0, "across" => true}], Duel::Metrics::Instructions.specs)
   end
 
   def test_a_threads_counter_counts_thread_benchmarks_only

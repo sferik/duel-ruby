@@ -75,7 +75,7 @@ module Duel
       # Values the server makes up (CAS ids, say) grow a digit now and
       # then, and so may the code's own: a byte more an iteration isn't a
       # regression.
-      "memcached_bytes" => {kind: :counted, unit: "B", tolerance: 1, calibrate: false}
+      "memcached_bytes" => {kind: :counted, unit: "B", per_iteration: 1, calibrate: false}
     }
 
     # memcached_cpu's settings. Its CPU time is the whole process's (its

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `memcached_bytes`' slack is `per_iteration:`, as Duel 0.3.0 names it,
+  in place of `tolerance:`: `c.measure("memcached_bytes",
+  per_iteration: 8)`.
 - `server:` is found by `Duel.find_program`, as every Duel plugin's
   is: a path (`~` expanded) as it is, or a name on the `PATH`. With
   none, the error says so (`no memcached on the PATH (give

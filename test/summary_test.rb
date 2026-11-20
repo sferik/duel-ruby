@@ -69,7 +69,7 @@ class SummaryTest < DuelTest
                            "unit" => "ns", "plural" => "ns", "limit" => 1.02, "across" => true}
       end
       counted.each do |metric, (base, candidate)|
-        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => 1, "tolerance" => 0, "allowance" => 0, "unit" => nil,
+        r.counted[metric] = {"baseline" => base, "candidate" => candidate, "n" => 1, "per_iteration" => 0, "per_sample" => 0, "unit" => nil,
                              "plural" => nil}
       end
     end
@@ -417,7 +417,7 @@ class SummaryTest < DuelTest
   def test_counts
     r = result("a", counted: {"allocations" => [4, 3], "same" => [2, 2], "queries" => [1, 1.5]})
     r.counted.fetch("allocations")["n"] = 2
-    r.counted.fetch("queries")["tolerance"] = 1
+    r.counted.fetch("queries")["per_iteration"] = 1
 
     assert_includes summary([r]), "| `a` | changed | cpu 1.000 [0.990, 1.010] | allocations 2 → 1.5<br>queries 1 → 1.5 |\n"
   end

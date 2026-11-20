@@ -391,11 +391,11 @@ class TestingTest < DuelTest
     first = Duel::Testing.metrics(config)
 
     assert_same first, Duel::Testing.metrics(config)
-    config.measure("rows", allowance: 4)
+    config.measure("rows", per_sample: 4)
     again = Duel::Testing.metrics(config)
 
     refute_same first, again
-    assert_equal [2, 4], again.first.settings.fetch("rows").values_at(:limit, :allowance)
+    assert_equal [2, 4], again.first.settings.fetch("rows").values_at(:limit, :per_sample)
     assert_same again, Duel::Testing.metrics(config)
   end
 

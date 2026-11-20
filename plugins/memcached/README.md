@@ -114,6 +114,6 @@ too fine for it).
 Duel's `c.measure` changes any of their settings, or leaves one out:
 
 ```ruby
-c.measure("memcached_bytes", tolerance: 8)  # values whose length varies more
+c.measure("memcached_bytes", per_iteration: 8)  # values whose length varies more
 c.measure("memcached_misses", skip: true)
 ```

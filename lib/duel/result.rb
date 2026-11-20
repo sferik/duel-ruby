@@ -78,14 +78,14 @@ module Duel
     end
 
     # The metrics on which the candidate did worse: a timed one slower, or
-    # a counted one up by more than its tolerance per iteration and its
-    # allowance per sample (counted by process, up by that much at least:
+    # a counted one up by more than its per_iteration an iteration and its
+    # per_sample a sample (counted by process, up by that much at least:
     # see Lane#count_by_process).
     # @api private
     def worse
       more = @counted.select do |_, c|
-        !Metric.within?(c["more"] || (c.fetch("candidate") - c.fetch("baseline")), c.fetch("n"), tolerance: c.fetch("tolerance"),
-          allowance: c.fetch("allowance"))
+        !Metric.within?(c["more"] || (c.fetch("candidate") - c.fetch("baseline")), c.fetch("n"), per_iteration: c.fetch("per_iteration"),
+          per_sample: c.fetch("per_sample"))
       end
       slower + more.keys + (more_memory? ? ["peak_memory"] : [])
     end

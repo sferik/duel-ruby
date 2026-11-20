@@ -680,7 +680,7 @@ module Duel
         next unless base && candidate
 
         result.counted[metric] = {"baseline" => base.fetch("counted").fetch(metric), "candidate" => candidate.fetch("counted").fetch(metric),
-                                  "n" => n, "tolerance" => spec.fetch("tolerance"), "allowance" => spec.fetch("allowance"),
+                                  "n" => n, "per_iteration" => spec.fetch("per_iteration"), "per_sample" => spec.fetch("per_sample"),
                                   "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural")}
         result.note(base, candidate, metric)
       end
@@ -722,7 +722,7 @@ module Duel
 
         result.counted[metric] = {"baseline" => Stats.median(bases), "candidate" => Stats.median(candidates),
                                   "more" => Stats.difference_interval(bases, candidates, @settings.confidence)&.first,
-                                  "n" => n, "tolerance" => spec.fetch("tolerance"), "allowance" => spec.fetch("allowance"),
+                                  "n" => n, "per_iteration" => spec.fetch("per_iteration"), "per_sample" => spec.fetch("per_sample"),
                                   "unit" => spec.fetch("unit"), "plural" => spec.fetch("plural")}
       end
     end

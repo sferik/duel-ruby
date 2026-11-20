@@ -11,7 +11,7 @@ class RetainedTest < PluginTest
   # How far a count may stray: the machine stack can still hold a few
   # objects a sample made (CRuby scans it conservatively), a few more on
   # Linux than on macOS. Far fewer than any difference these tests watch
-  # for, and than Duel's allowance (Duel::Retained::ALLOWANCE).
+  # for, and than Duel's per_sample (Duel::Retained::PER_SAMPLE).
   NOISE = 8
 
   # Something of a class of its own, for what it says it retained.
@@ -33,7 +33,7 @@ class RetainedTest < PluginTest
     assert_equal [Duel::Retained::Objects], config.metrics
 
     assert_equal({"retained_objects" => {kind: :counted, unit: "object", plural: "objects", floor: 0, cpu_floor: 0, limit: nil, unit_ns: 1,
-                                         sizes_samples: true, across: true, tolerance: 0.5, allowance: 16}},
+                                         sizes_samples: true, across: true, per_iteration: 0.5, per_sample: 16}},
       config.metrics.first.settings)
     assert_equal RUBY_ENGINE == "ruby", config.metrics.first.available?
   end
@@ -54,8 +54,8 @@ class RetainedTest < PluginTest
     assert held_off, "the garbage collector left off, as Duel had it"
   end
 
-  # What's left alive is measured as it is: Duel takes the allowance
-  # into account (and the tolerance) when it compares two versions.
+  # What's left alive is measured as it is: Duel takes its per_sample
+  # into account (and its per_iteration) when it compares two versions.
   def test_the_allowance_is_duels
     cruby!
 
@@ -207,10 +207,10 @@ class RetainedTest < PluginTest
 
     assert_nil measure(config, n: 10) { 2.times { KEPT << Object.new } }.last
     refute_nil measure(config, n: 10) { 3.times { KEPT << Object.new } }.last
-    allowing = self.config.tap { |c| c.measure("retained_objects", allowance: 100) }
+    allowing = self.config.tap { |c| c.measure("retained_objects", per_sample: 100) }
 
     assert_nil measure(allowing, n: 10) { 5.times { KEPT << Object.new } }.last
-    strict = self.config.tap { |c| c.measure("retained_objects", allowance: 0, tolerance: 0) }
+    strict = self.config.tap { |c| c.measure("retained_objects", per_sample: 0, per_iteration: 0) }
 
     refute_nil measure(strict, n: 10) { KEPT << Object.new }.last
   end
@@ -248,8 +248,9 @@ end
 # takes seconds, and the tests above cover the same code.)
 class RetainedComparisonTest < PluginTest
   # Whole comparisons: the same code passes, and keeps no more than a
-  # sample's allowance; code that remembers everything it's given fails
-  # on what it retains, though what its untimed blocks make isn't kept.
+  # sample may (its per_sample); code that remembers everything it's
+  # given fails on what it retains, though what its untimed blocks make
+  # isn't kept.
   def test_comparisons
     base = project("base", leak: false)
     same = compare(base, project("same", leak: false))
@@ -257,9 +258,9 @@ class RetainedComparisonTest < PluginTest
     assert_predicate same, :passed?, same.output
     retained = same["remember"].counted["retained_objects"]
     if RUBY_ENGINE == "ruby"
-      assert_in_delta 0, retained.fetch("baseline"), Duel::Retained::ALLOWANCE, same.output
-      assert_in_delta 0, retained.fetch("candidate"), Duel::Retained::ALLOWANCE, same.output
-      assert_equal [0.5, 16], retained.values_at("tolerance", "allowance")
+      assert_in_delta 0, retained.fetch("baseline"), Duel::Retained::PER_SAMPLE, same.output
+      assert_in_delta 0, retained.fetch("candidate"), Duel::Retained::PER_SAMPLE, same.output
+      assert_equal [0.5, 16], retained.values_at("per_iteration", "per_sample")
     else
       assert_nil retained, "measured on CRuby alone"
     end
@@ -268,13 +269,13 @@ class RetainedComparisonTest < PluginTest
     retained = leak["remember"].counted.fetch("retained_objects")
 
     assert_includes leak["remember"].regressed, "retained_objects", leak.output
-    assert_in_delta retained.fetch("n"), retained.fetch("candidate"), Duel::Retained::ALLOWANCE, leak.output
+    assert_in_delta retained.fetch("n"), retained.fetch("candidate"), Duel::Retained::PER_SAMPLE, leak.output
     assert_match(/REGRESSION remember: worse .*retained_objects/, leak.output)
     # (About one: an iteration or two may leave none alive, 0.9948 of
     # them in 575, say.)
     assert_match(/^  retained_objects: -?[\d.e-]+ objects? → (0\.9\d*|1(\.\d+)?) objects? an iteration$/, leak.output)
     assert_match(%r{^  retained_objects \(candidate\): an iteration: 1 String \(\S*/leak/lib/sample.rb:4\)$}, leak.output, "Duel's own objects left out")
-    refute_match(/retained_objects \(baseline\)/, leak.output, "within its allowance")
+    refute_match(/retained_objects \(baseline\)/, leak.output, "within what it's allowed")
   end
 
   private

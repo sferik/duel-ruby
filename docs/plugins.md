@@ -442,7 +442,7 @@ printed), and its `results`, one for each benchmark.
   version's median (`"baseline"` and `"candidate"`), by name.
 - Each `counted` measure's fewest on each version (`"baseline"` and
   `"candidate"`) over a sample's `"n"` iterations, with its
-  `"tolerance"` and `"allowance"` (both with their `"unit"` and
+  `"per_iteration"` and `"per_sample"` (both with their `"unit"` and
   `"plural"`), by name.
 - What metrics said of it (`details`), by measure and by version.
 - Its peak `memory`, by version, when it was asked for.

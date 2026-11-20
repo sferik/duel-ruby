@@ -384,7 +384,7 @@ class RunnerTest < DuelTest
     r.n = 2
     r.timed["cpu"] = {"verdict" => "slower", "baseline" => 4_000_000, "candidate" => 5_000_000, "median" => 1.25, "unit" => "ns", "plural" => "ns"}
     r.timed["wait"] = {"verdict" => "slower", "baseline" => 3, "candidate" => 9, "median" => 3.0, "unit" => nil, "plural" => nil}
-    r.counted["retained"] = {"baseline" => 0, "candidate" => 7, "n" => 2, "tolerance" => 0, "allowance" => 0, "unit" => "object", "plural" => "objects"}
+    r.counted["retained"] = {"baseline" => 0, "candidate" => 7, "n" => 2, "per_iteration" => 0, "per_sample" => 0, "unit" => "object", "plural" => "objects"}
     r.memory = {"baseline" => 0, "candidate" => 100 << 20}
     r.note({}, {"details" => {"retained" => "7 Hash"}})
     r.note({"details" => {"retained" => "nothing"}}, {})
@@ -395,11 +395,11 @@ class RunnerTest < DuelTest
       runner.send(:explanation, r)
     r.timed.clear
     r.seconds = 1.0
-    r.counted["bytes"] = {"baseline" => 1700, "candidate" => 1700, "n" => 2, "tolerance" => 0, "allowance" => 0, "unit" => "B", "plural" => "B"}
+    r.counted["bytes"] = {"baseline" => 1700, "candidate" => 1700, "n" => 2, "per_iteration" => 0, "per_sample" => 0, "unit" => "B", "plural" => "B"}
 
-    r.counted["round_trips_made"] = {"baseline" => 0, "candidate" => 2, "n" => 2, "tolerance" => 0, "allowance" => 0, "unit" => "round trip",
+    r.counted["round_trips_made"] = {"baseline" => 0, "candidate" => 2, "n" => 2, "per_iteration" => 0, "per_sample" => 0, "unit" => "round trip",
                                      "plural" => "round trips"}
-    r.counted["round_trips"] = {"baseline" => 1, "candidate" => 1, "n" => 2, "tolerance" => 0, "allowance" => 0, "unit" => "round trip",
+    r.counted["round_trips"] = {"baseline" => 1, "candidate" => 1, "n" => 2, "per_iteration" => 0, "per_sample" => 0, "unit" => "round trip",
                                 "plural" => "round trips"}
 
     assert_match(/  retained 0→3.5 objects  bytes 850 B  round_trips_made 0→1 round trip  round_trips 0.5  peak_memory/,
