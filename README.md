@@ -389,22 +389,26 @@ says.
 To show that Duel guards your project, add its badge to your README,
 next to your other badges. With the job that `duel init --badge` adds to
 its workflow, the badge turns red when Duel fails a push to your default
-branch. Replace `OWNER/REPO` with your repository's:
+branch, and links to your Perf workflow's runs. Replace `OWNER/REPO`
+with your repository's:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
 ```
 
 See [Show whether the last push passed](docs/ci.md#show-whether-the-last-push-passed)
-for how the job keeps it. Without the job, such as on GitLab CI, use
-Duel's own badge, which is always green:
+for how the job keeps it. Without the job, use Duel's own badge, which
+is always green, linked to your Perf workflow's runs too:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+[![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
 ```
 
-The badge links to [the projects using Duel](USERS.md). Add yours with a
-pull request.
+For a project in a subdirectory of its repository, the workflow is
+`perf-<its path>.yml` (`perf-gems-parser.yml`, say). On GitLab CI, link
+to its pipelines (`https://gitlab.com/OWNER/REPO/-/pipelines`). Projects
+using Duel are listed in [USERS.md](USERS.md): add yours with a pull
+request.
 
 ## Plugins
 

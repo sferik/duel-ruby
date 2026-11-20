@@ -14,9 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   jobs that write or comment, and name each action they use by its
   commit, as Duel's own do.
 - The badge's Markdown, in a comment of the Perf workflow that
-  `bin/rails generate duel:install` writes, links to the list of
-  projects using Duel (USERS.md, in Duel's repository), as Duel's own
-  does.
+  `bin/rails generate duel:install` writes, links to that workflow's
+  runs (`perf.yml`, or for an app in a subdirectory,
+  `perf-<its path>.yml`), as Duel's own does.
 - The `.duel.rb` that `bin/rails generate duel:install` writes shows
   `c.accept_label = "duel: accept"` commented out, now that it's Duel's
   default.

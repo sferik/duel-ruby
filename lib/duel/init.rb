@@ -492,6 +492,8 @@ module Duel
 
       def badge_branch = "duel/badge"
 
+      def workflow_name = "perf.yml"
+
       # Each in, run only where its input says to.
       def version_file = true
 

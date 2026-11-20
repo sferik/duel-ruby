@@ -125,13 +125,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did, to change as you like. `--check` compares the ones it would
   write with the same options, so `duel init --check --standalone`
   checks whole workflows that an earlier `duel init` wrote.
-- The badge links to USERS.md, the list of projects using Duel, in
-  Duel's repository, not to the repository itself: in the README, the
-  guide, and the workflows that `duel init` and `rails generate
-  duel:install` write, whose comments give the badge's Markdown. A
-  pull request adds a project to the list, and AGENT_PROMPT.md's last
-  step has the agent open one for the project it set Duel up in, if
-  that's public.
+- The badge links to the project's Perf workflow's runs
+  (`https://github.com/OWNER/REPO/actions/workflows/perf.yml`, or for a
+  project in a subdirectory, `perf-<its path>.yml`), which say why it's
+  green or red, not to the repository itself: in the README, the guide,
+  AGENT_PROMPT.md's badge step, and the workflows that `duel init` and
+  `rails generate duel:install` write, whose comments give the badge's
+  Markdown. USERS.md, in Duel's repository, lists the projects using
+  Duel: a pull request adds one, and AGENT_PROMPT.md's last step has the
+  agent open one for the project it set Duel up in, if that's public.
 - `Duel::Testing.measure`'s block is one iteration, which it runs `n:`
   times, as a worker runs a benchmark's block that takes no `n`. It ran
   the block once, and only told the metrics `n`, unless there was an

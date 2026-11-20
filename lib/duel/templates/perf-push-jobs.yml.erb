@@ -84,7 +84,7 @@
   # a run for an older push than the badge's. This job writes the badge,
   # alone, to a branch of its own, which the README shows:
   #
-  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/<%= badge_branch %>/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/<%= badge_branch %>/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/<%= workflow_name %>)
   #
   # It checks nothing out, runs none of the code, and fetches nothing.
   badge:

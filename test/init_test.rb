@@ -454,6 +454,9 @@ class InitTest < DuelTest
     refute badge.key?("defaults"), "nothing checked out"
     assert_equal({"group" => "${{ github.workflow }}-badge", "cancel-in-progress" => false}, badge.fetch("concurrency"),
       "one at a time, so an older push's run can't write over a newer one's")
+    assert_includes read(".github/workflows/perf.yml"),
+      "  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)\n",
+      "the README's Markdown, linked to the workflow's runs"
   end
 
   # The red badge is the green one, wider for its words.
@@ -798,7 +801,8 @@ class InitTest < DuelTest
       "a workflow of its own, and its comments"
     assert_includes comments.dig("jobs", "comment", "steps", 2, "run"), %(--marker 'duel gems/parser'\n)
     assert_includes YAML.safe_load(workflow).dig("jobs", "badge", "steps", 1, "run"), "duel badge duel/badge-gems-parser ", "a badge of its own"
-    assert_includes workflow, "https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg"
+    assert_includes workflow, "[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge-gems-parser/badge.svg)]" \
+      "(https://github.com/OWNER/REPO/actions/workflows/perf-gems-parser.yml)", "linked to its own workflow's runs"
     assert_path_exists File.join(project, ".duel.rb")
     assert_equal({"run" => {"working-directory" => "gems/parser"}}, YAML.safe_load(workflow).dig("jobs", "duel", "defaults"))
     refute YAML.safe_load(workflow).dig("jobs", "commit-comment").key?("defaults"), "nothing checked out there"
@@ -1216,6 +1220,7 @@ class InitTest < DuelTest
     assert_equal ["inputs.comment", "inputs.passed", "inputs.result"], jobs.values.map { |job| job.fetch("if")[/inputs\.(comment|passed|result)/] },
       "what the Duel job said, from the push workflow's inputs"
     refute_includes content, "needs.duel", "none of the Duel job's own"
+    assert_includes content, "/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)\n", "the badge linked to the Perf workflow's runs"
   end
 
   # The JIT the caller says (jit:, one of them, as Ruby runs one at

@@ -519,10 +519,10 @@ needs nothing of the workflow.
 With `--badge`, `duel init` adds the Update the badge job, which keeps a
 badge that turns red when Duel fails. After each push to your default
 branch, it writes `badge.svg` to a branch of its own, `duel/badge`, so
-your README can show it:
+your README can show it, linked to your Perf workflow's runs:
 
 ```markdown
-[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+[![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
 ```
 
 The badge says "perf guarded", in green, when Duel passed the push. It
@@ -562,7 +562,7 @@ keeps `.duel.rb`), or add the job yourself:
   # a run for an older push than the badge's. This job writes the badge,
   # alone, to a branch of its own, which the README shows:
   #
-  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+  #   [![Duel](https://raw.githubusercontent.com/OWNER/REPO/duel/badge/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
   #
   # It checks nothing out, runs none of the code, and fetches nothing.
   badge:

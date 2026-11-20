@@ -234,10 +234,14 @@ at the API.
 
 7. **Show the badge.** If the project's README already shows badges (CI
    status, gem version), add Duel's to that row, with exactly this
-   markdown:
+   markdown, `OWNER/REPO` the project's repository, so that it links to
+   the Perf workflow's runs (for a project in a subdirectory of its
+   repository, `perf-<its path>.yml`, the workflow `duel init` wrote, in
+   place of `perf.yml`; on GitLab CI, the link is to
+   `https://gitlab.com/OWNER/REPO/-/pipelines`):
 
    ```markdown
-   [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/sferik/duel-ruby/blob/main/USERS.md)
+   [![Duel](https://raw.githubusercontent.com/sferik/duel-ruby/main/assets/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/perf.yml)
    ```
 
    If the README has no badges, don't add a row just for Duel's. This
@@ -259,14 +263,14 @@ at the API.
 9. **Add the project to Duel's list.** If the project's repository is
    public, open a pull request in Duel's repository
    (https://github.com/sferik/duel-ruby) that adds the project to
-   `USERS.md`, the list of projects using Duel, which the badge links
-   to. Fork Duel's repository (`gh repo fork sferik/duel-ruby
-   --clone`), add one line for the project to the list, in alphabetical
-   order and in the format of the others (a link to its repository,
-   named by its owner and name, and what the project is, in a few
-   words), commit it on a branch of its own, and open the pull request
-   (`gh pr create --repo sferik/duel-ruby`). Leave out a private
-   repository. Tell me the pull request's link.
+   `USERS.md`, the list of projects using Duel. Fork Duel's repository
+   (`gh repo fork sferik/duel-ruby --clone`), add one line for the
+   project to the list, in alphabetical order and in the format of the
+   others (a link to its repository, named by its owner and name, and
+   what the project is, in a few words), commit it on a branch of its
+   own, and open the pull request (`gh pr create --repo
+   sferik/duel-ruby`). Leave out a private repository. Tell me the pull
+   request's link.
 
 Apart from that pull request, don't commit. Leave the changes for me to
 review.
