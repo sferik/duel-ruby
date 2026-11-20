@@ -84,6 +84,16 @@ When you write a plugin, follow these guidelines:
   memory available by what one of each version takes as it starts, and
   a server takes more as it's used, so Duel counts at least this much
   for each worker. A version of Duel before 0.1.8 ignores it.
+- If what each worker's `c.prepare(:worker)` starts takes something the
+  machine has only so much of, such as a System V shared memory segment
+  for a postgres (macOS allows 32 in all), say how many workers' it has
+  room for at once, counting each version's, as the module's
+  `worker_limit`, or `nil` for no limit, for example
+  `def self.worker_limit = 24`. Duel runs no more workers than that at
+  once, running fewer benchmarks at a time and then fewer workers of
+  each version, and fails, saying so, where `--jobs` and `--processes`
+  (or `c.processes`) given would run more. A version of Duel before
+  0.3.1 ignores it.
 - If a worker's server listens on a Unix socket in `w.dir`, give the
   plugin an option to listen on `w.free_port` instead, and default it to
   where `Duel.unix_sockets?` is false, for example

@@ -287,6 +287,13 @@ module Duel
     # some 1.5 GB (and HEADROOM covers the rest).
     JIT_GROWTH = {"truffleruby" => 2.5}.freeze
 
+    # Fits the run's workers in the memory available (#fit_memory), and in
+    # what the plugins' resources allow at once (#fit_limit).
+    def fit
+      fit_memory unless @settings.fit.empty?
+      fit_limit
+    end
+
     # Lowers Settings#jobs, and then Settings#processes, as far as
     # Settings#fit lets it, where their workers (and each one's
     # resources, a database server, say) wouldn't fit in the memory
@@ -298,9 +305,7 @@ module Duel
     # the plugins say each worker's resources take at most
     # (Config#worker_memory), if that's more: a database server takes
     # more as it's used.
-    def fit
-      return if @settings.fit.empty?
-
+    def fit_memory
       available = Memory.available or return
       taken = Lane.open(@config, @settings, @sides, processes: 1) { available - (Memory.available || available) }
       said = 2 * @config.worker_memory
@@ -308,7 +313,36 @@ module Duel
       pair = [(taken * HEADROOM * growth).ceil, said].max
       return unless pair.positive?
 
-      pairs = [(available - RESERVE) / pair, 1].max
+      fewer = lower([(available - RESERVE) / pair, 1].max) or return
+      takes = if said == pair then "#{gigabytes(said)} GB, with its resources, as its plugins say"
+      elsif growth > 1 then "#{gigabytes(taken)} GB, with its resources, as it starts, and some #{growth}x that once warm"
+      else "#{gigabytes(taken)} GB, with its resources"
+      end
+      @out.puts "A worker of each version takes #{takes}, of #{gigabytes(available)} GB available, so to fit: #{fewer}"
+    end
+
+    # Lowers Settings#jobs, and then Settings#processes, as far as
+    # Settings#fit lets it, where more workers, each version's in every
+    # lane, would run at once than the plugins say their resources allow
+    # (Config#worker_limit): a postgres takes a System V shared memory
+    # segment, say, and macOS allows 32 in all, so a worker whose server
+    # can't make one fails as it starts. It fails where the settings given
+    # would run more anyway.
+    def fit_limit
+      limit = @config.worker_limit or return
+      fewer = lower([limit / 2, 1].max)
+      @out.puts "Its plugins' resources allow #{Runner.count(limit, "worker")} at once, as they say, so to fit: #{fewer}" if fewer
+      running = 2 * @settings.jobs * @settings.processes
+      return if running <= limit
+
+      raise Error, "#{@settings.jobs} at a time of #{Runner.count(@settings.processes, "worker")} of each version run #{running} workers " \
+        "at once, but its plugins' resources allow #{limit}, as they say: run fewer (--processes, DUEL_PROCESSES or c.processes, and --jobs)"
+    end
+
+    # Lowers Settings#jobs, and then Settings#processes, as far as
+    # Settings#fit lets it, to run +pairs+ workers of each version at once
+    # at most. Says what it lowered, or nil where it lowered nothing.
+    def lower(pairs)
       processes = @settings.fit.include?(:processes) ? [@settings.processes, pairs].min : @settings.processes
       # (More jobs than the settings' are never taken: only fewer are.)
       jobs = @settings.fit.include?(:jobs) ? [pairs / processes, 1].max : @settings.jobs
@@ -316,13 +350,9 @@ module Duel
         ("#{Runner.count(processes, "worker")} of each version (not #{@settings.processes})" if processes < @settings.processes)].compact
       return if fewer.empty?
 
-      takes = if said == pair then "#{gigabytes(said)} GB, with its resources, as its plugins say"
-      elsif growth > 1 then "#{gigabytes(taken)} GB, with its resources, as it starts, and some #{growth}x that once warm"
-      else "#{gigabytes(taken)} GB, with its resources"
-      end
-      @out.puts "A worker of each version takes #{takes}, of #{gigabytes(available)} GB available, so to fit: #{fewer.join(", and ")}"
       @settings.jobs = jobs
       @settings.processes = processes
+      fewer.join(", and ")
     end
 
     # +bytes+ in gigabytes, to a tenth.

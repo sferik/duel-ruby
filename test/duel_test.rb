@@ -500,6 +500,45 @@ class ConfigTest < DuelTest
     %i[FakeShared FakeCache FakeStore].each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
   end
 
+  # The most workers whose resources run at once, as the plugins used
+  # say: the fewest any says, and nil where none does (one that doesn't
+  # say, or says nil).
+  def test_the_plugins_worker_limit
+    lib = tmpdir
+    FileUtils.mkdir_p(File.join(lib, "duel"))
+    {FakeRoomy: "20", FakeTight: "10", FakeRoomier: "30", FakeUnlimited: "nil", FakePlain: nil}.each do |name, limit|
+      file = name.to_s.gsub(/(?<!\A)([A-Z])/, "_\\1").downcase
+      File.write(File.join(lib, "duel", "#{file}.rb"), <<~RUBY)
+        module #{name}
+          def self.configure(config) = nil
+          #{"def self.worker_limit = #{limit}" if limit}
+        end
+        Duel.plugin(:#{file}, #{name})
+      RUBY
+    end
+    $LOAD_PATH.unshift(lib)
+    config = Duel::Config.new
+
+    assert_nil config.worker_limit, "no plugins"
+    config.use(:fake_plain)
+    config.use(:fake_unlimited)
+
+    assert_nil config.worker_limit, "none says"
+    config.use(:fake_roomy)
+
+    assert_equal 20, config.worker_limit
+    config.use(:fake_tight)
+
+    assert_equal 10, config.worker_limit, "the fewest"
+    config.use(:fake_roomier)
+
+    assert_equal 10, config.worker_limit, "the fewest, not the last"
+  ensure
+    $LOAD_PATH.delete(lib)
+    $LOADED_FEATURES.reject! { |feature| feature.start_with?(lib) }
+    %i[FakeRoomy FakeTight FakeRoomier FakeUnlimited FakePlain].each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
+  end
+
   # A plugin that isn't there, or doesn't register itself, fails, saying
   # so, and one whose own requires fail fails as they do.
   def test_use_fails

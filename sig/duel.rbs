@@ -154,6 +154,12 @@ module Duel
     def configure: (Config config, **untyped options) -> untyped
   end
 
+  # A plugin that says how many workers' resources can run at once (see
+  # Duel.plugin), or nil for no limit.
+  interface _WorkerLimit
+    def worker_limit: () -> Integer?
+  end
+
   # The configuration: the project's .duel.rb, or the conventions.
   def self.config: () -> Config
 

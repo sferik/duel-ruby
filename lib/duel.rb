@@ -231,6 +231,16 @@ module Duel
     #
     #   def self.worker_memory = 450 << 20
     #
+    # Where what it starts for each worker takes something the machine has
+    # only so much of (a System V shared memory segment, for a postgres:
+    # macOS allows 32 in all), it says how many workers' it has room for
+    # at once, counting each version's, as +worker_limit+, or nil for no
+    # limit: Runner#fit runs no more than that, and fails where the
+    # settings given would. (A version of Duel before it asked ignores
+    # it.)
+    #
+    #   def self.worker_limit = 24
+    #
     # Its own kinds of benchmark, if it has any, are the methods of its
     # module's DSL module, which files of benchmarks get as .duel.rb uses
     # it (see DSL.add):

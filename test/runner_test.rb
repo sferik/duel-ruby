@@ -79,20 +79,21 @@ class RunnerTest < DuelTest
   # A run whose memory readings are +readings+, one after another: the
   # first before a worker of each version starts, the next with them
   # started. And the run's settings, and the readings left.
-  def fitted(workers, readings, memory: 0, engine: RUBY_ENGINE, **overrides)
+  def fitted(workers, readings, memory: 0, engine: RUBY_ENGINE, limit: nil, **overrides)
     readings = readings.dup
     stub(Duel::Rubies, :engine, ->(_) { engine }) do
-      fitted_on(workers, readings, memory, **overrides)
+      fitted_on(workers, readings, memory, limit:, **overrides)
     end
   end
 
-  def fitted_on(workers, readings, memory, **overrides)
+  def fitted_on(workers, readings, memory, limit: nil, **overrides)
     stub(Duel::Memory, :available, -> { readings.shift }) do
       workers.benchmark("a")
       run = settings(jobs: 2, processes: 8, fit: %i[jobs processes], **overrides)
       out = StringIO.new
       config = Duel::Config.new(candidate)
       config.instance_variable_set(:@worker_memory, memory)
+      config.define_singleton_method(:worker_limit) { limit }
       elsewhere { Duel::Runner.new(config, run, File.join(tmpdir, "base"), out:).run }
       [out.string.lines(chomp: true), run, readings]
     end
@@ -193,6 +194,65 @@ class RunnerTest < DuelTest
       _, run, = fitted(workers, [16 * GB, 17 * GB], memory: GB / 4)
 
       assert_equal [2, 8], [run.jobs, run.processes], "16 GB (less RESERVE) is 30 pairs of 0.5 GB"
+    end
+  end
+
+  # Where the plugins say their resources allow so many workers at once
+  # (a postgres's System V shared memory segment, of macOS's 32), each
+  # version's in every lane: 14 is 7 of each version, so 1 benchmark at
+  # a time, of 7 workers each. And at least one of each, in one lane.
+  def test_fewer_to_fit_the_plugins_limit
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [64 * GB, 63 * GB], limit: 14)
+
+      assert_equal "Its plugins' resources allow 14 workers at once, as they say, so to fit: 1 benchmark at a time (not 2), " \
+        "and 7 workers of each version (not 8)", lines.first
+      assert_match(/\AComparing 1 benchmark, 1 at a time: /, lines[1])
+      assert_equal [1, 7], [run.jobs, run.processes]
+      lines, run, = fitted(workers, [64 * GB, 63 * GB], limit: 16)
+
+      assert_equal "Its plugins' resources allow 16 workers at once, as they say, so to fit: 1 benchmark at a time (not 2)", lines.first
+      assert_equal [1, 8], [run.jobs, run.processes]
+      _, run, = fitted(workers, [64 * GB, 63 * GB], limit: 3)
+
+      assert_equal [1, 1], [run.jobs, run.processes], "one of each version, as 3 is more than 2"
+    end
+  end
+
+  # What fits the plugins' limit stays, and says nothing, and the limit
+  # holds where the memory can't be told, or the memory says nothing.
+  def test_what_fits_the_plugins_limit
+    with_fake_workers do |workers|
+      lines, run, = fitted(workers, [64 * GB, 63 * GB], limit: 32)
+
+      assert_match(/\AComparing 1 benchmark, 2 at a time: /, lines.first)
+      assert_equal [2, 8], [run.jobs, run.processes]
+      lines, run, = fitted(workers, [nil], limit: 14)
+
+      assert_equal "Its plugins' resources allow 14 workers at once, as they say, so to fit: 1 benchmark at a time (not 2), " \
+        "and 7 workers of each version (not 8)", lines.first
+      assert_equal [1, 7], [run.jobs, run.processes]
+      lines, run, = fitted(workers, [3 * GB, 2 * GB], limit: 14)
+
+      assert_equal ["A worker of each version takes 1.0 GB, with its resources, of 3.0 GB available, so to fit: 1 benchmark at a time (not 2), " \
+        "and 1 worker of each version (not 8)"], lines.grep(/to fit/), "the memory's fewer fit the limit"
+      assert_equal [1, 1], [run.jobs, run.processes]
+    end
+  end
+
+  # Where the jobs or processes given would run more workers at once than
+  # the plugins' resources allow, it fails, saying so, and starts none.
+  def test_more_than_the_plugins_limit_given
+    with_fake_workers do |workers|
+      error = assert_raises(Duel::Error) { fitted(workers, [64 * GB, 63 * GB], limit: 14, fit: []) }
+
+      assert_equal "2 at a time of 8 workers of each version run 32 workers at once, but its plugins' resources allow 14, as they say: " \
+        "run fewer (--processes, DUEL_PROCESSES or c.processes, and --jobs)", error.message
+      assert_empty workers.made, "no workers"
+      error = assert_raises(Duel::Error) { fitted(workers, [64 * GB, 63 * GB], limit: 14, fit: %i[jobs]) }
+
+      assert_match(/\A1 at a time of 8 workers of each version run 16 workers at once, but its plugins' resources allow 14/, error.message)
+      assert_raises(Duel::Error) { fitted(workers, [64 * GB, 63 * GB], limit: 1) }
     end
   end
 

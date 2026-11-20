@@ -212,9 +212,23 @@ module Duel
     # How many times a JIT engine's worker grows as it warms up.
     JIT_GROWTH: Hash[String, Float]
 
+    # Fits the run's workers in the memory available, and in what the
+    # plugins' resources allow at once.
+    def fit: () -> void
+
     # Lowers the jobs, then the processes, that Settings#fit lets it, to
     # fit the memory available.
-    def fit: () -> void
+    def fit_memory: () -> void
+
+    # Lowers the jobs, then the processes, that Settings#fit lets it, to
+    # run no more workers at once than the plugins' resources allow, and
+    # fails where the settings given would.
+    def fit_limit: () -> void
+
+    # Lowers the jobs, then the processes, that Settings#fit lets it, to
+    # run +pairs+ workers of each version at once at most: what it lowered,
+    # or nil.
+    def lower: (Integer pairs) -> String?
 
     # +bytes+ in gigabytes, to a tenth.
     def gigabytes: (Integer bytes) -> String

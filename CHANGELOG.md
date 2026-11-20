@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A plugin can say how many workers' resources the machine has room
+  for at once, counting each version's, as its module's `worker_limit`
+  (or `nil` for no limit), where they take something there's only so
+  much of: a postgres's System V shared memory segment, say, which
+  macOS allows 32 of in all. Duel runs no more workers at once than the
+  fewest any plugin used says: it runs fewer benchmarks at a time, and
+  then fewer workers of each version, as it does to fit the memory
+  available, and says so ("Its plugins' resources allow 16 workers at
+  once, as they say, so to fit: ..."), even where it can't tell the
+  memory available. Where the `--jobs` and `--processes` (or
+  `c.processes`) given would run more, it fails before starting any,
+  saying how many they'd run and how many fit.
+
 ### Changed
 
 - AGENT_PROMPT.md has the agent set up the badge that turns red when

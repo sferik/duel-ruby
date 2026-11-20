@@ -491,6 +491,19 @@ module Duel
       used.value
     end
 
+    # The most workers whose resources can run at once, as the plugins
+    # used say (see Duel.plugin), counting each version's: the fewest any
+    # says, or nil where none does. Asked as the run fits its workers (see
+    # Runner#fit), not as .duel.rb loads, which each worker does too.
+    # @api private
+    def worker_limit
+      @used.each_key.filter_map do |name|
+        plugin = Duel.plugins.fetch(name)
+        limited = plugin #: Module & Duel::_Plugin & Duel::_WorkerLimit
+        limited.worker_limit if plugin.respond_to?(:worker_limit)
+      end.min
+    end
+
     # The plugins used (see #use), by name, in the order they were first
     # used.
     def plugins = @used.keys

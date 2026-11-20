@@ -221,6 +221,10 @@ module Duel
     # most, as they say, in bytes.
     attr_reader worker_memory: Integer
 
+    # The most workers whose resources can run at once, as the plugins
+    # used say: the fewest any says, or nil where none does.
+    def worker_limit: () -> Integer?
+
     # A configuration of the conventions, for the project at +root+.
     def initialize: (?String root) -> void
 
