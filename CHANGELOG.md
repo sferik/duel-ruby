@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A plugin's resource fails with `w.fail!(message)`, in place of
+  `w.failed(message)`, which read like a question but raised
+  `Duel::Failed`: `Duel.find_program(server) || w.fail!("no #{server}")`.
 - The RBS signatures of `c.comment=`, `c.fail_on=`, `c.push_base=` and
   `c.accept_label=` take what each takes (`c.comment = :failure`, a
   typo for `:failures`, fails Steep), as the other settings' do. They

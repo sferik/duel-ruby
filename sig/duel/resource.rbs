@@ -112,7 +112,7 @@ module Duel
     def at_stop: () { () -> void } -> void
 
     # Fails, saying it's this resource that did, with the end of +log+.
-    def failed: (String message, ?log: String?) -> bot
+    def fail!: (String message, ?log: String?) -> bot
 
     # Stops it.
     # @api private

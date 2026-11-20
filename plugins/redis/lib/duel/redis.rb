@@ -44,7 +44,7 @@ module Duel
       tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         program = Duel.find_program(server) ||
-          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give redis-server's path as server:, or DUEL_REDIS_SERVER)")
+          w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)} (give redis-server's path as server:, or DUEL_REDIS_SERVER)")
         if tcp
           port = w.port
           listen = ["--port", port.to_s, "--bind", "127.0.0.1"]

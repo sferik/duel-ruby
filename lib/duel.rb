@@ -16,7 +16,7 @@ module Duel
   class Error < StandardError; end
 
   # What Duel raises when something a run needs fails: a resource that
-  # didn't start (Resource#failed), two that set a variable differently,
+  # didn't start (Resource#fail!), two that set a variable differently,
   # a worker that died or hung.
   class Failed < Error; end
 
@@ -281,7 +281,7 @@ module Duel
     # +exe+ (on Windows, .exe: mysqld for mysqld.exe). Nil if there's
     # none.
     #
-    #   program = Duel.find_program(server) || w.failed("no #{server}")
+    #   program = Duel.find_program(server) || w.fail!("no #{server}")
     def find_program(program, path = ENV.fetch("PATH", ""), exe: Platform::EXE)
       files = path?(program) ? [File.expand_path(program)] : path.split(File::PATH_SEPARATOR).map { |dir| File.join(dir, program) }
       files.flat_map { |file| [file, "#{file}#{exe}"] }.find { |file| File.file?(file) && File.executable?(file) }

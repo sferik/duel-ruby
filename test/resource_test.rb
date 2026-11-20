@@ -501,18 +501,18 @@ class ResourceTest < DuelTest
   def test_failing_with_a_log_of_crlf_lines
     r = resource
     File.binwrite(r.path("x.log"), "a\r\nb\r\n")
-    error = assert_raises(Duel::Failed) { r.failed("broke", log: r.path("x.log")) }
+    error = assert_raises(Duel::Failed) { r.fail!("broke", log: r.path("x.log")) }
 
     assert_equal "head-1's resource: broke\na\nb\n", error.message
   end
 
   def test_failing_with_a_reason
     r = resource
-    error = assert_raises(Duel::Failed) { r.failed("no PostgreSQL") }
+    error = assert_raises(Duel::Failed) { r.fail!("no PostgreSQL") }
 
     assert_equal "head-1's resource: no PostgreSQL", error.message
     File.write(r.path("why.log"), "a\nb\n")
-    error = assert_raises(Duel::Failed) { r.failed("no PostgreSQL", log: r.path("why.log")) }
+    error = assert_raises(Duel::Failed) { r.fail!("no PostgreSQL", log: r.path("why.log")) }
 
     assert_equal "head-1's resource: no PostgreSQL\na\nb\n", error.message
   end

@@ -188,7 +188,7 @@ module Duel
       code, signal = start(command, log, options).wait
       return if code == 0
 
-      failed("#{File.basename(log, ".log")} #{Spawn.why(code, signal)}", log: log)
+      fail!("#{File.basename(log, ".log")} #{Spawn.why(code, signal)}", log: log)
     end
 
     # Waits until the block is true: fails if a process spawned dies
@@ -201,9 +201,9 @@ module Duel
           # (It may have got ready, and ended, since the last look.)
           break if yield
 
-          failed("#{ended.program} exited before it was ready", log: ended.log)
+          fail!("#{ended.program} exited before it was ready", log: ended.log)
         end
-        failed("not ready within #{@timeout}s", log: @processes.last&.log) if monotonic > deadline
+        fail!("not ready within #{@timeout}s", log: @processes.last&.log) if monotonic > deadline
         sleep POLL
       end
     end
@@ -213,7 +213,7 @@ module Duel
 
     # Fails, saying it's this resource that did, with the end of +log+ (a
     # path) to say why.
-    def failed(message, log: nil)
+    def fail!(message, log: nil)
       raise Failed, Spawn.with_tail("#{@name}'s resource: #{message}", log)
     end
 

@@ -83,7 +83,7 @@ module Duel
       scheme: "mysql2", tcp: !Duel.unix_sockets?)
       config.prepare(:worker) do |w|
         program = Duel.find_program(server) ||
-          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)")
+          w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)} (give mysqld's path as server:, or DUEL_MYSQL_SERVER)")
         data = w.path("data")
         DataDir.new(w, program).create(data)
         # (A Unix socket even with +tcp+, which MySQL can't do without:

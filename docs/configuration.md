@@ -241,7 +241,7 @@ A prepare block can use the following methods:
 | `w.spawn(*command)` | Starts a process. Its output goes to a log in the worker's directory, named after the program. For a program like `ruby` that says little about itself, give the log a name with `log:`. To stop it with a signal other than `TERM`, pass `stop_signal:`. |
 | `w.wait_until { ... }` | Waits until the block returns true. Fails if a spawned process exits first, or if the wait takes longer than `--timeout`. |
 | `w.run(*command)` | Runs a command to completion, for example to set something up. Fails, and shows the command's log, if the command fails. |
-| `w.failed("message")` | Fails the same way, for any other reason. |
+| `w.fail!("message")` | Fails the same way, for any other reason. |
 | `w.at_stop { ... }` | Runs the block when the worker stops. |
 | `w.cached(key) { \|dir\| ... }` | Makes something once, for every worker. See the following example. |
 | `w.name` | The worker's name, for example `"base-1"`. |

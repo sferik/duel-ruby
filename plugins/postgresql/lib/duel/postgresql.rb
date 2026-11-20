@@ -85,7 +85,7 @@ module Duel
       config.prepare(:worker) do |w|
         require_pg
         programs = Cluster.programs(server) ||
-          w.failed("no #{server}#{" on the PATH" unless Duel.path?(server)} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)")
+          w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)} (give postgres's path as server:, or DUEL_POSTGRESQL_SERVER)")
         data = w.path("data")
         cluster = Cluster.new(w, programs, pg_ctl: pg_ctl)
         cluster.create(data)
@@ -448,7 +448,7 @@ module Duel
         begin
           run("pg_ctl", "start", "-D", data, "-w", "-l", log)
         rescue Failed
-          @resource.failed("postgres didn't start", log: log)
+          @resource.fail!("postgres didn't start", log: log)
         end
       end
 
