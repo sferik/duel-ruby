@@ -140,9 +140,12 @@ class ProcessSampleTest < DuelTest
     # (Work for a while of CPU time, not a number of steps: a JVM's start
     # takes seconds of it, and varies by more than a few steps take.)
     busy = (RUBY_ENGINE == "ruby") ? 0.2 : 3
+    # (And hold more memory than a JVM's heap has room for as it starts,
+    # and than its peak varies by from one start to the next.)
+    bytes = (RUBY_ENGINE == "ruby") ? 50_000_000 : 300_000_000
     heavy = noting do
       runs.run(ruby("cpu = -> { t = Process.times; t.utime + t.stime }; start = cpu.call; nil while cpu.call - start < #{busy}; " \
-        "s = 'a' * 50_000_000"))
+        "s = 'a' * #{bytes}"))
     end
     again = noting { runs.run(ruby("1")) }
 
@@ -152,7 +155,7 @@ class ProcessSampleTest < DuelTest
     assert_operator again.fetch("timed").fetch("cpu"), :<, heavy.fetch("timed").fetch("cpu"), "each run's own"
     # (On Windows, by a handle on it, JRuby's too.)
     if Duel::Native::FIDDLE || windows?
-      assert_operator heavy.fetch("peak"), :>, 50_000_000
+      assert_operator heavy.fetch("peak"), :>, bytes
       assert_operator light.fetch("peak"), :<, heavy.fetch("peak")
       assert_operator again.fetch("peak"), :<, heavy.fetch("peak"), "each run's own"
     else
