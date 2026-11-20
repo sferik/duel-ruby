@@ -10,7 +10,7 @@ runner and every worker load it:
 ```ruby
 Duel.configure do |c|
   c.benchmarks = "perf/**/*_bench.rb"    # or a list of globs (default: duel/**/*_duel.rb)
-  c.watch = %w[lib ext]                  # the code a change must touch to be compared
+  c.watch = %w[lib ext]                  # the code a change must touch to be compared (a path, or a list)
   c.library = "my_gem"                   # required from each version (default: the gemspec's)
   c.build = "make"                       # for both versions (default: rake compile, with ext/)
   c.main_branch = "origin/trunk"

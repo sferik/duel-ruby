@@ -48,14 +48,23 @@ module Duel
     # of them:
     #
     #   c.benchmarks = %w[perf/**/*_duel.rb test/perf/**/*_duel.rb]
-    attr_accessor :benchmarks
+    attr_reader :benchmarks
 
-    # Paths, from the root, of the code whose changes a comparison is
-    # about: when none of them changed since the baseline, nor what
-    # decides how it's measured (the benchmarks' directory, the
-    # configuration's file, and with each version on its own Ruby, the
-    # version files at the root), there's nothing to compare.
-    attr_accessor :watch
+    def benchmarks=(globs)
+      @benchmarks = Config.given(:benchmarks, globs, "a glob, or a list of them") { Config.strings?(globs) }
+    end
+
+    # A path, from the root, of the code whose changes a comparison is
+    # about, or a list of them: when none of them changed since the
+    # baseline, nor what decides how it's measured (the benchmarks'
+    # directory, the configuration's file, and with each version on its
+    # own Ruby, the version files at the root), there's nothing to
+    # compare.
+    attr_reader :watch
+
+    def watch=(paths)
+      @watch = Config.given(:watch, paths, "a path, or a list of them") { Config.strings?(paths, empty: true) }
+    end
 
     # How each version loads: the library to require from it, as
     # `require` takes it (with its lib/ first on the load path), nil for
@@ -65,21 +74,35 @@ module Duel
     #
     #   c.library = "my_gem"
     #   c.library = ->(root) { require File.join(root, "config", "boot") }
-    attr_writer :library
+    def library=(library)
+      @library = Config.given(:library, library, "a library's name, a lambda (->(root) { ... }), or nil") do
+        library.nil? || library.instance_of?(String) || library.is_a?(Proc)
+      end
+    end
 
     # A shell command that builds a checked-out tree, run in it, or nil
     # for none.
-    attr_writer :build
+    def build=(command)
+      @build = Config.given(:build, command, "a shell command, or nil") { command.nil? || command.instance_of?(String) }
+    end
 
     # The branch a comparison defaults to (nil: the one origin/HEAD names).
-    attr_accessor :main_branch
+    attr_reader :main_branch
+
+    def main_branch=(branch)
+      @main_branch = Config.given(:main_branch, branch, "a branch (origin/main, say), or nil") { branch.nil? || branch.instance_of?(String) }
+    end
 
     # The glob release tags match (for `--base last-release`), or a list
     # of them, any of which a tag may match (a gem that renamed its tags,
     # say):
     #
     #   c.release_tags = %w[v* my_gem-v*]
-    attr_accessor :release_tags
+    attr_reader :release_tags
+
+    def release_tags=(globs)
+      @release_tags = Config.given(:release_tags, globs, "a glob, or a list of them") { Config.strings?(globs) }
+    end
 
     # The Ruby each version runs on (`duel --ruby` overrides it). It's nil
     # for the runner's own, or :version_file for the one the version's own
@@ -90,7 +113,13 @@ module Duel
     #
     #   c.ruby = :version_file
     #   c.ruby = ->(root) { File.join(Dir.home, ".rubies", File.read(File.join(root, ".ruby-version")).strip, "bin", "ruby") }
-    attr_accessor :ruby
+    attr_reader :ruby
+
+    def ruby=(ruby)
+      @ruby = Config.given(:ruby, ruby, "a Ruby's path, :version_file, a lambda (->(root) { ... }), or nil") do
+        ruby.nil? || ruby == :version_file || ruby.instance_of?(String) || ruby.is_a?(Proc)
+      end
+    end
 
     # When the workflow that `duel init` writes comments on a pull request
     # with the report:
@@ -236,6 +265,22 @@ module Duel
 
     def warm=(seconds)
       @warm = Config.setting(:warm, seconds)
+    end
+
+    # +value+, set as the setting +name+d, if the block says it's one it
+    # takes. One that isn't fails, saying to +give+ one that is, before
+    # anything runs.
+    # @api private
+    def self.given(name, value, give)
+      raise Error, "c.#{name} = #{value.inspect}: give #{give}" unless yield
+
+      value
+    end
+
+    # Whether +value+ is a String, or a list of them (+empty+, or not).
+    # @api private
+    def self.strings?(value, empty: false)
+      value.instance_of?(String) || (value.instance_of?(Array) && (empty || !value.empty?) && value.all? { |each| each.instance_of?(String) })
     end
 
     # +value+, set as the setting +name+d, if it's one of +values+, the
@@ -578,12 +623,12 @@ module Duel
 
     # The files that define benchmarks, in order.
     # @api private
-    def benchmark_files = Config.globs(benchmarks).flat_map { |glob| Dir[File.join(root, glob)] }.uniq
+    def benchmark_files = Config.list(benchmarks).flat_map { |glob| Dir[File.join(root, glob)] }.uniq
 
-    # A glob setting's globs (c.benchmarks, c.release_tags): one, or a
-    # list of them.
+    # A setting that takes one or a list (c.benchmarks, c.watch,
+    # c.release_tags), as a list.
     # @api private
-    def self.globs(given) = given.instance_of?(String) ? [given] : given
+    def self.list(given) = given.instance_of?(String) ? [given] : given
 
     private
 

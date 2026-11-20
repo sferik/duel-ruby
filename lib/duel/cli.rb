@@ -205,7 +205,7 @@ module Duel
       if settings.base_dir.nil? && baseline.ref.nil?
         return nothing("no commit to compare against", "no commit before this push to compare against") if settings.pushed
 
-        return nothing("no release to compare against", "no release tag (#{Config.globs(config.release_tags).join(", ")}) before HEAD to compare against")
+        return nothing("no release to compare against", "no release tag (#{Config.list(config.release_tags).join(", ")}) before HEAD to compare against")
       end
       if !settings.force && baseline.unchanged?
         @passed = (baseline.passed_branch if marks_passed?(config, settings))

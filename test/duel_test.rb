@@ -296,6 +296,38 @@ class ConfigTest < DuelTest
     assert_predicate Duel::Config::FAIL_ON, :frozen?
   end
 
+  # The settings that take a glob, a path, a name or a lambda take only
+  # those (a list of the first two too, but an empty list of globs, which
+  # would match every release tag), so a typo fails as it's set, saying
+  # what to give, not deep in a run.
+  def test_settings_that_take_one_or_a_list
+    config = Duel::Config.new
+    loads = ->(root) { root }
+    kind_of_proc = Class.new(Proc).new { |root| root }
+    {benchmarks: ["perf/*_duel.rb", %w[a/*.rb b/*.rb]], watch: ["app", %w[app lib], []], release_tags: ["v*", %w[v* my_gem-v*]],
+     library: ["my_gem", loads, kind_of_proc, nil], build: ["make", nil], main_branch: ["origin/trunk", nil],
+     ruby: ["/opt/ruby/bin/ruby", :version_file, loads, kind_of_proc, nil]}.each do |name, values|
+      values.each do |value|
+        config.public_send(:"#{name}=", value)
+        set = config.instance_variable_get(:"@#{name}")
+
+        value.nil? ? assert_nil(set, "#{name} = nil") : assert_same(value, set, "#{name} = #{value.inspect}")
+      end
+    end
+    {benchmarks: [[42, "a glob, or a list of them"], [[], "a glob, or a list of them"], [["a", :b], "a glob, or a list of them"]],
+     watch: [[:lib, "a path, or a list of them"], [[1], "a path, or a list of them"]],
+     release_tags: [[[], "a glob, or a list of them"], [/v/, "a glob, or a list of them"]],
+     library: [[:my_gem, "a library's name, a lambda (->(root) { ... }), or nil"]],
+     build: [[%w[make], "a shell command, or nil"]], main_branch: [[:main, "a branch (origin/main, say), or nil"]],
+     ruby: [[:version, "a Ruby's path, :version_file, a lambda (->(root) { ... }), or nil"]]}.each do |name, wrongs|
+      wrongs.each do |value, give|
+        error = assert_raises(Duel::Error) { config.public_send(:"#{name}=", value) }
+
+        assert_equal "c.#{name} = #{value.inspect}: give #{give}", error.message
+      end
+    end
+  end
+
   # The label that accepts a regression: "duel: accept" unless set, nil
   # for none, and only a name.
   def test_accept_label

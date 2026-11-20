@@ -342,6 +342,9 @@ class BaselineTest < DuelTest
     @config.benchmarks = %w[perf/**/*_duel.rb test/perf/*_duel.rb]
 
     assert_equal %w[app duel perf test/perf .duel.rb], baseline.watched, "each of a list's"
+    @config.watch = "app"
+
+    assert_equal %w[app perf test/perf .duel.rb], baseline.watched, "one path"
   end
 
   def test_root_checks_out_and_builds_the_commit_once

@@ -50,7 +50,7 @@ module Duel
     def release
       return @release if instance_variable_defined?(:@release)
 
-      matches = Config.globs(@config.release_tags).flat_map { |glob| ["--match", glob] }
+      matches = Config.list(@config.release_tags).flat_map { |glob| ["--match", glob] }
       @release = git("describe", "--tags", "--abbrev=0", *matches, "HEAD^", allow_failure: true)
     end
 
@@ -122,7 +122,7 @@ module Duel
     def watched
       measured = [*benchmarks, config_file]
       measured.concat(version_files) if (@settings.ruby || @config.ruby) == :version_file
-      (@config.watch + measured).uniq
+      (Config.list(@config.watch) + measured).uniq
     end
 
     # The baseline's tree, checked out and built if it's a commit.
@@ -208,7 +208,7 @@ module Duel
     # Each of the benchmarks' globs' directory (see #watched), or for
     # benchmarks at the root, its glob, as git matches one.
     def benchmarks
-      Config.globs(@config.benchmarks).map do |glob|
+      Config.list(@config.benchmarks).map do |glob|
         dir = glob.split("/").take_while { |part| !part.match?(/[*?\[{]/) }.join("/")
         dir.empty? ? ":(glob)#{glob}" : dir
       end

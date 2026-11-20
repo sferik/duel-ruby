@@ -25,7 +25,7 @@ module Duel
 
     @root: String
     @benchmarks: String | Array[String]
-    @watch: Array[String]
+    @watch: String | Array[String]
     @library: library | :conventional
     @build: String | :conventional | nil
     @main_branch: String?
@@ -60,30 +60,38 @@ module Duel
     # @api private
     def cache: () -> String
 
-    # A glob, from the root, of the files defining benchmarks.
-    attr_accessor benchmarks: String | Array[String]
+    # A glob, from the root, of the files defining benchmarks, or a list
+    # of them. Each setter fails, saying what to give, on a value it
+    # doesn't take.
+    attr_reader benchmarks: String | Array[String]
+    def benchmarks=: (String | Array[String] globs) -> (String | Array[String])
 
-    # Paths, from the root, of the code whose changes a comparison is
-    # about (with what decides how it's measured).
-    attr_accessor watch: Array[String]
+    # A path, from the root, of the code whose changes a comparison is
+    # about (with what decides how it's measured), or a list of them.
+    attr_reader watch: String | Array[String]
+    def watch=: (String | Array[String] paths) -> (String | Array[String])
 
     # How each version loads: the library to require from it, nil for
     # none, or a lambda given the root of its tree.
-    attr_writer library (): library
+    def library=: (library library) -> library
 
     # A shell command that builds a checked-out tree, or nil for none.
-    attr_writer build (): String?
+    def build=: (String? command) -> String?
 
     # The branch a comparison defaults to (nil: the one origin/HEAD names).
-    attr_accessor main_branch: String?
+    attr_reader main_branch: String?
+    def main_branch=: (String? branch) -> String?
 
-    # The glob release tags match (for `--base last-release`).
-    attr_accessor release_tags: String | Array[String]
+    # The glob release tags match (for `--base last-release`), or a list
+    # of them.
+    attr_reader release_tags: String | Array[String]
+    def release_tags=: (String | Array[String] globs) -> (String | Array[String])
 
     # The Ruby each version runs on: nil for the runner's own,
     # :version_file for the one its version file names, a path, or a block
     # given the version's tree.
-    attr_accessor ruby: ruby
+    attr_reader ruby: ruby
+    def ruby=: (ruby ruby) -> ruby
 
     # When the workflow comments on a pull request: :always, :results,
     # :failures (the default) or :never.
@@ -145,6 +153,20 @@ module Duel
     # saying which to give.
     # @api private
     def self.one_of: [T < Symbol] (Symbol name, T value, Array[Symbol] values) -> T
+
+    # +value+ for the setting +name+d, if the block says it's one it takes,
+    # or fails saying to +give+ one.
+    # @api private
+    def self.given: [T < _Inspect] (Symbol name, T value, String give) { () -> boolish } -> T
+
+    # What a value that's said wrong needs, to say how.
+    interface _Inspect
+      def inspect: () -> String
+    end
+
+    # Whether +value+ is a String, or a list of them (+empty+, or not).
+    # @api private
+    def self.strings?: (untyped value, ?empty: bool) -> bool
 
     # +value+ for the RUN_SETTINGS +name+d, as that takes it, or nil, or
     # fails saying what to give.
@@ -288,9 +310,9 @@ module Duel
     # @api private
     def benchmark_files: () -> Array[String]
 
-    # A glob setting's globs: one, or a list of them.
+    # A setting that takes one or a list, as a list.
     # @api private
-    def self.globs: (String | Array[String] given) -> Array[String]
+    def self.list: (String | Array[String] given) -> Array[String]
 
     private
 

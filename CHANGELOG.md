@@ -56,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The settings that take a glob, a path, a name or a lambda
+  (`c.benchmarks`, `c.watch`, `c.release_tags`, `c.library`, `c.build`,
+  `c.main_branch` and `c.ruby`) fail as they're set, on a value they
+  don't take, saying what to give (`c.watch = :lib: give a path, or a
+  list of them`), as `c.comment` and the others do. A wrong one failed
+  deep in a run (`String#+: no implicit conversion of Array into
+  String`), or not at all. And `c.watch` takes one path too
+  (`c.watch = "app"`), as `c.benchmarks` and `c.release_tags` take one
+  glob.
 - A metric judged like CPU time is `kind: :timed`, in place of
   `kind: :ratio`, as `judge: :timed`, `Definition#timed?` and the
   report's `timed` call what it measures: a metric's `measures` say
