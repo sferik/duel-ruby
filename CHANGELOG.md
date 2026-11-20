@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The RBS signatures of `c.comment=`, `c.fail_on=`, `c.push_base=` and
+  `c.accept_label=` take what each takes (`c.comment = :failure`, a
+  typo for `:failures`, fails Steep), as the other settings' do. They
+  took anything, and said nothing of what they return.
 - The jobs of Duel's reusable Perf workflow for a push, which write to
   the repository (Comment on the commit, Mark the commit passed and
   Update the badge), are a reusable workflow of their own,

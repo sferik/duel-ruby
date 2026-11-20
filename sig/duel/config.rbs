@@ -93,7 +93,7 @@ module Duel
     COMMENTS: Array[comment]
 
     # Sets #comment, or fails for a value it doesn't take.
-    def comment=: (untyped mode) -> untyped
+    def comment=: (comment mode) -> comment
 
     # Which runs a regression fails: :every_run (the default), or
     # :pull_requests.
@@ -103,7 +103,7 @@ module Duel
     FAIL_ON: Array[fail_on]
 
     # Sets #fail_on, or fails for a value it doesn't take.
-    def fail_on=: (untyped runs) -> untyped
+    def fail_on=: (fail_on runs) -> fail_on
 
     # The settings of a run that .duel.rb can set too: for each, what it
     # takes, and whether a value is that.
@@ -144,7 +144,7 @@ module Duel
     # +value+ for the setting +name+d, if it's one of +values+, or fails
     # saying which to give.
     # @api private
-    def self.one_of: (Symbol name, untyped value, Array[Symbol] values) -> untyped
+    def self.one_of: [T < Symbol] (Symbol name, T value, Array[Symbol] values) -> T
 
     # +value+ for the RUN_SETTINGS +name+d, as that takes it, or nil, or
     # fails saying what to give.
@@ -164,7 +164,7 @@ module Duel
     attr_reader accept_label: String?
 
     # Sets #accept_label, or fails for what isn't a name or nil.
-    def accept_label=: (untyped label) -> untyped
+    def accept_label=: (String? label) -> String?
 
     # What a push is compared with: :before (the default), the commit
     # before it, or :last_passed, the last commit Duel passed.
@@ -174,7 +174,7 @@ module Duel
     PUSH_BASES: Array[push_base]
 
     # Sets #push_base, or fails for a value it doesn't take.
-    def push_base=: (untyped base) -> untyped
+    def push_base=: (push_base base) -> push_base
 
     # What #prepare was given, by scope.
     # @api private
