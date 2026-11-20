@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `duel_process` takes the Ruby code it runs as `code:`, in place of
+  `ruby:`, which read as the Ruby to run it on, as `c.ruby`, `--ruby`
+  and `DUEL_RUBY` mean: `duel_process "boot: require the library",
+  code: %(require "my_gem")`.
 - The settings that take a glob, a path, a name or a lambda
   (`c.benchmarks`, `c.watch`, `c.release_tags`, `c.library`, `c.build`,
   `c.main_branch` and `c.ruby`) fail as they're set, on a value they

@@ -267,12 +267,12 @@ To guard how long your app takes to boot, or your library to load, use
 `duel_process`. Each sample starts fresh processes for each version,
 in that version's directory and with its environment, and the two
 versions take turns, as they do for every other benchmark. Give
-`duel_process` a command, or Ruby code to run with `ruby:`:
+`duel_process` a command, or Ruby code to run with `code:`:
 
 ```ruby
 # duel/boot_duel.rb
 duel_process "boot: the app", "bin/rails", "runner", "1"
-duel_process "boot: require the library", ruby: %(require "my_gem")
+duel_process "boot: require the library", code: %(require "my_gem")
 ```
 
 Duel runs a command the way that `Process.spawn` does, so a single
@@ -298,7 +298,7 @@ the most, gets 3, and an app that takes a second or more to boot gets
 yourself, pass `runs:`:
 
 ```ruby
-duel_process "boot: require the library", ruby: %(require "my_gem"), runs: 5
+duel_process "boot: require the library", code: %(require "my_gem"), runs: 5
 ```
 
 Duel starts and measures the processes from a small Ruby process of its

@@ -145,8 +145,8 @@ class WorkerProcessTest < DuelTest
       def stop = log << :stop
     end.new(made)
     stub(Duel::ProcessSample, :new, ->(*args, **options) { (made << [args, options]) && runs }) do
-      assert_equal({"timed" => {}}, worker.run({"command" => %w[bin/rails runner 1], "ruby" => nil}))
-      worker.run({"command" => nil, "ruby" => "require 'x'"})
+      assert_equal({"timed" => {}}, worker.run({"command" => %w[bin/rails runner 1], "code" => nil}))
+      worker.run({"command" => nil, "code" => "require 'x'"})
     end
     worker.stop
 
@@ -182,7 +182,7 @@ class WorkerProcessTest < DuelTest
     made = []
     runs = Struct.new(:log) { def run(command) = (log << command) && {"timed" => {}} }.new(made)
     stub(Duel::Rubies, :launch, launch) do
-      stub(Duel::ProcessSample, :new, ->(*, **) { runs }) { 2.times { worker.run({"command" => nil, "ruby" => "1"}) } }
+      stub(Duel::ProcessSample, :new, ->(*, **) { runs }) { 2.times { worker.run({"command" => nil, "code" => "1"}) } }
     end
 
     assert_equal [["/jvm", "-Dworker=false", "-I", "/base/lib", "-e", "1"]] * 2, made

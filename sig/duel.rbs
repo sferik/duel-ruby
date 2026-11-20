@@ -35,7 +35,7 @@ module Duel
   class Definition < Struct[String | Array[judged] | body | hooks | Definition::process | nil]
     # A process benchmark's process: its command, or Ruby code.
     # @api private
-    type process = { "command" => Array[String]?, "ruby" => String?, "runs" => Integer? }
+    type process = { "command" => Array[String]?, "code" => String?, "runs" => Integer? }
 
     # What the runner learns of it (see #to_h).
     # @api private
@@ -275,7 +275,7 @@ module Duel
     # Defines a benchmark of a whole process: a command (as Process.spawn
     # takes it), or Ruby code, run fresh for each version in every sample
     # (the fastest of +runs+).
-    def duel_process: (String name, *String command, ?ruby: String?, ?runs: Integer?, **untyped options) -> void
+    def duel_process: (String name, *String command, ?code: String?, ?runs: Integer?, **untyped options) -> void
 
     # En garde.
     # @api private

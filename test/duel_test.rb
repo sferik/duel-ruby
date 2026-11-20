@@ -645,22 +645,25 @@ class DSLTest < DuelTest
     in_file("/duel/boot_duel.rb", <<~RUBY)
       duel_process "boot", "bin/rails", "runner", "1"
       duel_process "shell", "bin/rails runner 1"
-      duel_process "require", ruby: %(require "my_gem"), runs: 5
+      duel_process "require", code: %(require "my_gem"), runs: 5
     RUBY
 
     assert_equal [Duel::Definition.new("boot", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {},
-      {"command" => %w[bin/rails runner 1], "ruby" => nil, "runs" => nil}),
-      Duel::Definition.new("shell", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => ["bin/rails runner 1"], "ruby" => nil, "runs" => nil}),
-      Duel::Definition.new("require", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => nil, "ruby" => %(require "my_gem"), "runs" => 5})],
+      {"command" => %w[bin/rails runner 1], "code" => nil, "runs" => nil}),
+      Duel::Definition.new("shell", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => ["bin/rails runner 1"], "code" => nil, "runs" => nil}),
+      Duel::Definition.new("require", Duel::PROCESS_JUDGE, "/duel/boot_duel.rb", nil, {}, {"command" => nil, "code" => %(require "my_gem"), "runs" => 5})],
       Duel.benchmarks.values
-    assert_equal({"command" => nil, "ruby" => %(require "my_gem"), "runs" => 5}, Duel.benchmarks.fetch("require").to_h.fetch("process"))
-    [["neither"], ["both", "true", {ruby: "1"}]].each do |name, *command|
+    assert_equal({"command" => nil, "code" => %(require "my_gem"), "runs" => 5}, Duel.benchmarks.fetch("require").to_h.fetch("process"))
+    [["neither"], ["both", "true", {code: "1"}]].each do |name, *command|
       options = command.last.is_a?(Hash) ? command.pop : {}
       error = assert_raises(ArgumentError) { DSL.duel_process(name, *command, **options) }
 
-      assert_equal %(duel_process "#{name}": give a command, or ruby: code, not both), error.message
+      assert_equal %(duel_process "#{name}": give a command, or code:, not both), error.message
     end
     refute Duel.benchmarks.key?("neither")
+    error = assert_raises(ArgumentError) { DSL.duel_process("renamed", ruby: %(require "my_gem")) }
+
+    assert_equal %(duel_process "renamed": give the code to run as code:, not ruby: (the Ruby it runs on is c.ruby's)), error.message
   end
 
   # Its runs a sample: a number, 1 or more.
@@ -682,7 +685,7 @@ class DSLTest < DuelTest
 
     assert_equal 'duel_process "boot": around_iteration is duel\'s, for a benchmark run in a worker: a process benchmark runs no ' \
       "hooks, and is judged on its CPU time and peak memory alone", error.message
-    error = assert_raises(ArgumentError) { DSL.duel_process("boot", ruby: "1", judge: :counted, around_iteration: -> {}) }
+    error = assert_raises(ArgumentError) { DSL.duel_process("boot", code: "1", judge: :counted, around_iteration: -> {}) }
 
     assert_match(/: judge, around_iteration are duel's, /, error.message)
     assert_empty Duel.benchmarks

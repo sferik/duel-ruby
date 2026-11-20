@@ -96,7 +96,7 @@ module Duel
     # ProcessSample#run).
     def run(process)
       # (Code, without a command.)
-      code = process.fetch("ruby") #: String
+      code = process.fetch("code") #: String
       command = process.fetch("command") || [*(@launch ||= Rubies.launch(@ruby, @engine, @env)), "-I", File.join(@root, "lib"), "-e", code]
       runs = @runs ||= ProcessSample.new(@label, env: @env, chdir: @root, log: File.join(@dir, "#{@label}.log"), timeout: @timeout)
       runs.run(command)

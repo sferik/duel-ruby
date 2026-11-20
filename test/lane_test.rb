@@ -1298,7 +1298,7 @@ class LaneVersionsTest < DuelTest
   # each of its samples is a process of its own already.
   def test_a_process_benchmark_by_pairs
     with_fake_workers do |workers|
-      workers.benchmark("boot", process: {"command" => %w[bin/boot], "ruby" => nil, "runs" => 1}) do |_, n, _|
+      workers.benchmark("boot", process: {"command" => %w[bin/boot], "code" => nil, "runs" => 1}) do |_, n, _|
         {"timed" => {"cpu" => n * 1_000_000}, "peak" => 1 << 20}
       end
       l = lane(processes: 5)
@@ -1310,7 +1310,7 @@ class LaneVersionsTest < DuelTest
   end
 
   def test_a_process_benchmark
-    process = {"command" => %w[bin/boot], "ruby" => nil, "runs" => nil}
+    process = {"command" => %w[bin/boot], "code" => nil, "runs" => nil}
     with_fake_workers do |workers|
       cpu = {"baseline" => [31, 30, 32].cycle, "candidate" => [34.5, 33, 36, 34].cycle}
       # (The least, a measured sample's, neither the first nor the last.)
@@ -1345,7 +1345,7 @@ class LaneVersionsTest < DuelTest
     {[1, nil] => 3, [300, nil] => 3, [400, nil] => 2, [454, nil] => 2, [455, nil] => 1, [1_500, nil] => 1, [1, 1] => 1,
      [400, 5] => 5, [-455, nil] => 1, [-454, nil] => 2}.each do |(ms, runs), taken|
       with_fake_workers do |workers|
-        process = {"command" => nil, "ruby" => "1", "runs" => runs}
+        process = {"command" => nil, "code" => "1", "runs" => runs}
         # (The candidate 10% slower, or with -ms, faster.)
         workers.benchmark("boot", process: process) do |side, n, _|
           {"timed" => {"cpu" => n * ms.abs * (((side == "candidate") == ms.positive?) ? 1_100_000 : 1_000_000)}}
@@ -1363,7 +1363,7 @@ class LaneVersionsTest < DuelTest
 
     assert_equal [1, 3, 1_000_000_000], [Duel::Lane::PROCESS_WARMUP, Duel::Lane::PROCESS_RUNS, Duel::Lane::PROCESS_SAMPLE_NS]
     with_fake_workers do |workers|
-      workers.benchmark("boot", process: {"command" => nil, "ruby" => "1", "runs" => nil})
+      workers.benchmark("boot", process: {"command" => nil, "code" => "1", "runs" => nil})
       l = lane(processes: 2)
 
       assert_equal 3, l.send(:process_runs, [[{"timed" => {"cpu" => 0}}, {"timed" => {"cpu" => 0}}]]), "none at all, as good as nothing"
@@ -1379,7 +1379,7 @@ class LaneVersionsTest < DuelTest
   def test_a_process_benchmark_stops_once_its_not_slower
     {"same" => 300_000_000, "faster" => 270_000_000}.each do |verdict, cpu|
       with_fake_workers do |workers|
-        workers.benchmark("boot", process: {"command" => nil, "ruby" => "1", "runs" => nil}) do |side, n, _|
+        workers.benchmark("boot", process: {"command" => nil, "code" => "1", "runs" => nil}) do |side, n, _|
           {"timed" => {"cpu" => n * ((side == "candidate") ? cpu : 300_000_000)}, "peak" => 1 << 20}
         end
         l = lane(processes: 2)
@@ -1395,7 +1395,7 @@ class LaneVersionsTest < DuelTest
   # Where peak memory can't be told (JRuby's), there's none.
   def test_a_process_benchmark_without_peak_memory
     with_fake_workers do |workers|
-      workers.benchmark("boot", process: {"command" => nil, "ruby" => "1", "runs" => nil}) do |_, _, label|
+      workers.benchmark("boot", process: {"command" => nil, "code" => "1", "runs" => nil}) do |_, _, label|
         {"timed" => {"cpu" => 1_000_000}, "peak" => (1 unless label == "head-1")}
       end
       l = lane(processes: 2)

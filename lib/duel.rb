@@ -429,10 +429,10 @@ module Duel
     # it, its peak memory.
     #
     #   duel_process "boot: the app", "bin/rails", "runner", "1"
-    #   duel_process "boot: require the library", ruby: %(require "my_gem")
+    #   duel_process "boot: require the library", code: %(require "my_gem")
     #
     # A +command+ is run as Process.spawn takes it (one String with
-    # spaces is a shell command). Code given as +ruby+ is run by the
+    # spaces is a shell command). Code given as +code+ is run by the
     # version's Ruby, with the version's lib/ first on the load path. A
     # process that fails (a status other than 0) is an error. Each sample
     # is the fastest of +runs+ processes: by default, as many as take about
@@ -442,9 +442,12 @@ module Duel
     # hooks (the configuration's, and its file's), and plugins' metrics.
     # Nor do #duel's options: given one (around_iteration:, say), it
     # fails.
-    def duel_process(name, *command, ruby: nil, runs: nil, **options)
+    def duel_process(name, *command, code: nil, runs: nil, **options)
       raise ArgumentError, "duplicate benchmark #{name.inspect}" if Duel.benchmarks.key?(name)
-      raise ArgumentError, "duel_process #{name.inspect}: give a command, or ruby: code, not both" if command.empty? == ruby.nil?
+      if options.key?(:ruby)
+        raise ArgumentError, "duel_process #{name.inspect}: give the code to run as code:, not ruby: (the Ruby it runs on is c.ruby's)"
+      end
+      raise ArgumentError, "duel_process #{name.inspect}: give a command, or code:, not both" if command.empty? == code.nil?
       counted = runs.nil? || (runs.instance_of?(Integer) && runs.positive?)
       raise ArgumentError, "duel_process #{name.inspect}: runs: is a number of processes a sample, 1 or more, not #{runs.inspect}" unless counted
       unless options.empty?
@@ -452,7 +455,7 @@ module Duel
           "for a benchmark run in a worker: a process benchmark runs no hooks, and is judged on its CPU time and peak memory alone"
       end
 
-      process = {"command" => (command unless command.empty?), "ruby" => ruby, "runs" => runs} #: Definition::process
+      process = {"command" => (command unless command.empty?), "code" => code, "runs" => runs} #: Definition::process
       Duel.benchmarks[name] = Definition.new(name, PROCESS_JUDGE, Duel.defining_file || caller_locations.fetch(0).path, nil, {}, process)
     end
 

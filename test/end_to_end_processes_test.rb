@@ -14,7 +14,7 @@ class EndToEndProcessesTest < DuelTest
   def test_a_process_benchmark
     skip "a JVM for every process: minutes of them (ProcessSampleTest runs real ones)" if RUBY_ENGINE == "jruby"
 
-    benchmarks = %(duel_process "boot", ruby: 'require "sample"'\n)
+    benchmarks = %(duel_process "boot", code: 'require "sample"'\n)
     base = project(File.join(tmpdir, "base"), benchmarks: benchmarks)
     same = project(File.join(tmpdir, "same"), benchmarks: benchmarks)
     results, out = compare(base, same, processes: 1)

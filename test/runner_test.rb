@@ -433,7 +433,7 @@ class RunnerTest < DuelTest
   # processes of their own.
   def test_a_slower_process_isnt_profiled
     with_fake_workers do |workers|
-      workers.benchmark("boot", process: {"command" => %w[boot], "ruby" => nil, "runs" => nil}) do |side, _, _|
+      workers.benchmark("boot", process: {"command" => %w[boot], "code" => nil, "runs" => nil}) do |side, _, _|
         {"timed" => {"cpu" => (side == "candidate") ? 330_000_000 : 300_000_000}}
       end
       results, out, = run_duel(workers)
