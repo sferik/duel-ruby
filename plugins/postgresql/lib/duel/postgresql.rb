@@ -41,6 +41,10 @@ module Duel
     # It names the socket (.s.PGSQL.5432): the server listens on no port.
     PORT = 5432
 
+    # What a postgres logs where it can't make its System V shared memory
+    # segment (see .worker_limit).
+    NO_SEGMENT = "could not create shared memory segment"
+
     # The server's settings: nothing to disk that needn't be, nothing
     # running on its own (autovacuum would change what a query touches,
     # and its plan, while it's measured), and pg_stat_statements.
@@ -107,7 +111,15 @@ module Duel
         # Rails parses DATABASE_URL with, takes a user without a host for
         # a malformed host.)
         url = "postgres:///#{DATABASE}?host=#{host}&port=#{port}&user=#{USER}"
-        w.wait_until { PG::Connection.ping(url) == PG::PQPING_OK }
+        begin
+          w.wait_until { PG::Connection.ping(url) == PG::PQPING_OK }
+        rescue Failed
+          log = w.path("postgres.log")
+          raise unless File.exist?(log) && File.read(log).include?(NO_SEGMENT)
+
+          w.fail!("postgres couldn't make its System V shared memory segment, which each server takes one of (macOS allows 32 in all): " \
+            "run fewer workers at once (--processes, DUEL_PROCESSES or c.processes, and --jobs)", log:)
+        end
         run(url, sql) if sql
         {URL => url, "PGHOST" => host, "PGPORT" => port.to_s, "PGUSER" => USER, "PGDATABASE" => DATABASE}
           .merge(env.to_h { |name| [name, url] })
@@ -120,6 +132,30 @@ module Duel
       statements = Statements.new(connection)
       config.metric(METRICS) { statements.read }.costly.details { |stretches, sample| statements.details(stretches, sample.n) }
       connection
+    end
+
+    # The most workers whose servers can run at once (see Duel.plugin),
+    # where there are few System V shared memory segments to go around: a
+    # postgres takes one (to tell whether another runs on its data), and
+    # one that can't make one doesn't start. macOS allows 32 in all
+    # (kern.sysv.shmmni), so it's half of those not in use: the servers
+    # that start and stop beside the workers' (the one that builds the
+    # cluster, those Runner#fit starts to see what a worker takes, one
+    # stopping, or killed, whose segment stays) can take more than a few,
+    # and 24 servers of 32 segments ran out on a GitHub runner. nil
+    # elsewhere: Linux's sysctl has no kern.sysv.shmmni (it allows
+    # thousands), and Windows' postgres takes none.
+    def self.worker_limit
+      segments = Integer(command(%w[sysctl -n kern.sysv.shmmni]), exception: false) or return
+      used = command(%w[ipcs -m]).lines.count { |line| line.start_with?("m ") }
+      (segments - used) / 2
+    end
+
+    # What +command+ printed, or nothing where it isn't there to run.
+    def self.command(command)
+      IO.popen(command, err: File::NULL, &:read)
+    rescue SystemCallError
+      ""
     end
 
     # Loads pg, once Duel has loaded the worker's version: not as the

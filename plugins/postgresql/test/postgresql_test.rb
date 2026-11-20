@@ -12,9 +12,10 @@ class PostgreSQLTest < PluginTest
   # servers of their own, and the comparisons last.
   if defined?(Mutant)
     FIRST = %w[test_registered test_totals test_texts_read_once test_a_first_reading test_a_reading_of_none_changed test_a_reading_of_some_changed
-      test_statements_gone test_details_from_what_changed test_settle test_finding_postgres test_no_postgres].freeze
+      test_statements_gone test_details_from_what_changed test_settle test_finding_postgres test_no_postgres test_worker_limit
+      test_command].freeze
     LAST = %w[test_a_server_of_the_workers_own test_stopped_with_a_client_connected test_its_options test_a_server_that_doesnt_start
-      test_a_program_that_fails test_making_a_cluster test_a_cluster_made_once test_a_server_pg_ctl_starts
+      test_a_program_that_fails test_a_server_that_cant_make_its_segment test_making_a_cluster test_a_cluster_made_once test_a_server_pg_ctl_starts
       test_a_server_pg_ctl_cant_start test_a_cluster_made_with_pg_ctl test_pg_ctl_on_windows test_comparisons].freeze
 
     def self.runnable_methods
@@ -186,6 +187,28 @@ class PostgreSQLTest < PluginTest
     end
 
     assert_match(/\Ahead-1's resource: postgres exited before it was ready\n.*no_such_setting/m, error.message)
+  end
+
+  # One that can't make its System V shared memory segment (there are
+  # too few: macOS allows 32) says to run fewer workers, with its log.
+  def test_a_server_that_cant_make_its_segment
+    unix!
+    cache = own_cache
+    bin = File.join(@dir, "bin")
+    FileUtils.mkdir_p(bin)
+    # (The cluster's made in single-user mode, by the real one: only the
+    # worker's server can't start.)
+    File.write(File.join(bin, "postgres"), "#!/bin/sh\n[ \"$1\" = --single ] && exec #{File.join(POSTGRES, "postgres")} \"$@\"\n" \
+      "echo 'FATAL:  could not create shared memory segment: No space left on device' >&2\nexit 1\n")
+    File.write(File.join(bin, "initdb"), "#!/bin/sh\nexec #{File.join(POSTGRES, "initdb")} \"$@\"\n")
+    %w[postgres initdb].each { |program| File.chmod(0o755, File.join(bin, program)) }
+    error = assert_raises(Duel::Failed) { prepare(config(server: File.join(bin, "postgres"), pg_ctl: false), cache:) { flunk "started" } }
+
+    said = "head-1's resource: postgres couldn't make its System V shared memory segment, which each server takes one of " \
+      "(macOS allows 32 in all): run fewer workers at once (--processes, DUEL_PROCESSES or c.processes, and --jobs)\n"
+
+    assert_match(/\A#{Regexp.escape(said)}.*FATAL:  could not create shared memory segment: No space left on device\n\z/m, error.message,
+      "with its log's end")
   end
 
   # No postgres on the PATH, or at the path given.
@@ -548,6 +571,34 @@ class PostgreSQLTest < PluginTest
     assert_instance_of Duel::InWorker, connection
     assert_same connection, config.use(:postgresql)
     assert_equal [1, 1, [:postgresql]], [config.prepares.fetch(:worker).size, config.metrics.size, config.plugins]
+  end
+
+  # Where System V shared memory segments are few (macOS allows 32, and
+  # each server takes one), half of those not in use, for Duel to run no
+  # more workers' servers at once than that: none where sysctl says
+  # nothing of them (on Linux, which allows thousands) or isn't there.
+  def test_worker_limit
+    said = {%w[sysctl -n kern.sysv.shmmni] => "32\n",
+            %w[ipcs -m] => "IPC status from <running system>\nT ID KEY MODE OWNER GROUP\nShared Memory:\nm 65536 0x0767 --rw------- me staff\n" \
+              "m 3 0x3e95 --rw------- me staff\n\n"}
+    replacing(Duel::PostgreSQL, :command, ->(command) { said.fetch(command) }) do
+      assert_equal 15, Duel::PostgreSQL.worker_limit, "half of 32, less the 2 in use"
+      assert_equal 15, Duel::Config.new(@dir).tap { |config| config.use(:postgresql) }.worker_limit, "Duel's, for its workers"
+      said[%w[sysctl -n kern.sysv.shmmni]] = ""
+
+      assert_nil Duel::PostgreSQL.worker_limit
+    end
+  end
+
+  # What a command prints (not to stderr), or nothing where it isn't there.
+  def test_command
+    ruby = RbConfig.ruby
+    out, err = capture_subprocess_io do
+      assert_equal "said", Duel::PostgreSQL.command([ruby, "-e", "warn 'muttered'; print 'said'"])
+    end
+
+    assert_equal ["", ""], [out, err], "nothing of stderr's"
+    assert_equal "", Duel::PostgreSQL.command(%w[no_such_program_anywhere])
   end
 
   # Statements' numbers, added up, and by measure: time in µs.

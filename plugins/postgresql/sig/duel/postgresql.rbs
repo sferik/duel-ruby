@@ -12,6 +12,10 @@ module Duel
     # It names the socket: the server listens on no port.
     PORT: Integer
 
+    # What a postgres logs where it can't make its System V shared memory
+    # segment.
+    NO_SEGMENT: String
+
     # The server's settings.
     SETTINGS: Hash[String, String]
 
@@ -28,6 +32,14 @@ module Duel
     self.@column_types: ::PG::TypeMapByColumn?
 
     def self.column_types: () -> ::PG::TypeMapByColumn
+
+    # The most workers whose servers can run at once, where there are few
+    # System V shared memory segments (macOS's 32): half of those not in
+    # use. nil elsewhere.
+    def self.worker_limit: () -> Integer?
+
+    # What +command+ printed, or nothing where it isn't there to run.
+    def self.command: (Array[String] command) -> String
 
     # Loads pg, once Duel has loaded the worker's version.
     def self.require_pg: () -> bool

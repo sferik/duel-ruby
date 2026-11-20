@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- On macOS, a comparison no longer runs more workers' servers at once
+  than there are System V shared memory segments for. Each postgres
+  takes one, and macOS allows 32 in all, so Duel's 12 workers of each
+  version, 24 servers, failed now and then with "could not create
+  shared memory segment: No space left on device" before measuring
+  anything (on a GitHub Actions macOS runner, say). The plugin tells
+  Duel (as its `worker_limit`, with Duel 0.3.1 or later) to run no
+  more of them at once than half of the segments not in use: 16 on a
+  machine with none in use, so 1 benchmark at a time of 8 workers of
+  each version. That's a margin, not a count: 24 servers fit, as a
+  rule, but the servers that start and stop beside them took the rest
+  once. Where a worker's server can't make its segment anyway, it fails
+  saying to run fewer workers (`--processes`, `DUEL_PROCESSES` or
+  `c.processes`, and `--jobs`), not only that postgres exited before it
+  was ready.
+
 ## [0.3.0] - 2026-11-20
 
 ### Changed
