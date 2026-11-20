@@ -232,6 +232,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A process benchmark whose Ruby process of its own ended while it ran
+  a command (killed, say) leaves that command running no longer: what's
+  left of the Ruby process's group is killed as it's stopped, where the
+  command went on, orphaned, for as long as it ran (for ever, for one
+  that hung).
 - The Perf workflow that `duel init --reusable` wrote granted
   `contents: read` unless it turned on a job that writes (marking a
   push passed, commenting on one, or the badge), but GitHub checks every

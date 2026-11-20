@@ -656,4 +656,39 @@ class SpawnTest < DuelTest
 
     assert_equal [43], killed
   end
+
+  # A child in a group of its own that ended by itself leaves nothing of
+  # its group running: what it started is killed (and none of a group
+  # that's gone, quietly).
+  def test_stopping_a_child_whose_group_outlives_it
+    kills = []
+    stub(Process, :kill, ->(signal, pid) { kills << [signal, pid] }) do
+      [[true, false], [false, false], [true, true]].each { |group, windows| Duel::Spawn::Child.new(42, Thread.new {}, group: group, windows: windows).stop(10) }
+    end
+
+    assert_equal [["KILL", -42]], kills, "its group's, but not without one, nor on Windows"
+    assert_nil stub(Process, :kill, ->(*) { raise Errno::ESRCH }) { Duel::Spawn::Child.new(42, Thread.new {}, group: true, windows: false).stop(10) }
+  end
+
+  # For real: a group's leader that started a process and exited.
+  def test_stopping_a_group_whose_leader_ended
+    skip "Windows kills no group" if windows?
+    child, input, output = Duel::Spawn::Directly.piped(env, ruby("puts Process.spawn(*ARGV); $stdout.flush", *RUBY_COMMAND, "-e", "sleep"), group: true)
+    orphan = Integer(output.gets)
+    child.waiter.join(10)
+    alive = lambda do |pid|
+      Process.kill(0, pid)
+      true
+    rescue Errno::ESRCH
+      false
+    end
+
+    assert alive.call(orphan), "what it started, running on without it"
+    child.stop(10)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+    sleep 0.05 while alive.call(orphan) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+
+    refute alive.call(orphan), "killed"
+    [input, output].each(&:close)
+  end
 end

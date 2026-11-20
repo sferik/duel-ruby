@@ -100,8 +100,20 @@ module Duel
         nil
       end
 
-      # Waits up to +seconds+ for it to end, then kills it (see #kill).
-      def stop(seconds) = (kill unless waiter.join(seconds))
+      # Waits up to +seconds+ for it to end, then kills it (see #kill). One
+      # in a group of its own that ended leaves none of its group running:
+      # what it started, orphaned, would go on (a command it ran when it
+      # was killed, say), so what's left of the group is killed. (Not on
+      # Windows, where a process that's ended has no tree left to find.)
+      def stop(seconds)
+        if waiter.join(seconds)
+          Process.kill("KILL", -@pid) if @group && !@windows
+        else
+          kill
+        end
+      rescue *GONE
+        nil
+      end
     end
 
     # Starts a process with Process.spawn, given its redirects and pipes.
