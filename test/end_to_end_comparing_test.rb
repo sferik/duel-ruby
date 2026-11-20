@@ -11,9 +11,10 @@ class EndToEndComparingTest < DuelTest
   def test_the_duel_command
     base = project(File.join(tmpdir, "base"))
     candidate = project(File.join(tmpdir, "candidate"))
-    # (Twice the work, four times under a JIT, whose timings on a shared
-    # machine swing too far to tell twice from noise every time.)
-    slower = project(File.join(tmpdir, "slower"), work: Duel::JIT_WARM.zero? ? 6000 : 12_000)
+    # (Twice the work, four times under a JIT or on Windows, whose timings
+    # on a shared machine swing too far to tell twice from noise every
+    # time.)
+    slower = project(File.join(tmpdir, "slower"), work: (Duel::JIT_WARM.zero? && !windows?) ? 6000 : 12_000)
     # (On a JIT's engine, 3 workers of each version, not the default 8:
     # TruffleRuby's grow to some 1.5 GB each as they warm up, and 16 of
     # them ran a CI runner out of memory.)
