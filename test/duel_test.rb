@@ -529,6 +529,11 @@ class ConfigTest < DuelTest
 
     assert_equal %w[duel/a_duel.rb duel/sample_duel.rb duel/sub/b_duel.rb].map { |f| File.join(root, f) },
       Duel::Config.new(root).benchmark_files, "files named *_duel.rb"
+    config = Duel::Config.new(root)
+    config.benchmarks = %w[duel/sub/*_duel.rb duel/**/*_duel.rb]
+
+    assert_equal %w[duel/sub/b_duel.rb duel/a_duel.rb duel/sample_duel.rb].map { |f| File.join(root, f) }, config.benchmark_files,
+      "a list's, in its order, each once"
   end
 end
 

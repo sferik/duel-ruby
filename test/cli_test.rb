@@ -407,6 +407,10 @@ class CLITest < DuelTest
     assert_equal [0, nil], [status, runner]
     assert_equal "duel: no release tag (v*) before HEAD to compare against\n", @out.string
     assert_equal tmpdir, run_against(ref: nil, unchanged: false, argv: ["--base", tmpdir])[3], "a directory needs none"
+    File.write(File.join(tmpdir, ".duel.rb"), %(Duel.configure { |c| c.release_tags = %w[release-* v*] }\n))
+    run_against(ref: nil, unchanged: false)
+
+    assert_includes @out.string, "duel: no release tag (release-*, v*) before HEAD to compare against\n", "each of a list"
   end
 
   def test_nothing_to_compare_when_nothing_changed

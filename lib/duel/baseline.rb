@@ -50,7 +50,8 @@ module Duel
     def release
       return @release if instance_variable_defined?(:@release)
 
-      @release = git("describe", "--tags", "--abbrev=0", "--match", @config.release_tags, "HEAD^", allow_failure: true)
+      matches = Config.globs(@config.release_tags).flat_map { |glob| ["--match", glob] }
+      @release = git("describe", "--tags", "--abbrev=0", *matches, "HEAD^", allow_failure: true)
     end
 
     # The last release, or where a pull request merged since then was
@@ -119,7 +120,7 @@ module Duel
     # wildcard), the configuration's file, and with each version on its
     # own Ruby, the version files at the root.
     def watched
-      measured = [benchmarks, config_file]
+      measured = [*benchmarks, config_file]
       measured.concat(version_files) if (@settings.ruby || @config.ruby) == :version_file
       (@config.watch + measured).uniq
     end
@@ -204,12 +205,13 @@ module Duel
 
     private
 
-    # The benchmarks' directory (see #watched), or for benchmarks at the
-    # root, their glob, as git matches one.
+    # Each of the benchmarks' globs' directory (see #watched), or for
+    # benchmarks at the root, its glob, as git matches one.
     def benchmarks
-      glob = @config.benchmarks
-      dir = glob.split("/").take_while { |part| !part.match?(/[*?\[{]/) }.join("/")
-      dir.empty? ? ":(glob)#{glob}" : dir
+      Config.globs(@config.benchmarks).map do |glob|
+        dir = glob.split("/").take_while { |part| !part.match?(/[*?\[{]/) }.join("/")
+        dir.empty? ? ":(glob)#{glob}" : dir
+      end
     end
 
     # The configuration's file, from the root (which is its directory).

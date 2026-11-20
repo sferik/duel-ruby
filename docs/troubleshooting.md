@@ -14,7 +14,8 @@ what a change must touch to be compared, set `c.watch`. See
 
 Against `--base last-release`, Duel also reports that there's nothing to
 compare against until you tag your first release. Releases are tagged
-`v*` by default. To match other tags, set `c.release_tags`.
+`v*` by default. To match other tags, set `c.release_tags`, to a glob or
+a list of them (`%w[v* my_gem-v*]`, for a gem that renamed its tags).
 
 ## Duel finds no main branch, or no commits
 

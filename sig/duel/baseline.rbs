@@ -73,8 +73,9 @@ module Duel
 
     private
 
-    # The benchmarks' directory, or for benchmarks at the root, their glob.
-    def benchmarks: () -> String
+    # Each of the benchmarks' globs' directory, or for benchmarks at the
+    # root, its glob.
+    def benchmarks: () -> Array[String]
 
     # The configuration's file, from the root.
     def config_file: () -> String

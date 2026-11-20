@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `c.release_tags` and `c.benchmarks` take a list of globs too:
+  `c.release_tags = %w[v* my_gem-v*]` for a gem that renamed its tags
+  (a tag that matches any of them is a release), and `c.benchmarks =
+  %w[perf/**/*_duel.rb test/perf/*_duel.rb]` for benchmarks in two
+  places (each glob's directory is watched). One glob works as before.
 - `Duel.find_program` finds a plugin's server program, as
   duel-postgresql, duel-mysql, duel-redis and duel-memcached now all
   do: a path (one with a `/` or a `\` in it, `~` expanded) as it is,

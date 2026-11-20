@@ -24,12 +24,12 @@ module Duel
     type push_base = :before | :last_passed
 
     @root: String
-    @benchmarks: String
+    @benchmarks: String | Array[String]
     @watch: Array[String]
     @library: library | :conventional
     @build: String | :conventional | nil
     @main_branch: String?
-    @release_tags: String
+    @release_tags: String | Array[String]
     @prepares: Hash[Symbol, Array[prepare]]
     @ruby: ruby
     @comment: comment
@@ -61,7 +61,7 @@ module Duel
     def cache: () -> String
 
     # A glob, from the root, of the files defining benchmarks.
-    attr_accessor benchmarks: String
+    attr_accessor benchmarks: String | Array[String]
 
     # Paths, from the root, of the code whose changes a comparison is
     # about (with what decides how it's measured).
@@ -78,7 +78,7 @@ module Duel
     attr_accessor main_branch: String?
 
     # The glob release tags match (for `--base last-release`).
-    attr_accessor release_tags: String
+    attr_accessor release_tags: String | Array[String]
 
     # The Ruby each version runs on: nil for the runner's own,
     # :version_file for the one its version file names, a path, or a block
@@ -287,6 +287,10 @@ module Duel
     # The files that define benchmarks, in order.
     # @api private
     def benchmark_files: () -> Array[String]
+
+    # A glob setting's globs: one, or a list of them.
+    # @api private
+    def self.globs: (String | Array[String] given) -> Array[String]
 
     private
 

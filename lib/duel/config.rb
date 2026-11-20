@@ -44,7 +44,10 @@ module Duel
     # @api private
     def cache = File.join(state, "cache")
 
-    # A glob, from the root, of the files defining benchmarks.
+    # A glob, from the root, of the files defining benchmarks, or a list
+    # of them:
+    #
+    #   c.benchmarks = %w[perf/**/*_duel.rb test/perf/**/*_duel.rb]
     attr_accessor :benchmarks
 
     # Paths, from the root, of the code whose changes a comparison is
@@ -71,7 +74,11 @@ module Duel
     # The branch a comparison defaults to (nil: the one origin/HEAD names).
     attr_accessor :main_branch
 
-    # The glob release tags match (for `--base last-release`).
+    # The glob release tags match (for `--base last-release`), or a list
+    # of them, any of which a tag may match (a gem that renamed its tags,
+    # say):
+    #
+    #   c.release_tags = %w[v* my_gem-v*]
     attr_accessor :release_tags
 
     # The Ruby each version runs on (`duel --ruby` overrides it). It's nil
@@ -571,7 +578,12 @@ module Duel
 
     # The files that define benchmarks, in order.
     # @api private
-    def benchmark_files = Dir[File.join(root, benchmarks)]
+    def benchmark_files = Config.globs(benchmarks).flat_map { |glob| Dir[File.join(root, glob)] }.uniq
+
+    # A glob setting's globs (c.benchmarks, c.release_tags): one, or a
+    # list of them.
+    # @api private
+    def self.globs(given) = given.instance_of?(String) ? [given] : given
 
     private
 

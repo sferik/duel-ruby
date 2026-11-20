@@ -9,12 +9,12 @@ runner and every worker load it:
 
 ```ruby
 Duel.configure do |c|
-  c.benchmarks = "perf/**/*_bench.rb"    # default: duel/**/*_duel.rb
+  c.benchmarks = "perf/**/*_bench.rb"    # or a list of globs (default: duel/**/*_duel.rb)
   c.watch = %w[lib ext]                  # the code a change must touch to be compared
   c.library = "my_gem"                   # required from each version (default: the gemspec's)
   c.build = "make"                       # for both versions (default: rake compile, with ext/)
   c.main_branch = "origin/trunk"
-  c.release_tags = "release-*"           # default: v*
+  c.release_tags = %w[v* release-*]      # a glob, or a list, any of which a tag matches (default: v*)
   c.ruby = :version_file                 # each version's own Ruby (default: the runner's)
   c.comment = :results                   # when CI comments on a pull request (default: :failures)
   c.fail_on = :pull_requests             # which runs a regression fails (default: :every_run)
@@ -43,7 +43,8 @@ nothing to compare, and Duel passes without running the benchmarks.
 watches what decides how your code is measured:
 
 - The benchmarks' directory: the part of `c.benchmarks` before its first
-  wildcard, `duel/` by default, with its helpers and fixtures.
+  wildcard (each glob's, for a list), `duel/` by default, with its
+  helpers and fixtures.
 - The configuration's file, `.duel.rb`.
 - With [`c.ruby = :version_file`](#run-each-version-on-its-own-ruby),
   the version files at your project's root (`.ruby-version`,

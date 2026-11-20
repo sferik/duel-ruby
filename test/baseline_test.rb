@@ -121,6 +121,9 @@ class BaselineTest < DuelTest
     @config.release_tags = "release-*"
 
     assert_nil baseline(base: "last-release").ref, "none"
+    @config.release_tags = %w[release-* v*]
+
+    assert_equal "v1.0", baseline(base: "last-release").ref, "matching any of a list"
   end
 
   # On a schedule, the last release, or the commit since then that merged
@@ -336,6 +339,9 @@ class BaselineTest < DuelTest
     File.write(File.join(@repo, ".ruby-version"), "")
 
     assert_equal %w[app duel :(glob)*_duel.rb .duel.rb .ruby-version mise.toml], baseline(ruby: :version_file).watched
+    @config.benchmarks = %w[perf/**/*_duel.rb test/perf/*_duel.rb]
+
+    assert_equal %w[app duel perf test/perf .duel.rb], baseline.watched, "each of a list's"
   end
 
   def test_root_checks_out_and_builds_the_commit_once
