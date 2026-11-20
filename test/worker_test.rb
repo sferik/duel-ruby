@@ -250,9 +250,9 @@ class WorkerTest < DuelTest
     collections = []
     collect = GC.method(:start)
     worker = stub(GC, :start, ->(**options) { (collections << options) && collect.call(**options) }) do
-      Thread.new { Duel::Worker.main(File.join(root, "..", "version"), root, control) }.tap { server = server.accept }
+      Thread.new { Duel::Worker.main(File.join(root, "..", "version"), root, control) }.tap { |thread| server = ready(server, thread).accept }
     end
-    hello = Duel::Message.read(server)
+    hello = Duel::Message.read(ready(server, worker))
 
     assert_equal ["work"], hello.fetch("benchmarks").map { |b| b.fetch("name") }
     Duel::Message.write(server, {"op" => "setup", "name" => "work"})
@@ -286,8 +286,8 @@ class WorkerTest < DuelTest
     $LOADED_FEATURES.push(*early)
     server, control = Duel::Control.listen(File.join(short_tmpdir, "c.sock"), unix: Duel::Control::UNIX)
     worker = Thread.new { Duel::Worker.main(base, candidate, control) }
-    socket = server.accept
-    hello = Duel::Message.read(socket)
+    socket = ready(server, worker).accept
+    hello = Duel::Message.read(ready(socket, worker))
     socket.close
     worker.join(5)
 
@@ -323,9 +323,9 @@ class WorkerTest < DuelTest
     ConfigProbe.ended = []
     server, control = Duel::Control.listen(File.join(short_tmpdir, "c.sock"), unix: Duel::Control::UNIX)
     worker = Thread.new { Duel::Worker.main(root, root, control, File.join(root, ".duel.rb")) }
-    socket = server.accept
+    socket = ready(server, worker).accept
 
-    hello = Duel::Message.read(socket)
+    hello = Duel::Message.read(ready(socket, worker))
 
     assert_equal ["configured"], hello.fetch("benchmarks").map { |b| b.fetch("name") }
     assert_equal ["probe_metric", 4], hello.fetch("metrics").first.values_at("name", "per_iteration"), "the config's metrics, and its changes"
@@ -346,6 +346,26 @@ class WorkerTest < DuelTest
     ConfigProbe.loaded = nil
     ConfigProbe.worker = nil
     ConfigProbe.stopped = nil
+  end
+
+  private
+
+  # +io+ (the control socket's listener, or the connection), once the
+  # worker running Worker.main on its +thread+ (in this process) has
+  # connected, or said something. A worker process that fails before it
+  # does exits, closing its end, but a thread leaves it open: so the
+  # thread's exception, raised (Thread#join raises it, once it's ended),
+  # or a failure after READY seconds, not an accept or a read that waits
+  # for ever.
+  READY = 30
+
+  def ready(io, thread)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + READY
+    until io.wait_readable(0.1)
+      thread.join(0)
+      flunk "nothing from the worker within #{READY}s" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    end
+    io
   end
 end
 
