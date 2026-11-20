@@ -597,7 +597,7 @@ class LaneTest < DuelTest
   def test_sized_again_when_cpu_falls_below_its_floor
     with_fake_workers do |workers|
       # (CPU time last, as in a worker: what's first is judged anyway.)
-      workers.metrics = [FakeWorkers::CPU.merge("name" => "other", "floor" => 0, "sizes_samples" => false), FakeWorkers::CPU]
+      workers.metrics = [FakeWorkers::CPU.merge("name" => "other", "floor" => 0, "size_samples" => false), FakeWorkers::CPU]
       samples = 0
       lock = Mutex.new
       workers.benchmark("b") do |_, n, _|
@@ -614,7 +614,7 @@ class LaneTest < DuelTest
   # A timed metric that doesn't size samples is left out of sizing them.
   def test_a_metric_that_doesnt_size_samples
     with_fake_workers do |workers|
-      workers.metrics = [FakeWorkers::CPU, FakeWorkers::CPU.merge("name" => "noisy", "unit_ns" => 1000, "sizes_samples" => false),
+      workers.metrics = [FakeWorkers::CPU, FakeWorkers::CPU.merge("name" => "noisy", "unit_ns" => 1000, "size_samples" => false),
         FakeWorkers::CPU.merge("name" => "absent", "unit_ns" => 1000)]
       workers.benchmark("b") { |_, n, _| {"timed" => {"cpu" => n * 100_000, "noisy" => 2000}, "counted" => {}, "heap" => 0} }
 

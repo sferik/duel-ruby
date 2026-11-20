@@ -152,7 +152,7 @@ module Duel
     METRICS = {
       "postgresql_queries" => {kind: :counted, unit: %w[query queries], calibrate: false},
       "postgresql_rows" => {kind: :counted, unit: %w[row rows], calibrate: false},
-      "postgresql_blocks" => {kind: :ratio, unit: %w[block blocks], floor: 100, sizes_samples: false},
+      "postgresql_blocks" => {kind: :ratio, unit: %w[block blocks], floor: 100, size_samples: false},
       "postgresql_time" => {kind: :ratio, unit: "µs", floor: 300, across: false}
     }
 

@@ -33,7 +33,7 @@ class RetainedTest < PluginTest
     assert_equal [Duel::Retained::Objects], config.metrics
 
     assert_equal({"retained_objects" => {kind: :counted, unit: "object", plural: "objects", floor: 0, cpu_floor: 0, limit: nil, unit_ns: 1,
-                                         sizes_samples: true, across: true, per_iteration: 0.5, per_sample: 16}},
+                                         size_samples: true, across: true, per_iteration: 0.5, per_sample: 16}},
       config.metrics.first.settings)
     assert_equal RUBY_ENGINE == "ruby", config.metrics.first.available?
   end

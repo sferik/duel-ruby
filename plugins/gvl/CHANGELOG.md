@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `gvl_wait`'s settings say `size_samples: false`, as Duel 0.3.0 names
+  `sizes_samples:`.
 - `gvl_wait` measures the benchmarks judged on their timings alone,
   `judge: :timed`, which Duel's `only: :timing` became.
 

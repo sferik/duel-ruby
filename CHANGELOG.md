@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A ratio metric's `sizes_samples: false` is `size_samples: false`
+  (don't size samples by it), as `calibrate: false` and `skip: true`
+  say what to do.
 - A counted metric's slack is `per_iteration:` (how much more an
   iteration still isn't more) and `per_sample:` (how much more a
   sample, whatever its length), in place of `tolerance:` and

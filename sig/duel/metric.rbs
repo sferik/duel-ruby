@@ -17,7 +17,7 @@ module Duel
     # A measure's settings, as declared: any left out as by default. (+calibrate+:
     # running totals' only, see Snapshot, and +skip+: Config#measure's only.)
     type settings = { ?kind: kind, ?unit: unit?, ?floor: value, ?cpu_floor: value, ?limit: Float?, ?unit_ns: value,
-                      ?sizes_samples: bool, ?across: bool, ?per_iteration: value, ?per_sample: value, ?calibrate: bool, ?skip: bool }
+                      ?size_samples: bool, ?across: bool, ?per_iteration: value, ?per_sample: value, ?calibrate: bool, ?skip: bool }
 
     # What #stop_sample returns: the measurement, a Hash of them (by name), or
     # nil (none this time).
@@ -26,11 +26,11 @@ module Duel
     # A measure as the runner learns it.
     # @api private
     type spec = { "name" => String, "kind" => String, "unit" => String?, "plural" => String?, "floor" => value, "cpu_floor" => value, "limit" => Float?,
-                  "unit_ns" => value, "sizes_samples" => bool, "across" => bool, "per_iteration" => value, "per_sample" => value }
+                  "unit_ns" => value, "size_samples" => bool, "across" => bool, "per_iteration" => value, "per_sample" => value }
 
     # A measure's settings, every one, resolved (see Metric.resolve).
     type resolved = { kind: kind, unit: String?, plural: String?, floor: value, cpu_floor: value, limit: Float?, unit_ns: value,
-                      sizes_samples: bool, across: bool, per_iteration: value, per_sample: value, ?calibrate: bool }
+                      size_samples: bool, across: bool, per_iteration: value, per_sample: value, ?calibrate: bool }
 
     # No measure's settings changed.
     # @api private
@@ -111,7 +111,7 @@ module Duel
                | (:unit | :plural key, ?String measure) -> String?
                | (:floor | :cpu_floor | :unit_ns | :per_iteration | :per_sample key, ?String measure) -> value
                | (:limit key, ?String measure) -> Float?
-               | (:sizes_samples | :across key, ?String measure) -> bool
+               | (:size_samples | :across key, ?String measure) -> bool
 
     # Whether +more+ (what +measure+'s count grew by, over +n+ iterations)
     # is still within what its per_iteration and per_sample allow.

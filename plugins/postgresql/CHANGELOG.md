@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `postgresql_blocks`' settings say `size_samples: false`, as Duel 0.3.0
+  names `sizes_samples:`.
 - Its measures are named after the plugin, as every other Duel
   plugin's are (`mysql_*`, `redis_*`): `postgresql_queries`,
   `postgresql_rows`, `postgresql_blocks` and `postgresql_time`, in

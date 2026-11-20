@@ -27,7 +27,7 @@ module Duel
   #   (nil: the run's, 1.02 by default).
   # - +unit_ns+: for a ratio metric, nanoseconds per unit, for comparing
   #   it with CPU time when sizing samples.
-  # - +sizes_samples+: for a ratio metric, whether samples are made long
+  # - +size_samples+: for a ratio metric, whether samples are made long
   #   enough for it to settle, as they are for CPU time (false for one
   #   that's noisy whatever the length, or not in step with the work).
   # - +across+: for a ratio metric, whether it's judged across the board
@@ -65,7 +65,7 @@ module Duel
     # Every setting there is (see Metric), as #settings resolves them, and
     # running totals' calibrate and Config#measure's skip.
     # @api private
-    SETTINGS = %i[kind unit floor cpu_floor limit unit_ns sizes_samples across per_iteration per_sample calibrate skip].freeze
+    SETTINGS = %i[kind unit floor cpu_floor limit unit_ns size_samples across per_iteration per_sample calibrate skip].freeze
 
     # A unit that's a word (or words), which needs its plural given: one
     # that isn't (a symbol: "B", "KB", "op/s") is the same for any number.
@@ -148,7 +148,7 @@ module Duel
         {kind: given.fetch(:kind, :counted), unit: unit, plural: plural || unit, floor: given.fetch(:floor, 0),
          cpu_floor: given.fetch(:cpu_floor, 0),
          limit: given.fetch(:limit, nil), unit_ns: given.fetch(:unit_ns) { TIME_UNITS.fetch(unit, 1) },
-         sizes_samples: given.fetch(:sizes_samples, true), across: given.fetch(:across, true),
+         size_samples: given.fetch(:size_samples, true), across: given.fetch(:across, true),
          per_iteration: given.fetch(:per_iteration, 0), per_sample: given.fetch(:per_sample, 0)}
       end
 
@@ -535,7 +535,7 @@ module Duel
     # whole process's, if it can. It misses what instructions don't show,
     # like cache misses: CPU time is still judged.
     class Instructions < Metric
-      def self.measures = {"instructions" => {kind: :ratio, floor: 100_000, sizes_samples: false, limit: 1.01}}
+      def self.measures = {"instructions" => {kind: :ratio, floor: 100_000, size_samples: false, limit: 1.01}}
 
       def self.available? = !counter.nil?
 

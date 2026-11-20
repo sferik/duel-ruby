@@ -16,7 +16,7 @@ class GVLTest < PluginTest
     assert_equal 1, config.in_workers.size
     assert_equal [Duel::GVL::Wait], config.metrics
     assert_equal({"gvl_wait" => {kind: :ratio, unit: "ns", plural: "ns", floor: 0, cpu_floor: 0.1, limit: 1.5, unit_ns: 1,
-                                 sizes_samples: false, across: false, per_iteration: 0, per_sample: 0}},
+                                 size_samples: false, across: false, per_iteration: 0, per_sample: 0}},
       Duel::GVL::Wait.settings)
   end
 

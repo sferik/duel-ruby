@@ -75,7 +75,7 @@ module Duel
 
       LIMIT = 1.5
 
-      def self.measures = {"gvl_wait" => {kind: :ratio, unit: "ns", cpu_floor: CPU_FLOOR, limit: LIMIT, sizes_samples: false, across: false}}
+      def self.measures = {"gvl_wait" => {kind: :ratio, unit: "ns", cpu_floor: CPU_FLOOR, limit: LIMIT, size_samples: false, across: false}}
 
       def self.available? = GVL.available?
 

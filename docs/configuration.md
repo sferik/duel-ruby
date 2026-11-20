@@ -523,7 +523,7 @@ Every setting is optional:
 | `cpu_floor:` | Ratio | The least share of the sample's CPU time that the metric must be (in time, by `unit_ns`), on either version, to be judged. For example, `0.05` for 5%. |
 | `limit:` | Ratio | The ratio above which the metric is slower. The default is the run's limit. |
 | `unit_ns:` | Ratio | Nanoseconds per unit, to size samples by the metric. A time `unit:` sets it. |
-| `sizes_samples:` | Ratio | `false` for a metric that's too noisy to size samples by. |
+| `size_samples:` | Ratio | `false` for a metric that's too noisy to size samples by. |
 | `across:` | Ratio | `false` for a metric that's too noisy to judge across the board, where the margin is a quarter of its limit. |
 | `per_iteration:` | Counted | How much more per iteration still doesn't count as more. |
 | `per_sample:` | Counted | How much more per sample still doesn't count as more, for noise that doesn't grow with the iterations. |

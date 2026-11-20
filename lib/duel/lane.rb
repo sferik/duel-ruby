@@ -584,7 +584,7 @@ module Duel
     # a row: a cold run may look like enough), and that allocate no more
     # than HEAP_CAP a run.
     def calibrate(name, target, n)
-      units = metrics.select { |spec| spec.fetch("sizes_samples") }.to_h { |spec| [spec.fetch("name"), spec.fetch("unit_ns")] }
+      units = metrics.select { |spec| spec.fetch("size_samples") }.to_h { |spec| [spec.fetch("name"), spec.fetch("unit_ns")] }
       reached = 0
       until reached == 2
         sample = pair(name, n, 0, runs: 3).last

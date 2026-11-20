@@ -341,7 +341,7 @@ class RunnerTest < DuelTest
   end
 
   INSTRUCTIONS = FakeWorkers::CPU.merge("name" => "instructions", "unit" => nil, "plural" => nil, "floor" => 100_000, "limit" => 1.01,
-    "sizes_samples" => false)
+    "size_samples" => false)
 
   # 3% slower in CPU time, and 2% more instructions, but in each
   # measurement one of them is too noisy to settle: CPU time in odd ones,
