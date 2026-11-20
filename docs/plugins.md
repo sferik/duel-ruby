@@ -423,7 +423,7 @@ A plugin's tests find what the plugin added in `config.metrics`, the
 metrics in order. Each metric has its `measures` and their `settings`,
 with every setting filled in. For example,
 `config.metrics.first.settings.fetch("redis_cpu")` is
-`{kind: :ratio, unit: "µs", floor: 300, ...}`.
+`{kind: :timed, unit: "µs", floor: 300, ...}`.
 
 `compare` takes `duel`'s options as keywords: `processes:` (two unless
 given, too few for an interval over workers, so each timing is judged

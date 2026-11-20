@@ -4,9 +4,9 @@ module Duel
   # settings, in +measures+, and say whether they can measure here with
   # +available?+.
   class Metric
-    # :ratio (noisy: judged on paired ratios with a confidence interval)
+    # :timed (noisy: judged on paired ratios with a confidence interval)
     # or :counted (exact).
-    type kind = :ratio | :counted
+    type kind = :timed | :counted
 
     # What a measure measures.
     type value = Integer | Float

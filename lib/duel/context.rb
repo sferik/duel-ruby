@@ -355,7 +355,7 @@ module Duel
       @benchmark = benchmark
       @n = n
       @counting = counting
-      @metrics = metrics.select { |m| m.kinds.value?(:ratio) || counting }
+      @metrics = metrics.select { |m| m.kinds.value?(:timed) || counting }
       # (Those paused around each iteration, inside around_iteration hooks:
       # not those costly to read. Without such hooks, or such a metric, the
       # same Array: nothing more is allocated, or worked out for every
@@ -452,9 +452,9 @@ module Duel
       return if measured.nil?
 
       kind = kinds.fetch(name)
-      return unless kind == :ratio || @counting
+      return unless kind == :timed || @counting
 
-      totals = (kind == :ratio) ? @timed : @counted
+      totals = (kind == :timed) ? @timed : @counted
       totals[name] = totals.fetch(name, 0) + measured
     end
   end

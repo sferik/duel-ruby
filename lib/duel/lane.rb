@@ -20,7 +20,7 @@ module Duel
   # (Config#prepare(:worker)).
   # @api private
   class Lane
-    # CPU time (or a plugin's ratio metric's equivalent) a run aims for:
+    # CPU time (or a plugin's timed metric's equivalent) a run aims for:
     # long enough that a clock's resolution is lost in it. A sample is the
     # fastest of RUNS runs.
     TARGET_NS = 1_000_000
@@ -270,7 +270,7 @@ module Duel
       in_parallel(@bases.drop(1) + @candidates.drop(1)) { |worker| worker.request("setup", name) }
     end
 
-    # What's measured: ratio metrics' measures are in a sample's "timed",
+    # What's measured: timed metrics' measures are in a sample's "timed",
     # counted ones' in its "counted".
     def metrics = @candidates.first.metrics
 
@@ -424,7 +424,7 @@ module Duel
       end
     end
 
-    # Takes pairs until every ratio metric worth judging (measured on
+    # Takes pairs until every timed metric worth judging (measured on
     # both versions in the warm-up, and above its floors on either: one
     # that rises from next to nothing is judged too) is decided, or
     # MAX_PAIRS run out: each decided at the end of a round of STEP pairs,
@@ -482,7 +482,7 @@ module Duel
 
     # Takes rounds of pairs, each a sample from every worker of each
     # version (the baseline's in order, paired with the candidate's in
-    # turn: each round pairs each with another), until every ratio metric
+    # turn: each round pairs each with another), until every timed metric
     # judged (see #judge) is decided, from the second round on, or
     # #rounds run out. Each worker's median is a sample, and the interval
     # is over workers (Stats.shift_interval): where a process's luck

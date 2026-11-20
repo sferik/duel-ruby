@@ -83,9 +83,9 @@ module Duel
     # noisy, so judged only above 300µs, against a limit of its own, not
     # across the board (where the margin is a quarter of that), and only
     # when asked for. (A metric of its own: read around every sample, as a
-    # ratio one is, where the counted ones are read only in counting
+    # timed one is, where the counted ones are read only in counting
     # samples.)
-    CPU = {kind: :ratio, unit: "µs", floor: 300, limit: 1.05, across: false}
+    CPU = {kind: :timed, unit: "µs", floor: 300, limit: 1.05, across: false}
 
     # The statistics each is the sum of.
     OPERATIONS = %w[cmd_get cmd_set cmd_touch cmd_flush delete_hits delete_misses incr_hits incr_misses decr_hits decr_misses].freeze

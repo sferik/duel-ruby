@@ -151,7 +151,7 @@ module Duel
       "mysql_queries" => {kind: :counted, unit: %w[query queries], calibrate: false},
       "mysql_rows" => {kind: :counted, unit: %w[row rows], calibrate: false},
       "mysql_rows_examined" => {kind: :counted, unit: %w[row rows], calibrate: false},
-      "mysql_time" => {kind: :ratio, unit: "µs", floor: 300, across: false}
+      "mysql_time" => {kind: :timed, unit: "µs", floor: 300, across: false}
     }
 
     # What the worker's server has done so far, but for this connection

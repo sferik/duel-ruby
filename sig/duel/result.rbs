@@ -2,7 +2,7 @@ module Duel
   # What one comparison of a benchmark found (Testing::Comparison#results
   # has them).
   class Result
-    # A ratio metric's verdict, and each version's (the median of its
+    # A timed metric's verdict, and each version's (the median of its
     # samples).
     type timed = { "median" => Float, "limit" => Float, "across" => bool, "unit" => String?, "plural" => String?, "interval" => Array[Float]?, "pairs" => Integer,
                    ?"processes" => Integer, "verdict" => String, "baseline" => Metric::value, "candidate" => Metric::value }
@@ -53,7 +53,7 @@ module Duel
     # The benchmark's name.
     attr_reader name: String
 
-    # Each ratio measure's verdict and medians, by name.
+    # Each timed measure's verdict and medians, by name.
     attr_reader timed: Hash[String, timed]
 
     # Each counted measure's fewest on each version, by name.

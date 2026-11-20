@@ -9,7 +9,7 @@ module Duel
   # judged, in +measures+: {"name" => settings}, each of these, any left
   # out as by default:
   #
-  # - +kind+: :ratio (noisy: judged on paired ratios with a confidence
+  # - +kind+: :timed (noisy: judged on paired ratios with a confidence
   #   interval) or :counted (exact: any increase beyond what's allowed is
   #   a regression, counted in separate samples).
   # - +unit+: what it's in, as reports show it: a time unit ("ns", "µs",
@@ -17,20 +17,20 @@ module Duel
   #   shown after the number, or nil for none. A word comes with its
   #   plural, [singular, plural] (%w[row rows]: 1 row, 2 rows), and a symbol ("B",
   #   "KB") is one String, the same for any number.
-  # - +floor+: for a ratio metric, the least a sample must measure (in
+  # - +floor+: for a timed metric, the least a sample must measure (in
   #   its own unit) on either version for it to be judged. Below it, it's
   #   mostly noise.
-  # - +cpu_floor+: for a ratio metric measured in time (see +unit_ns+),
+  # - +cpu_floor+: for a timed metric measured in time (see +unit_ns+),
   #   the least share of the sample's CPU time it must be on either
   #   version to be judged (0.05: 5%): a floor that scales with the work.
-  # - +limit+: for a ratio metric, its own ratio above which it's slower
+  # - +limit+: for a timed metric, its own ratio above which it's slower
   #   (nil: the run's, 1.02 by default).
-  # - +unit_ns+: for a ratio metric, nanoseconds per unit, for comparing
+  # - +unit_ns+: for a timed metric, nanoseconds per unit, for comparing
   #   it with CPU time when sizing samples.
-  # - +size_samples+: for a ratio metric, whether samples are made long
+  # - +size_samples+: for a timed metric, whether samples are made long
   #   enough for it to settle, as they are for CPU time (false for one
   #   that's noisy whatever the length, or not in step with the work).
-  # - +across+: for a ratio metric, whether it's judged across the board
+  # - +across+: for a timed metric, whether it's judged across the board
   #   too: false for one too noisy for so small a margin.
   # - +per_iteration+: for a counted metric, the increase per iteration
   #   that still isn't one (0: one more is).
@@ -111,8 +111,8 @@ module Duel
       def check(name, settings)
         unknown = settings.keys - SETTINGS
         raise Error, "#{name}: no setting #{unknown.join(", ")} (settings: #{SETTINGS.join(", ")})" unless unknown.empty?
-        unless %i[ratio counted].include?(settings.fetch(:kind, :counted))
-          raise Error, "#{name}: kind is :ratio or :counted, not #{settings.fetch(:kind).inspect}"
+        unless %i[timed counted].include?(settings.fetch(:kind, :counted))
+          raise Error, "#{name}: kind is :timed or :counted, not #{settings.fetch(:kind).inspect}"
         end
         unit = settings.fetch(:unit, nil)
         if unit.instance_of?(String) && unit.match?(WORD) && !TIME_UNITS.key?(unit)
@@ -250,7 +250,7 @@ module Duel
   # twice in a row, CALIBRATION times, and the least each counted total
   # grew by is taken from every sample's: unless a measure says
   # calibrate: false (its reading costs nothing, or a varying amount its
-  # block takes away itself). A ratio one is left alone: its reading's
+  # block takes away itself). A timed one is left alone: its reading's
   # cost isn't steady enough to take away.
   #
   # Config#metric makes one, and returns it (to take .open, .close,
@@ -514,7 +514,7 @@ module Duel
     # processes on the machine don't inflate. Always measured last, inside
     # every other metric.
     class CPU < Metric
-      def self.measures = {"cpu" => {kind: :ratio, unit: "ns", floor: 300_000}}
+      def self.measures = {"cpu" => {kind: :timed, unit: "ns", floor: 300_000}}
 
       def start_sample(sample)
         @clock = sample.benchmark.cpu
@@ -535,7 +535,7 @@ module Duel
     # whole process's, if it can. It misses what instructions don't show,
     # like cache misses: CPU time is still judged.
     class Instructions < Metric
-      def self.measures = {"instructions" => {kind: :ratio, floor: 100_000, size_samples: false, limit: 1.01}}
+      def self.measures = {"instructions" => {kind: :timed, floor: 100_000, size_samples: false, limit: 1.01}}
 
       def self.available? = !counter.nil?
 

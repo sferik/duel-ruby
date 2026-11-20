@@ -496,14 +496,14 @@ class ConfigTest < DuelTest
   def test_metrics_of_running_totals
     config = Duel::Config.new
     config.metric("queries") { 1 }
-    config.metric("wait", kind: :ratio, floor: 5) { 2 }
-    config.metric("a" => {kind: :ratio}, "b" => {}) { {"a" => 3, "b" => 4} }
+    config.metric("wait", kind: :timed, floor: 5) { 2 }
+    config.metric("a" => {kind: :timed}, "b" => {}) { {"a" => 3, "b" => 4} }
     one, timed, several = config.metrics
 
     assert_equal [Duel::Snapshot] * 3, config.metrics.map(&:superclass)
     assert_equal({"queries" => {}}, one.measures)
-    assert_equal({"wait" => {kind: :ratio, floor: 5}}, timed.measures)
-    assert_equal({"a" => {kind: :ratio}, "b" => {}}, several.measures)
+    assert_equal({"wait" => {kind: :timed, floor: 5}}, timed.measures)
+    assert_equal({"a" => {kind: :timed}, "b" => {}}, several.measures)
     assert_equal [{"queries" => 1}, {"wait" => 2}, {"a" => 3, "b" => 4}], config.metrics.map { |metric| metric.read.totals }
     config.metric({"c" => {}}) { 5 }
 

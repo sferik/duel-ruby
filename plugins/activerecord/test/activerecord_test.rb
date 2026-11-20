@@ -116,7 +116,7 @@ class ActiveRecordTest < PluginTest
     took = Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond) - started
 
     assert_equal "active_record_query_time", name
-    assert_equal({kind: :ratio, unit: "ns", plural: "ns", floor: 300_000, cpu_floor: 0, limit: 1.05, unit_ns: 1,
+    assert_equal({kind: :timed, unit: "ns", plural: "ns", floor: 300_000, cpu_floor: 0, limit: 1.05, unit_ns: 1,
                   size_samples: true, across: true, per_iteration: 0, per_sample: 0, calibrate: true}, settings)
     assert_equal 1, measured.fetch("active_record_queries")
     assert_operator measured.fetch("active_record_query_time"), :>, 0, "BEGIN and COMMIT too"

@@ -72,7 +72,7 @@ module Duel
     # board, where the margin is too small for it, as duel-mysql's and
     # duel-postgresql's time are.
     METRICS = {
-      "redis_cpu" => {kind: :ratio, unit: "µs", floor: 300, across: false},
+      "redis_cpu" => {kind: :timed, unit: "µs", floor: 300, across: false},
       "redis_commands" => {kind: :counted, unit: %w[command commands]},
       "redis_round_trips" => {kind: :counted, unit: ["round trip", "round trips"]}
     }

@@ -201,7 +201,7 @@ class WorkerTest < DuelTest
   def test_a_sample_reports_each_timed_metrics_least
     times = [5, 3, 9, 8]
     fake = Class.new(Duel::Metric) do
-      def self.measures = {"fake" => {kind: :ratio}}
+      def self.measures = {"fake" => {kind: :timed}}
 
       define_method(:stop_sample) { times.shift }
     end
@@ -408,7 +408,7 @@ class WorkerHooksTest < DuelTest
 
   # A metric that measures 3 every stretch.
   class Three < Duel::Metric
-    def self.measures = {"three" => {kind: :ratio}}
+    def self.measures = {"three" => {kind: :timed}}
 
     def stop_sample = 3
   end

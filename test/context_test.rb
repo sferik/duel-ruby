@@ -228,7 +228,7 @@ class ContextTest < DuelTest
 
   # A metric reporting several measures at once, and some not at all.
   class Several < Duel::Metric
-    def self.measures = {"none" => {kind: :counted}, "c" => {kind: :counted}, "t" => {kind: :ratio}}
+    def self.measures = {"none" => {kind: :counted}, "c" => {kind: :counted}, "t" => {kind: :timed}}
 
     def stop_sample = {"none" => nil, "c" => 2, "t" => 1}
   end
@@ -257,7 +257,7 @@ class ContextTest < DuelTest
   # each is filed by its kind as the worker's settings have it.
   def test_one_measurement_of_a_metric_of_several
     one = Class.new(Duel::Metric) do
-      def self.measures = {"p" => {}, "q" => {kind: :ratio}}
+      def self.measures = {"p" => {}, "q" => {kind: :timed}}
 
       def stop_sample = 4
     end
@@ -267,7 +267,7 @@ class ContextTest < DuelTest
 
     assert_equal [{"p" => 4}, {}], [sample.counted, sample.timed]
     partial = Partial.new
-    partial.settings = Partial.settings({"p" => {kind: :ratio}})
+    partial.settings = Partial.settings({"p" => {kind: :timed}})
     sample = Duel::Sample.new(harness.definition, [partial], n: 1, counting: false)
     harness.run(1, sample)
 

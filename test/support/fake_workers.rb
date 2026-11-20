@@ -4,7 +4,7 @@
 # each answers a sample with measures worked out from its version and the
 # iterations, so every ratio is exact, and every request is logged.
 class FakeWorkers
-  CPU = {"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0,
+  CPU = {"name" => "cpu", "kind" => "timed", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0,
          "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}.freeze
   ALLOCATIONS = {"name" => "allocations", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil,
                  "per_iteration" => 0.5, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}.freeze

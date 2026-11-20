@@ -171,7 +171,7 @@ class MySQLTest < PluginTest
     end
 
     assert_equal [["mysql_queries", :counted, "query", "queries", 1, true], ["mysql_rows", :counted, "row", "rows", 1, true],
-      ["mysql_rows_examined", :counted, "row", "rows", 1, true], ["mysql_time", :ratio, "µs", "µs", 1000, false]],
+      ["mysql_rows_examined", :counted, "row", "rows", 1, true], ["mysql_time", :timed, "µs", "µs", 1000, false]],
       config.metrics.first.settings.map { |name, s| [name, *s.values_at(:kind, :unit, :plural, :unit_ns, :across)] }
     assert_equal 4, measured.fetch("mysql_queries"), "the readings' own left out"
     assert_equal 2 + 10, measured.fetch("mysql_rows"), "ids 1 and 2, and the 10 updated"

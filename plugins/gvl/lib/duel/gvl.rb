@@ -12,7 +12,7 @@ module Duel
   #   # .duel.rb
   #   Duel.configure { |c| c.use :gvl }
   #
-  # gvl_wait (a ratio metric, in nanoseconds) is measured for benchmarks with
+  # gvl_wait (a timed metric, in nanoseconds) is measured for benchmarks with
   # threads of their own (judge: :timed), and left out of the rest, whose
   # one thread has nothing to wait for. It needs CRuby and the gem's C
   # extension (Duel::GVL::Hook); elsewhere it's left out.
@@ -75,7 +75,7 @@ module Duel
 
       LIMIT = 1.5
 
-      def self.measures = {"gvl_wait" => {kind: :ratio, unit: "ns", cpu_floor: CPU_FLOOR, limit: LIMIT, size_samples: false, across: false}}
+      def self.measures = {"gvl_wait" => {kind: :timed, unit: "ns", cpu_floor: CPU_FLOOR, limit: LIMIT, size_samples: false, across: false}}
 
       def self.available? = GVL.available?
 

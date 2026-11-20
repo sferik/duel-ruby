@@ -152,8 +152,8 @@ module Duel
     METRICS = {
       "postgresql_queries" => {kind: :counted, unit: %w[query queries], calibrate: false},
       "postgresql_rows" => {kind: :counted, unit: %w[row rows], calibrate: false},
-      "postgresql_blocks" => {kind: :ratio, unit: %w[block blocks], floor: 100, size_samples: false},
-      "postgresql_time" => {kind: :ratio, unit: "µs", floor: 300, across: false}
+      "postgresql_blocks" => {kind: :timed, unit: %w[block blocks], floor: 100, size_samples: false},
+      "postgresql_time" => {kind: :timed, unit: "µs", floor: 300, across: false}
     }
 
     # What the worker's server has done so far, by statement (query id),

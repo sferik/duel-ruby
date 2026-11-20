@@ -507,7 +507,7 @@ module Duel
     # name or several by their settings:
     #
     #   c.metric("sql_queries") { queries }
-    #   c.metric("redis_cpu" => {kind: :ratio, unit: "µs"}, "redis_commands" => {kind: :counted}) do
+    #   c.metric("redis_cpu" => {kind: :timed, unit: "µs"}, "redis_commands" => {kind: :counted}) do
     #     {"redis_cpu" => usec, "redis_commands" => calls}
     #   end
     #

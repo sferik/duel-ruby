@@ -383,7 +383,7 @@ class PostgreSQLTest < PluginTest
     end
 
     assert_equal [["postgresql_queries", :counted, "query", "queries", 1, true], ["postgresql_rows", :counted, "row", "rows", 1, true],
-      ["postgresql_blocks", :ratio, "block", "blocks", 1, true], ["postgresql_time", :ratio, "µs", "µs", 1000, false]],
+      ["postgresql_blocks", :timed, "block", "blocks", 1, true], ["postgresql_time", :timed, "µs", "µs", 1000, false]],
       config.metrics.first.settings.map { |name, s| [name, *s.values_at(:kind, :unit, :plural, :unit_ns, :across)] }
     assert_equal 4, measured.fetch("postgresql_queries"), "the readings' own left out"
     assert_equal 2 + 10, measured.fetch("postgresql_rows"), "ids 1 and 2, and the 10 updated"

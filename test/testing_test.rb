@@ -148,7 +148,7 @@ class TestingTest < DuelTest
     log = []
     config.in_worker { |w| (log << :started) && w.at_stop { log << :stopped } }
     config.metric("rows") { total }
-    config.metric("time", kind: :ratio) { 10 }
+    config.metric("time", kind: :timed) { 10 }
     measured = Duel::Testing.measure(config) { total += 3 }
 
     assert_equal({"rows" => 3, "time" => 0}, measured)

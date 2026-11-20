@@ -91,7 +91,7 @@ class EndToEndHooksTest < DuelTest
     File.write(File.join(candidate, "duel", "tiny_duel.rb"), 'duel("tiny") { 1 }')
     File.write(File.join(candidate, ".duel.rb"), <<~RUBY)
       class Steady < Duel::Metric
-        def self.measures = {"steady" => {kind: :ratio, unit_ns: 1000}}
+        def self.measures = {"steady" => {kind: :timed, unit_ns: 1000}}
 
         def stop_sample = 2000
       end

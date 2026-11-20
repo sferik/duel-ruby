@@ -11,14 +11,14 @@ class MetricTest < DuelTest
   class QueryCount < Duel::Metric; end
 
   class Wall < Duel::Metric
-    def self.measures = {"wall" => {kind: :ratio, floor: 50, unit_ns: 1000, limit: 1.05}}
+    def self.measures = {"wall" => {kind: :timed, floor: 50, unit_ns: 1000, limit: 1.05}}
   end
 
   def test_defaults_and_spec
     assert_equal({"metric" => {}}, Duel::Metric.measures, "one, named for the class, counted")
     assert_equal([{"name" => "query_count", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       QueryCount.specs)
-    assert_equal([{"name" => "wall", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 50, "unit_ns" => 1000, "limit" => 1.05, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
+    assert_equal([{"name" => "wall", "kind" => "timed", "unit" => nil, "plural" => nil, "floor" => 50, "unit_ns" => 1000, "limit" => 1.05, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       Wall.specs)
     assert_predicate Duel::Metric, :available?
     refute_predicate Duel::Metric, :costly?
@@ -26,11 +26,11 @@ class MetricTest < DuelTest
   end
 
   class Partial < Duel::Metric
-    def self.measures = {"a" => {kind: :ratio, floor: 5}, "b" => {}}
+    def self.measures = {"a" => {kind: :timed, floor: 5}, "b" => {}}
   end
 
   def test_measures_leave_out_what_they_take_by_default
-    assert_equal [{"name" => "a", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 5, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true},
+    assert_equal [{"name" => "a", "kind" => "timed", "unit" => nil, "plural" => nil, "floor" => 5, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true},
       {"name" => "b", "kind" => "counted", "unit" => nil, "plural" => nil, "floor" => 0, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}], Partial.specs
   end
 
@@ -47,7 +47,7 @@ class MetricTest < DuelTest
       totals["time"] += 2
       totals.dup
     end
-    metric = Duel::Snapshot.define({"queries" => {}, "time" => {kind: :ratio}}, read).new
+    metric = Duel::Snapshot.define({"queries" => {}, "time" => {kind: :timed}}, read).new
 
     assert_equal 0, reads, "none, as it's made"
     metric.open
@@ -62,10 +62,10 @@ class MetricTest < DuelTest
 
   def test_each_snapshot_is_a_metric_of_its_own
     rows = Duel::Snapshot.define({"rows" => {}}, -> { 1 })
-    time = Duel::Snapshot.define({"time" => {kind: :ratio}}, -> { 2 })
+    time = Duel::Snapshot.define({"time" => {kind: :timed}}, -> { 2 })
 
     assert_equal [Duel::Snapshot, Duel::Snapshot], [rows.superclass, time.superclass]
-    assert_equal [{"rows" => :counted}, {"time" => :ratio}], [rows.new.kinds, time.new.kinds]
+    assert_equal [{"rows" => :counted}, {"time" => :timed}], [rows.new.kinds, time.new.kinds]
     assert_equal [{"rows" => 1}, {"time" => 2}], [rows.read.totals, time.read.totals]
   end
 
@@ -102,7 +102,7 @@ class MetricTest < DuelTest
   def test_a_snapshot_calibrated_as_its_settings_say
     reads = 0
     snapshot = Duel::Snapshot.define({"rows" => {}, "pages" => {}}, -> { (reads += 1) && {"rows" => reads, "pages" => reads} })
-    [{"rows" => {calibrate: false}}, {"rows" => {kind: :ratio}}].each do |changes|
+    [{"rows" => {calibrate: false}}, {"rows" => {kind: :timed}}].each do |changes|
       reads = 0
       metric = snapshot.new
       metric.settings = snapshot.settings(changes)
@@ -210,16 +210,16 @@ class MetricTest < DuelTest
   # A setting there isn't, or a kind there isn't, fails: a typo isn't left
   # to mean nothing.
   def test_settings_are_checked
-    Duel::Metric.check("rows", kind: :ratio, unit: "µs", calibrate: false, skip: true)
+    Duel::Metric.check("rows", kind: :timed, unit: "µs", calibrate: false, skip: true)
     error = assert_raises(Duel::Error) { Duel::Metric.check("rows", toleranse: 2, flor: 1) }
 
     assert_equal "rows: no setting toleranse, flor (settings: #{Duel::Metric::SETTINGS.join(", ")})", error.message
-    error = assert_raises(Duel::Error) { Duel::Metric.check("rows", kind: :timed) }
+    error = assert_raises(Duel::Error) { Duel::Metric.check("rows", kind: :ratio) }
 
-    assert_equal "rows: kind is :ratio or :counted, not :timed", error.message
+    assert_equal "rows: kind is :timed or :counted, not :ratio", error.message, "as before 0.3.0"
     error = assert_raises(Duel::Error) { Duel::Snapshot.define({"rows" => {kind: :count}}, -> { 1 }) }
 
-    assert_equal "rows: kind is :ratio or :counted, not :count", error.message
+    assert_equal "rows: kind is :timed or :counted, not :count", error.message
     Duel::Metric.check("rows", unit: %w[row rows])
     Duel::Metric.check("rows", unit: nil)
     [:row, %w[row], %w[a b c], ["row", :rows], {"row" => "rows"}, Set["row", "rows"]].each do |unit|
@@ -242,7 +242,7 @@ class MetricTest < DuelTest
   # A unit's singular and plural: as given, or a symbol's the same.
   def test_plurals
     units = Duel::Snapshot.define({"rows" => {unit: %w[row rows]}, "people" => {unit: %w[person people]}, "bytes" => {unit: "B"},
-                                   "wait" => {kind: :ratio, unit: "ms"}, "none" => {}}, -> {})
+                                   "wait" => {kind: :timed, unit: "ms"}, "none" => {}}, -> {})
 
     assert_equal({"rows" => %w[row rows], "people" => %w[person people], "bytes" => %w[B B], "wait" => %w[ms ms],
                   "none" => [nil, nil]}, units.settings.transform_values { |s| s.values_at(:unit, :plural) })
@@ -327,14 +327,14 @@ class MetricTest < DuelTest
   end
 
   class InMicroseconds < Duel::Metric
-    def self.measures = {"in_microseconds" => {kind: :ratio, unit: "µs"}}
+    def self.measures = {"in_microseconds" => {kind: :timed, unit: "µs"}}
   end
 
   # A unit that's time gives unit_ns, unless it's set. Settings, with
   # changes, are each metric's to see.
   def test_units_and_settings
     assert_equal ["µs", 1000], InMicroseconds.specs.first.values_at("unit", "unit_ns")
-    totals = Duel::Snapshot.define({"wait" => {kind: :ratio, unit: "ms"}, "bytes" => {unit: "B", unit_ns: 0}}, -> { {"wait" => 1, "bytes" => 2} })
+    totals = Duel::Snapshot.define({"wait" => {kind: :timed, unit: "ms"}, "bytes" => {unit: "B", unit_ns: 0}}, -> { {"wait" => 1, "bytes" => 2} })
 
     assert_equal [1_000_000, 0], totals.specs.map { |spec| spec.fetch("unit_ns") }
     assert_equal 1000, InMicroseconds.new.settings.fetch("in_microseconds").fetch(:unit_ns)
@@ -403,7 +403,7 @@ class MetricTest < DuelTest
   def test_kinds_and_first_measure_of_an_instance
     metric = Partial.new
 
-    assert_equal({"a" => :ratio, "b" => :counted}, metric.kinds)
+    assert_equal({"a" => :timed, "b" => :counted}, metric.kinds)
     assert_same metric.kinds, metric.kinds
     assert_equal "a", metric.first_measure
     metric.settings = Partial.settings({"a" => {kind: :counted}})
@@ -411,7 +411,7 @@ class MetricTest < DuelTest
     assert_equal({"a" => :counted, "b" => :counted}, metric.kinds, "the worker's settings")
     metric.settings = Wall.settings
 
-    assert_equal [{"wall" => :ratio}, "wall"], [metric.kinds, metric.first_measure]
+    assert_equal [{"wall" => :timed}, "wall"], [metric.kinds, metric.first_measure]
   end
 
   # Running totals opened as each worker makes them (before they're
@@ -447,7 +447,7 @@ class MetricTest < DuelTest
   def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? %i[timed] : Duel::JUDGE, nil, nil), [], n: 1, counting: false)
 
   def test_cpu_measures_the_threads_or_the_processes_cpu_time
-    assert_equal([{"name" => "cpu", "kind" => "ratio", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
+    assert_equal([{"name" => "cpu", "kind" => "timed", "unit" => "ns", "plural" => "ns", "floor" => 300_000, "unit_ns" => 1, "limit" => nil, "per_iteration" => 0, "size_samples" => true, "per_sample" => 0, "cpu_floor" => 0, "across" => true}],
       Duel::Metrics::CPU.specs)
     cpu = Duel::Metrics::CPU.new
     before = Duel::Clock.thread
@@ -676,7 +676,7 @@ class InstructionsTest < DuelTest
   def sample(cpu) = Duel::Sample.new(Duel::Definition.new("x", (cpu == :process) ? %i[timed] : Duel::JUDGE, nil, nil), [], n: 1, counting: false)
 
   def test_spec
-    assert_equal([{"name" => "instructions", "kind" => "ratio", "unit" => nil, "plural" => nil, "floor" => 100_000, "unit_ns" => 1, "limit" => 1.01,
+    assert_equal([{"name" => "instructions", "kind" => "timed", "unit" => nil, "plural" => nil, "floor" => 100_000, "unit_ns" => 1, "limit" => 1.01,
                    "per_iteration" => 0, "size_samples" => false, "per_sample" => 0, "cpu_floor" => 0, "across" => true}], Duel::Metrics::Instructions.specs)
   end
 

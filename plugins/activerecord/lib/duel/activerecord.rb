@@ -16,7 +16,7 @@ module Duel
   #   opened (counted)
   # - active_record_instantiations: the records it instantiated (counted)
   # - active_record_query_time, when asked for: how long the queries
-  #   took, in elapsed time (a ratio metric, in nanoseconds, like CPU
+  #   took, in elapsed time (a timed metric, in nanoseconds, like CPU
   #   time)
   #
   #   # .duel.rb
@@ -40,7 +40,7 @@ module Duel
     }
 
     # Elapsed time, measured when asked for (see the README).
-    QUERY_TIME = {"active_record_query_time" => {kind: :ratio, unit: "ns", floor: 300_000, limit: 1.05}}
+    QUERY_TIME = {"active_record_query_time" => {kind: :timed, unit: "ns", floor: 300_000, limit: 1.05}}
 
     # Configures Duel for the plugin (c.use :activerecord): its metrics,
     # and +query_time+ too if true. +ignore+, if given, is called with

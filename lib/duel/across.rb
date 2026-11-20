@@ -5,7 +5,7 @@ require_relative "stats"
 module Duel
   # Whether the candidate is slower across the board: a slowdown smaller
   # than any one benchmark can settle (1% everywhere, say) still shows in
-  # all of them together. For each ratio metric, the candidate is slower
+  # all of them together. For each timed metric, the candidate is slower
   # when a distribution-free confidence interval lies entirely above a
   # quarter of the metric's own margin (1.005, for a limit of 1.02). It
   # takes 8 benchmarks at least, at 99%. One that says across: false is
@@ -41,7 +41,7 @@ module Duel
 
     # {metric => {"median", "interval", "limit", "benchmarks", "verdict"}},
     # and where it's judged by process, "processes" (the workers of each
-    # version), for every ratio metric any benchmark was judged on.
+    # version), for every timed metric any benchmark was judged on.
     def verdicts
       medians = Hash.new { |h, k| h[k] = [] }
       # @type var limits: Hash[String, Float]

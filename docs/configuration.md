@@ -441,7 +441,7 @@ Duel.configure do |c|
   end
   c.metric(
     "redis_cpu" => {
-      kind: :ratio,
+      kind: :timed,
       unit: "µs",    # shown as time (and sizing samples as CPU time does)
       floor: 300,    # µs: below this on both versions, a sample isn't judged on it
       limit: 1.05    # its own limit (default: the run's, 1.02)
@@ -517,14 +517,14 @@ Every setting is optional:
 
 | Setting | Applies to | Description |
 |---|---|---|
-| `kind:` | All | `:counted` (the default), which is exact and fails on any increase, or `:ratio`, which is judged by paired ratios with a confidence interval, the same way as CPU time. |
+| `kind:` | All | `:counted` (the default), which is exact and fails on any increase, or `:timed`, which is judged by paired ratios with a confidence interval, the same way as CPU time. |
 | `unit:` | All | What the metric is in, as reports show it. `"ns"`, `"µs"`, `"ms"`, and `"s"` show it as time, and set `unit_ns`. Any other unit is either a word with its plural, such as `%w[row rows]` (1 row, 2 rows), or a symbol that's the same for any number, such as `"B"` or `"KB"`. A word without its plural fails. |
-| `floor:` | Ratio | The least that a sample must measure, on either version, to be judged. |
-| `cpu_floor:` | Ratio | The least share of the sample's CPU time that the metric must be (in time, by `unit_ns`), on either version, to be judged. For example, `0.05` for 5%. |
-| `limit:` | Ratio | The ratio above which the metric is slower. The default is the run's limit. |
-| `unit_ns:` | Ratio | Nanoseconds per unit, to size samples by the metric. A time `unit:` sets it. |
-| `size_samples:` | Ratio | `false` for a metric that's too noisy to size samples by. |
-| `across:` | Ratio | `false` for a metric that's too noisy to judge across the board, where the margin is a quarter of its limit. |
+| `floor:` | Timed | The least that a sample must measure, on either version, to be judged. |
+| `cpu_floor:` | Timed | The least share of the sample's CPU time that the metric must be (in time, by `unit_ns`), on either version, to be judged. For example, `0.05` for 5%. |
+| `limit:` | Timed | The ratio above which the metric is slower. The default is the run's limit. |
+| `unit_ns:` | Timed | Nanoseconds per unit, to size samples by the metric. A time `unit:` sets it. |
+| `size_samples:` | Timed | `false` for a metric that's too noisy to size samples by. |
+| `across:` | Timed | `false` for a metric that's too noisy to judge across the board, where the margin is a quarter of its limit. |
 | `per_iteration:` | Counted | How much more per iteration still doesn't count as more. |
 | `per_sample:` | Counted | How much more per sample still doesn't count as more, for noise that doesn't grow with the iterations. |
 | `calibrate:` | Counted | `false` to keep what a reading costs in the total, for a block that subtracts it itself. A reading that costs nothing needs no setting. |
@@ -562,7 +562,7 @@ worker. A subclass defines the following methods:
 
 | Method | Description |
 |---|---|
-| `self.measures` | Names what the metric measures, with the settings in [Metric settings](#metric-settings), for example `{"wait" => {kind: :ratio, unit: "ns"}}`. By default, it's one counted measure named `self.metric_name`, the class's name in snake case: `QueryCount` is `query_count`. |
+| `self.measures` | Names what the metric measures, with the settings in [Metric settings](#metric-settings), for example `{"wait" => {kind: :timed, unit: "ns"}}`. By default, it's one counted measure named `self.metric_name`, the class's name in snake case: `QueryCount` is `query_count`. |
 | `self.available?` | Returns `false` where the metric can't measure, to leave it out. |
 | `self.costly?` | Returns `true` for a metric that's costly to read, such as one that queries a server, so that Duel doesn't pause it around each iteration inside an `around_iteration` hook. For more information, see [Account for the cost of reading](#account-for-the-cost-of-reading). |
 | `open` | Called once in each worker, after its `c.in_worker` blocks, to set up what the metric reads, such as a subscription. |

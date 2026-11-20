@@ -412,7 +412,7 @@ class HarnessTest < DuelTest
   class Costly < Duel::Metric
     attr_reader :samples
 
-    def self.measures = {"costly" => {kind: :ratio}, "reads" => {}}
+    def self.measures = {"costly" => {kind: :timed}, "reads" => {}}
 
     def initialize(costs)
       super()
@@ -428,7 +428,7 @@ class HarnessTest < DuelTest
   # A metric that measures only as a sample stops: its iterations and
   # two (nothing paused).
   class Ends < Duel::Metric
-    def self.measures = {"ends" => {kind: :ratio}}
+    def self.measures = {"ends" => {kind: :timed}}
 
     def start_sample(sample) = @n ||= sample.n
 
@@ -492,7 +492,7 @@ class HarnessTest < DuelTest
 
   # Ticks too, timed.
   class CostlyTime < CostlyTicks
-    def self.measures = {"costly_time" => {kind: :ratio}}
+    def self.measures = {"costly_time" => {kind: :timed}}
   end
 
   # +n+ iterations' ticks, costly to read and not, less what the

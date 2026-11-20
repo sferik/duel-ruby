@@ -211,7 +211,7 @@ class MemcachedTest < PluginTest
       Duel::Testing.measure(config) { 200.times { @connection.value.stats } }
     end
 
-    assert_equal({"memcached_cpu" => {kind: :ratio, unit: "µs", floor: 300, limit: 1.05, unit_ns: 1000, across: false}},
+    assert_equal({"memcached_cpu" => {kind: :timed, unit: "µs", floor: 300, limit: 1.05, unit_ns: 1000, across: false}},
       config.metrics.last.settings.transform_values { |s| s.slice(:kind, :unit, :floor, :limit, :unit_ns, :across) })
     assert_operator measured.fetch("memcached_cpu"), :>, 0
     assert_equal 0, measured.fetch("memcached_bytes"), "its readings are the plugin's own too"

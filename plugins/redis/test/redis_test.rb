@@ -32,7 +32,7 @@ class RedisTest < PluginTest
     assert_equal [:redis], config.plugins
     assert_equal [1, 0, 1], [config.prepares.fetch(:worker).size, config.prepares.fetch(:version).size, config.in_workers.size]
     assert_equal [%w[redis_cpu redis_commands redis_round_trips]], config.metrics.map { |metric| metric.measures.keys }
-    assert_equal [[:ratio, 300, false], [:counted, 0, true], [:counted, 0, true]],
+    assert_equal [[:timed, 300, false], [:counted, 0, true], [:counted, 0, true]],
       config.metrics.first.settings.values.map { |s| s.values_at(:kind, :floor, :across) }, "redis_cpu judged on each benchmark alone"
   end
 
@@ -174,7 +174,7 @@ class RedisTest < PluginTest
     assert_equal 3, measured.fetch("redis_commands"), "the readings' own INFO taken away"
     assert_equal 3, measured.fetch("redis_round_trips")
     assert_operator measured.fetch("redis_cpu"), :>, 0
-    assert_equal [[:ratio, "µs", "µs"], [:counted, "command", "commands"], [:counted, "round trip", "round trips"]],
+    assert_equal [[:timed, "µs", "µs"], [:counted, "command", "commands"], [:counted, "round trip", "round trips"]],
       config.metrics.first.settings.values.map { |s| s.values_at(:kind, :unit, :plural) }
   end
 

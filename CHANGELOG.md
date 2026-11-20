@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A metric judged like CPU time is `kind: :timed`, in place of
+  `kind: :ratio`, as `judge: :timed`, `Definition#timed?` and the
+  report's `timed` call what it measures: a metric's `measures` say
+  `{"wait" => {kind: :timed, unit: "µs"}}`. (The JSON report's `ratio`,
+  a timing's, is as it was.)
 - A ratio metric's `sizes_samples: false` is `size_samples: false`
   (don't size samples by it), as `calibrate: false` and `skip: true`
   say what to do.
