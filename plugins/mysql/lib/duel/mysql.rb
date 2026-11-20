@@ -90,7 +90,7 @@ module Duel
         # its own default's in a directory of the system's.)
         socket = w.path("mysqld.sock")
         if tcp
-          port = w.port
+          port = w.free_port
           listen = ["--port=#{port}", "--bind-address=127.0.0.1", "--socket=#{socket}"]
           address = "127.0.0.1:#{port}"
           url = "#{scheme}://#{USER}@#{address}/#{DATABASE}"

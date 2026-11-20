@@ -246,7 +246,7 @@ A prepare block can use the following methods:
 | `w.cached(key) { \|dir\| ... }` | Makes something once, for every worker. See the following example. |
 | `w.name` | The worker's name, for example `"base-1"`. |
 | `w.dir` | The worker's directory. `w.path("name")` returns the path of a file in it. |
-| `w.port` | A free port of 127.0.0.1's, for a server to listen on, rather than on a Unix socket in `w.dir`. |
+| `w.free_port` | A free port of 127.0.0.1's, for a server to listen on, rather than on a Unix socket in `w.dir`: another each call, so keep the one you give the server. |
 | `w.root` | The tree of the version that the worker runs. |
 | `w.ruby` | The path of the Ruby that the version runs on. See [Run each version on its own Ruby](#run-each-version-on-its-own-ruby). |
 | `w.env` | The version's environment variables. See the following paragraph. |

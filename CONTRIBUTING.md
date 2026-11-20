@@ -167,7 +167,7 @@ what can go.
   (`ProcessSample#start`).
 - **There are no Unix sockets.** A worker connects to the runner on a
   port of 127.0.0.1's (`Control`), and `Duel.unix_sockets?` is false,
-  so the plugins start their servers on ports (`w.port`).
+  so the plugins start their servers on ports (`w.free_port`).
 - **`IO.select` and `wait_readable` don't tell when a pipe is
   ready.** `IO.select` takes Open3's pipe for readable before it is
   (https://github.com/jruby/jruby/issues/5765), and on JRuby 10.0,

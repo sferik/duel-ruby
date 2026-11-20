@@ -89,7 +89,7 @@ module Duel
         data = w.path("data")
         cluster = Cluster.new(w, programs, pg_ctl: pg_ctl)
         cluster.create(data)
-        host, port, listen = tcp ? ["127.0.0.1", w.port, TCP] : [w.dir, PORT, {"unix_socket_directories" => w.dir}]
+        host, port, listen = tcp ? ["127.0.0.1", w.free_port, TCP] : [w.dir, PORT, {"unix_socket_directories" => w.dir}]
         # (+settings+' last: of a setting given twice, postgres takes the
         # last.)
         all = SETTINGS.merge(listen, "port" => port).merge(settings)
@@ -485,7 +485,7 @@ module Duel
       def make_with_pg_ctl(dir)
         data = File.join(dir, PG_CTL)
         initdb(data)
-        port = @resource.port
+        port = @resource.free_port
         start(data, TCP.merge("port" => port))
         begin
           url = "postgres://#{USER}@127.0.0.1:#{port}"

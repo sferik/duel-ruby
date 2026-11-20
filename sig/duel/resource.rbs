@@ -87,8 +87,8 @@ module Duel
     def path: (String file) -> String
 
     # A port of 127.0.0.1's that's free, for a server of its own to listen
-    # on.
-    def port: () -> Integer
+    # on: another each call.
+    def free_port: () -> Integer
 
     # A directory built once, by the block, for every worker of this run
     # and later ones. The first that asks for +key+ builds it.

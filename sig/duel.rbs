@@ -214,7 +214,7 @@ module Duel
   # Whether a server that a plugin starts for a worker can listen on a
   # Unix socket that a worker can reach: not on Windows, nor where Ruby
   # has none. Where it can't, the server listens on a port (see
-  # Resource#port).
+  # Resource#free_port).
   def self.unix_sockets?: () -> bool
 
   # Whether +program+ is a path, with a / or a \ in it, not a name to

@@ -48,7 +48,7 @@ module Duel
         program = Duel.find_program(server) ||
           w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)} (give memcached's path as server:, or DUEL_MEMCACHED_SERVER)")
         if tcp
-          port = w.port
+          port = w.free_port
           listen = ["-l", "127.0.0.1", "-p", port.to_s]
           address = "127.0.0.1:#{port}"
         else

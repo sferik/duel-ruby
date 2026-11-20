@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A plugin's resource gives its server a port with `w.free_port`, in
+  place of `w.port`, which read as the resource's one port, though each
+  call is another: `port = w.free_port`, then that `port` for both the
+  server's option and its URL.
 - `duel_process` takes the Ruby code it runs as `code:`, in place of
   `ruby:`, which read as the Ruby to run it on, as `c.ruby`, `--ruby`
   and `DUEL_RUBY` mean: `duel_process "boot: require the library",

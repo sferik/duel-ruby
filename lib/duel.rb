@@ -263,7 +263,7 @@ module Duel
     # Whether a server that a plugin starts for a worker can listen on a
     # Unix socket (in the worker's directory) that a worker can reach: not
     # on Windows, nor where Ruby has none (see Control.unix_sockets?).
-    # Where it can't, the server listens on a port (see Resource#port).
+    # Where it can't, the server listens on a port (see Resource#free_port).
     # For a plugin's default:
     #
     #   def self.configure(config, tcp: !Duel.unix_sockets?)

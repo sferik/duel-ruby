@@ -46,7 +46,7 @@ module Duel
         program = Duel.find_program(server) ||
           w.fail!("no #{server}#{" on the PATH" unless Duel.path?(server)} (give redis-server's path as server:, or DUEL_REDIS_SERVER)")
         if tcp
-          port = w.port
+          port = w.free_port
           listen = ["--port", port.to_s, "--bind", "127.0.0.1"]
           url = "redis://127.0.0.1:#{port}"
         else

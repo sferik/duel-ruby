@@ -134,8 +134,9 @@ module Duel
 
     # A port of 127.0.0.1's that's free (one the system chose, let go of
     # again), for a server of its own to listen on, rather than on a Unix
-    # socket in its directory (see #path).
-    def port
+    # socket in its directory (see #path): another each call, so keep the
+    # one a server's given.
+    def free_port
       server = Control.tcp_server
       begin
         server.addr.fetch(1)

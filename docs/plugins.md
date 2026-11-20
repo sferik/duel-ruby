@@ -85,7 +85,7 @@ When you write a plugin, follow these guidelines:
   a server takes more as it's used, so Duel counts at least this much
   for each worker. A version of Duel before 0.1.8 ignores it.
 - If a worker's server listens on a Unix socket in `w.dir`, give the
-  plugin an option to listen on `w.port` instead, and default it to
+  plugin an option to listen on `w.free_port` instead, and default it to
   where `Duel.unix_sockets?` is false, for example
   `def self.configure(config, tcp: !Duel.unix_sockets?)`. It's false on
   Windows, where a server's own build often has Unix sockets that Ruby
