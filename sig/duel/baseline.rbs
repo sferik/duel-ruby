@@ -52,6 +52,13 @@ module Duel
     # The baseline's tree, checked out and built if it's a commit.
     def root: () -> String
 
+    # What built the baseline's checkout of +sha+: the commit, and where
+    # there's a build, the Ruby it ran on.
+    def built_by: (String sha) -> String
+
+    # The Ruby running Duel: its path and what it says it is.
+    def self.ruby: () -> String
+
     # Where the project is in a checkout of its repository at +dir+.
     def within: (String dir) -> String
 

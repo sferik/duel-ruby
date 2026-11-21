@@ -3,6 +3,7 @@
 require "digest"
 require "fileutils"
 require "open3"
+require "rbconfig"
 require_relative "../duel"
 require_relative "rubies"
 require_relative "spawn"
@@ -125,7 +126,12 @@ module Duel
       (Config.list(@config.watch) + measured).uniq
     end
 
-    # The baseline's tree, checked out and built if it's a commit.
+    # The baseline's tree, checked out and built if it's a commit. A
+    # checkout already there is kept only as what built it says
+    # (#built_by): of that commit, and where there's a build, by this
+    # Ruby. One a build failed in, or that another Ruby built (whose C
+    # extension the next build wouldn't redo, as nothing it's built from
+    # changed), is checked out and built afresh.
     def root
       base_dir = @settings.base_dir
       return File.expand_path(base_dir) if base_dir
@@ -133,16 +139,28 @@ module Duel
       sha = git("rev-parse", "#{ref}^{commit}")
       dir = checkout
       tree = within(dir)
-      unless git("-C", dir, "rev-parse", "HEAD", allow_failure: true) == sha
+      built = File.join(@config.state, "base.built")
+      unless git("-C", dir, "rev-parse", "HEAD", allow_failure: true) == sha && File.exist?(built) && File.read(built) == built_by(sha)
         FileUtils.rm_rf(dir)
         git("worktree", "prune") # (git's record of it)
         git("worktree", "add", dir, sha)
         build(tree, "the baseline") if Dir.exist?(tree)
+        FileUtils.mkdir_p(@config.state)
+        File.write(built, built_by(sha))
       end
       raise Error, "the baseline (#{ref}) has no #{prefix}: compare with --base REF, a commit that has it" unless Dir.exist?(tree)
 
       tree
     end
+
+    # What built the baseline's checkout of +sha+ (see #root): the commit,
+    # and where there's a build, the Ruby it ran on (Duel's, whose bin
+    # Bundler and rbenv put first on the PATH).
+    def built_by(sha) = @config.build ? "#{sha}\n#{Baseline.ruby}" : sha
+
+    # The Ruby running Duel: its path and what it says it is, which a new
+    # patch release, or another Ruby of the same version, changes.
+    def self.ruby = "#{RbConfig.ruby} #{RUBY_DESCRIPTION}"
 
     # Where the project is in a checkout of its repository at +dir+: as far
     # from the top as it is in its own (a project in a subdirectory of a

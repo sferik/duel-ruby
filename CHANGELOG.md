@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   README shows no badges. Its step about the workflow's jobs for
   pushes describes them as Duel 0.3.0 writes them.
 
+### Fixed
+
+- A baseline checked out and built by an earlier run is built afresh
+  where the Ruby running Duel changed since (a new patch release, say),
+  rather than measured with a C extension built for the other Ruby,
+  which can fail to load ("Library not loaded: .../libruby.3.4.dylib")
+  or measure the wrong code: `rake compile` doesn't redo a build when
+  nothing it's built from changed. A baseline whose build failed is
+  built afresh on the next run too, not measured as it was left. Duel
+  keeps what built the checkout (its commit, and the Ruby) in
+  `tmp/duel`, which `duel clean` removes with the checkout.
+
 ## [0.3.0] - 2026-11-20
 
 ### Added

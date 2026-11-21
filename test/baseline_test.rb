@@ -370,6 +370,68 @@ class BaselineTest < DuelTest
     assert_equal 2, `git -C #{@repo} worktree list`.lines.size, "the one checkout"
   end
 
+  # A checkout another Ruby built is checked out and built afresh: its C
+  # extension, say, was built for that Ruby, and the next build wouldn't
+  # redo it, as nothing it's built from changed. Without a build, another
+  # Ruby changes nothing, so the checkout stays.
+  def test_root_built_by_another_ruby
+    builds = File.join(tmpdir, "builds.log")
+    @config.build = append_pwd(builds)
+    root = baseline(base: "v1.0").root
+    File.write(File.join(root, "left"), "")
+    stub(Duel::Baseline, :ruby, -> { "another ruby" }) { baseline(base: "v1.0").root }
+
+    assert_equal 2, File.readlines(builds).size, "built again"
+    refute_path_exists File.join(root, "left"), "checked out again"
+    stub(Duel::Baseline, :ruby, -> { "another ruby" }) { baseline(base: "v1.0").root }
+
+    assert_equal 2, File.readlines(builds).size, "the same Ruby's kept"
+    @config.build = nil
+    baseline(base: "v1.0").root
+    File.write(File.join(root, "left"), "")
+    stub(Duel::Baseline, :ruby, -> { "a third ruby" }) { baseline(base: "v1.0").root }
+
+    assert_path_exists File.join(root, "left"), "no build to redo"
+  end
+
+  # The Ruby that builds: Duel's own, by its path and what it says it is.
+  def test_the_ruby_that_builds
+    assert_equal "#{RbConfig.ruby} #{RUBY_DESCRIPTION}", Duel::Baseline.ruby
+  end
+
+  # A checkout whose build failed, or that nothing says built it (an
+  # earlier Duel's), is checked out and built afresh, not measured as
+  # it is.
+  def test_root_not_built
+    @config.build = failing_build
+    assert_raises(Duel::Error) { baseline(base: "v1.0").root }
+    builds = File.join(tmpdir, "builds.log")
+    @config.build = append_pwd(builds)
+    root = baseline(base: "v1.0").root
+
+    assert_equal 1, File.readlines(builds).size, "built after the failed build"
+    FileUtils.rm(File.join(@config.state, "base.built"))
+    baseline(base: "v1.0").root
+
+    assert_equal 2, File.readlines(builds).size, "nothing says what built it"
+    FileUtils.rm_rf(root)
+    baseline(base: "v1.0").root
+
+    assert_equal 3, File.readlines(builds).size, "the checkout's gone, whatever says what built it"
+    system("git", "-C", root, "checkout", "-q", "--detach", @second, exception: true)
+    baseline(base: "v1.0").root
+
+    assert_equal 4, File.readlines(builds).size, "the checkout's of another commit, whatever says what built it"
+    assert_equal "v1.0", `git -C #{root} describe --tags`.chomp
+    @config.build = failing_build
+    assert_raises(Duel::Error) { baseline(base: @second).root }
+    @config.build = append_pwd(builds)
+    baseline(base: @second).root
+
+    assert_equal 5, File.readlines(builds).size, "another commit's build failed after this one's passed"
+    assert(File.readlines(builds, chomp: true).all? { |dir| File.identical?(dir, root) }, "built there")
+  end
+
   # Its checkout of another commit is checked out afresh: what was left
   # in it goes.
   def test_root_over_whatever_was_there
