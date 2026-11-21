@@ -114,8 +114,9 @@ module Duel
         begin
           w.wait_until { PG::Connection.ping(url) == PG::PQPING_OK }
         rescue Failed
+          # (Its log, which pg_ctl writes too, is there by then.)
           log = w.path("postgres.log")
-          raise unless File.exist?(log) && File.read(log).include?(NO_SEGMENT)
+          raise unless File.read(log).include?(NO_SEGMENT)
 
           w.fail!("postgres couldn't make its System V shared memory segment, which each server takes one of (macOS allows 32 in all): " \
             "run fewer workers at once (--processes, DUEL_PROCESSES or c.processes, and --jobs)", log:)
