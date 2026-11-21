@@ -10,7 +10,7 @@ on:
   pull_request:
   merge_group: # (a merge queue's)
   push:
-    branches: [main] # (and any other branch to guard, a stable one, say)
+    branches: [<%= default_branch %>] # (and any other branch to guard, a stable one, say)
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:

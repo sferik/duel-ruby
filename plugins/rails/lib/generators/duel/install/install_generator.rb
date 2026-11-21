@@ -191,6 +191,24 @@ module Duel
         destination_root
       end
 
+      # The branch the workflow guards, as pushes to it run Duel: the one
+      # origin's HEAD names (the repository's default, in a clone of it),
+      # or else main, or master, whichever is there, or main, as for
+      # `duel init` (see Duel::Init#default_branch). Found once.
+      def default_branch
+        @default_branch ||= git_line("symbolic-ref", "--short", "refs/remotes/origin/HEAD")&.delete_prefix("origin/") ||
+          %w[main master].find { |branch| git_line("rev-parse", "--verify", "refs/heads/#{branch}") } || "main"
+      end
+
+      # What git printed in the app's directory, its first line, or nil
+      # where it printed nothing (as each of #default_branch's does where
+      # it fails, saying why on stderr), or there's no git.
+      def git_line(*args)
+        Open3.capture3("git", "-C", destination_root, *args).first.lines.first&.chomp
+      rescue SystemCallError
+        nil
+      end
+
       # The app's directory, from its repository's root ("apps/blog"), or
       # nil for an app at the root.
       def working_directory

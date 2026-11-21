@@ -45,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built afresh on the next run too, not measured as it was left. Duel
   keeps what built the checkout (its commit, and the Ruby) in
   `tmp/duel`, which `duel clean` removes with the checkout.
+- `duel init` writes the workflow's push trigger for the project's
+  default branch: `.duel.rb`'s `c.main_branch`, the branch origin's
+  HEAD names (the repository's default, in a clone of it), or else
+  `main`, or `master`, whichever is there. It wrote `main` whatever
+  the repository's was, so a project whose default branch is `master`
+  ran Duel on no push until its workflow was changed by hand. The
+  comment on moving the passed branch names it too, and so do the
+  comments of the `.duel.rb` it writes on `c.fail_on` and
+  `c.push_base`.
 
 ## [0.3.0] - 2026-11-20
 

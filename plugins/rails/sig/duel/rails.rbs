@@ -232,6 +232,7 @@ module Duel
       def check_workflows: () -> void
 
       @repository: String?
+      @default_branch: String?
 
       private
 
@@ -272,6 +273,8 @@ module Duel
       def ruby_version: () -> String?
       def repository: () -> String
       def find_repository: () -> String
+      def default_branch: () -> String
+      def git_line: (*String args) -> String?
       def working_directory: () -> String?
 
       # What marks the workflow's comment on a pull request.

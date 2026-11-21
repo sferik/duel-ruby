@@ -30,6 +30,7 @@ module Duel
 
     @argv: Array[String]
     @repository: String?
+    @default_branch: String?
     @out: _Output
     @err: _Output
     @input: _Input
@@ -157,6 +158,13 @@ module Duel
     # The Ruby the workflow sets up, or none.
     def ruby_version: () -> String?
 
+    # The branch the workflow guards: .duel.rb's c.main_branch, origin's
+    # HEAD, or else main, or master, whichever is there, or main.
+    def default_branch: () -> String
+
+    # What git printed in the project's directory, its first line, or nil.
+    def git_line: (*String args) -> String?
+
     # The root of the project's git repository.
     def repository: () -> String
 
@@ -209,6 +217,8 @@ module Duel
       def passed_branch: () -> String
 
       def badge_branch: () -> String
+
+      def default_branch: () -> String
 
       def version_file: () -> true
 

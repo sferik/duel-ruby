@@ -264,6 +264,29 @@ class GeneratorTest < PluginTest
     assert_equal 1, out.scan(/warning  #{Regexp.escape(said)}$/).size, "said once, as .duel.rb is loaded once"
   end
 
+  # The branch the workflow guards, as `duel init` finds it: origin's
+  # HEAD, or else main, or master, whichever is there, or main (with no
+  # git, say).
+  def test_the_branch_it_guards
+    git = ->(*args) { system("git", "-C", @dir, *args, out: File::NULL, err: File::NULL, exception: true) }
+    git.call("init", "-q", "-b", "master")
+    git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "a commit")
+    generate
+    workflow = read(".github/workflows/perf.yml")
+
+    assert_equal %w[master], YAML.safe_load(workflow).dig(true, "push", "branches"), "the branch there is"
+    assert_includes workflow, "  # (for master, git push origin master:duel/passed/master).\n"
+    assert_includes read(".duel.rb"), "  # duel/passed/master, marks), so small slowdowns add up until they fail.\n", "its .duel.rb's too"
+    git.call("branch", "main")
+
+    assert_equal "main", generator.send(:default_branch), "main, of both"
+    git.call("update-ref", "refs/remotes/origin/trunk", "HEAD")
+    git.call("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+
+    assert_equal "trunk", generator.send(:default_branch), "origin's default"
+    assert_equal "main", stub(Open3, :capture3, ->(*) { raise Errno::ENOENT }) { generator.send(:default_branch) }, "no git"
+  end
+
   def test_an_app_in_a_subdirectory
     system("git", "init", "--quiet", @dir, exception: true)
     app = File.join(@dir, "apps", "blog")

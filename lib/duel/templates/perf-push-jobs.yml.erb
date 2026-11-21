@@ -45,7 +45,7 @@
   # a push that passed (or makes it), but never back: where a newer
   # push's run moved it first, it stays. It checks nothing out and runs
   # none of the code. To accept a regression, move the branch yourself
-  # (for main, git push origin main:<%= passed_branch %>/main).
+  # (for <%= default_branch %>, git push origin <%= default_branch %>:<%= passed_branch %>/<%= default_branch %>).
   passed:
     name: Mark the commit passed
     needs: duel

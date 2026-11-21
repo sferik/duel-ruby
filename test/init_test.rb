@@ -438,6 +438,43 @@ class InitTest < DuelTest
   # the badge, by a job of its own that writes it to a branch, and runs none of the
   # code: red where Duel failed the push or found a regression, and grey
   # where the Duel job failed before Duel said.
+  # The branch the workflow guards: .duel.rb's c.main_branch, origin's
+  # HEAD (the repository's default, in a clone), or the main or master
+  # branch there is, as the push trigger and the passed branch's example
+  # name it.
+  def test_the_branch_it_guards
+    git = ->(*args) { system("git", "-C", root, *args, out: File::NULL, err: File::NULL, exception: true) }
+    git.call("init", "-q", "-b", "master")
+    git.call("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "a commit")
+    branches = -> { YAML.safe_load(read(".github/workflows/perf.yml")).dig(true, "push", "branches") }
+    init("--badge").run
+
+    assert_equal %w[master], branches.call, "the branch there is"
+    assert_includes read(".duel.rb"), "  # project where people push to master directly (on GitHub Actions, another\n"
+    assert_includes read(".duel.rb"), "  # duel/passed/master, marks), so small slowdowns add up until they fail.\n", "its .duel.rb's too"
+    git.call("branch", "main")
+    init("--force").run
+
+    assert_equal %w[main], branches.call, "main, of both"
+    git.call("branch", "-D", "main")
+
+    assert_includes Duel::Init::Reusable.new([], root:).files.fetch(".github/workflows/duel-push.yml"),
+      "(for main, git push origin main:duel/passed/main)", "Duel's own, whatever the project's"
+    git.call("update-ref", "refs/remotes/origin/trunk", "HEAD")
+    git.call("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    init("--force").run
+
+    assert_equal %w[trunk], branches.call, "origin's default"
+    whole("--force", "--badge").run
+
+    assert_equal %w[trunk], branches.call, "the whole workflow's too"
+    assert_includes read(".github/workflows/perf.yml"), "  # (for trunk, git push origin trunk:duel/passed/trunk).\n"
+    write(".duel.rb", %(Duel.configure { |c| c.main_branch = "origin/stable" }\n))
+    init("--check").run
+
+    assert_includes @out.string, "-    branches: [trunk] # (and any other branch to guard, a stable one, say)\n+    branches: [stable] #", "what .duel.rb names"
+  end
+
   def test_the_badge
     gem
     whole("--badge").run

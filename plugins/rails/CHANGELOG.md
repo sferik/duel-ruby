@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Perf workflow that `bin/rails generate duel:install` writes
+  guards the app's default branch, as `duel init`'s does: the branch
+  origin's HEAD names, or else `main`, or `master`, whichever is there.
+  It guarded `main` whatever the repository's was. The comments of the
+  `.duel.rb` it writes on `c.fail_on` and `c.push_base` name it too.
+
 ## [0.3.0] - 2026-11-20
 
 ### Changed

@@ -4,7 +4,7 @@ on:
   pull_request:
   merge_group: # (a merge queue's)
   push:
-    branches: [main] # (and any other branch to guard, a stable one, say)
+    branches: [<%= default_branch %>] # (and any other branch to guard, a stable one, say)
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
@@ -226,7 +226,7 @@ jobs:
   # a push that passed (or makes it), but never back: where a newer
   # push's run moved it first, it stays. It checks nothing out and runs
   # none of the code. To accept a regression, move the branch yourself
-  # (for main, git push origin main:duel/passed<%= "-#{working_directory.tr("/", "-")}" if working_directory %>/main).
+  # (for <%= default_branch %>, git push origin <%= default_branch %>:duel/passed<%= "-#{working_directory.tr("/", "-")}" if working_directory %>/<%= default_branch %>).
   passed:
     name: Mark the commit passed
     needs: duel

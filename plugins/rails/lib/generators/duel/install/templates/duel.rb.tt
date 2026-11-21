@@ -27,7 +27,7 @@ Duel.configure do |c|
   # c.comment = :failures
 
   # Which runs a regression fails: :every_run, or :pull_requests, for a
-  # project where people push to main directly (on GitHub Actions, another
+  # project where people push to <%= default_branch %> directly (on GitHub Actions, another
   # run warns and passes, and a pushed commit gets the comment instead,
   # from a workflow job that runs where this is set: see docs/ci.md).
   # c.fail_on = :every_run
@@ -38,7 +38,7 @@ Duel.configure do |c|
 
   # What the workflow compares a push with: :before (the commit before it),
   # or :last_passed (the last commit Duel passed, which a branch,
-  # duel/passed/main, marks), so small slowdowns add up until they fail.
+  # duel/passed<%= "-#{working_directory.tr("/", "-")}" if working_directory %>/<%= default_branch %>, marks), so small slowdowns add up until they fail.
   # (A workflow job moves the branch where this is set: see docs/ci.md.)
   # c.push_base = :before
 end

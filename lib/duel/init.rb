@@ -402,6 +402,21 @@ module Duel
     # none, where .ruby-version names it.
     def ruby_version = (RUBY_VERSION[/\A\d+\.\d+/] unless version_file)
 
+    # The branch the workflow guards, as pushes to it run Duel: .duel.rb's
+    # c.main_branch, the branch origin's HEAD names (the repository's
+    # default, in a clone of it), or else main, or master, whichever is
+    # there, or main. (Asked once: the templates ask often.)
+    def default_branch
+      @default_branch ||= (settings || config).main_branch&.delete_prefix("origin/") ||
+        git_line("symbolic-ref", "--short", "refs/remotes/origin/HEAD")&.delete_prefix("origin/") ||
+        %w[main master].find { |branch| git_line("rev-parse", "--verify", "refs/heads/#{branch}") } || "main"
+    end
+
+    # What git printed in the project's directory, its first line, or nil
+    # where it printed nothing (as each of #default_branch's does where it
+    # fails, saying why on stderr).
+    def git_line(*args) = Spawn.open3(:capture3, "git", "-C", @root, *args).first.lines.first&.chomp
+
     # The root of the project's git repository: the project's own
     # directory, outside one. (Asked once: the templates ask often.)
     def repository
@@ -491,6 +506,8 @@ module Duel
       def passed_branch = "duel/passed"
 
       def badge_branch = "duel/badge"
+
+      def default_branch = "main"
 
       def workflow_name = "perf.yml"
 
