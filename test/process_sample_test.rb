@@ -80,13 +80,6 @@ class ProcessSampleTest < DuelTest
   # (On JRuby on Windows, its JVM's command: see Duel::Rubies.launch.)
   def ruby(code) = [*RUBY_COMMAND, "-e", code]
 
-  # Whether +pid+ is running, or ended but not yet waited for.
-  def alive?(pid)
-    Process.kill(0, pid) && true
-  rescue Errno::ESRCH, Errno::EPERM # (JRuby's EPERM, on Windows, for one that ended)
-    false
-  end
-
   # Its Ruby process, out of the runner's bundle (its RUBYOPT and RUBYLIB
   # unset), with Duel's load path, given nothing else: started with the
   # first run, kept for the rest, and waited for once it's stopped.

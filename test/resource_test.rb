@@ -67,12 +67,6 @@ class ResourceTest < DuelTest
   # JRuby on Windows, its JVM's "java.exe").
   RUBY = File.basename(RUBY_COMMAND.first)
 
-  def alive?(pid)
-    Process.kill(0, pid) && true
-  rescue Errno::ESRCH, Errno::EPERM # (JRuby's EPERM, on Windows, for one that ended)
-    false
-  end
-
   # Prepare blocks, in order, each given a Resource of its own (kept as
   # it's made), and what they returned together. Each Resource's env is
   # the one given, or (a version's, so_far) with what the blocks before it

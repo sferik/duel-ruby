@@ -224,6 +224,39 @@ class DuelTest < Minitest::Test
   # alone (a signal, a shell's command), they skip, saying so.
   def windows? = TestDirs::WINDOWS
 
+  # Windows's exit code for a process that hasn't ended.
+  STILL_ACTIVE = 259
+
+  # Whether the process +pid+ is running, or on Unix, ended but not yet
+  # waited for (a zombie, which Process.kill(0) finds too). On Windows,
+  # Process.kill(0) says only whether there's a process of that pid, which
+  # there is for one that ended while anything holds a handle on it (an
+  # antivirus scanning it, say), as well as Ruby's until it's waited for,
+  # so there it's whether its exit code is still STILL_ACTIVE: but on
+  # JRuby, without Fiddle, whose Process.kill says EPERM for one that
+  # ended.
+  def alive?(pid)
+    return running_on_windows?(pid) if windows? && Duel::Native::FIDDLE
+
+    Process.kill(0, pid) && true
+  rescue Errno::ESRCH, Errno::EPERM
+    false
+  end
+
+  def running_on_windows?(pid)
+    open_process = Duel::Native.function("OpenProcess", %i[INT INT INT], :INTPTR_T, library: "kernel32")
+    handle = open_process.call(Duel::Native::Windows::Spawned::QUERY, 0, pid)
+    return false if handle.zero?
+
+    begin
+      code = "\0" * 4
+      exit_code = Duel::Native.function("GetExitCodeProcess", %i[INTPTR_T VOIDP], :INT, library: "kernel32")
+      !exit_code.call(handle, code).zero? && code.unpack1("L") == STILL_ACTIVE
+    ensure
+      Duel::Native.function("CloseHandle", %i[INTPTR_T], :INT, library: "kernel32").call(handle)
+    end
+  end
+
   # Whether StackProf is installed: on CRuby, but not on Windows, which
   # it doesn't run on (the bundle has it on those platforms only).
   def stackprof? = RUBY_ENGINE == "ruby" && !windows?
