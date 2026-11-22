@@ -23,7 +23,7 @@ module BiasCheck
 
   COMMAND = %w[bundle exec duel --force --base HEAD --json].freeze
   # The JSON report's schema it reads.
-  SCHEMA = 1
+  SCHEMA = 2
   # Every benchmark's median ratio across the board (where there were
   # enough to tell): shown, but not counted again in the lean.
   ACROSS_NAME = "(across the board)"
