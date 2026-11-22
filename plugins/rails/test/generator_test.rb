@@ -177,6 +177,15 @@ class GeneratorTest < PluginTest
       read(".github/workflows/perf-comment.yml"), "Duel's own"
   end
 
+  # And without a label that accepts a regression, as Duel's own is.
+  def test_the_comment_workflow_without_a_label
+    generate
+    regenerate(config: "Duel.configure { |c| c.accept_label = nil }\n")
+
+    assert_equal render_own("perf-comment.yml", working_directory: nil, marker: "duel", accept_label: nil),
+      read(".github/workflows/perf-comment.yml"), "Duel's own"
+  end
+
   # Whether it comments is Duel's to say, from .duel.rb: the Comment on
   # the commit job posts a new comment, or none, as Duel's own workflow
   # does.

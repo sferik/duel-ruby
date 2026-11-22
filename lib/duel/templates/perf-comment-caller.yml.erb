@@ -22,6 +22,22 @@ on:
     types: [labeled, unlabeled]
 <% end -%>
 
+<% if accept_label -%>
+# Each Perf run's report has a run of its own, which nothing cancels, and
+# a pull request's label changes run in turn. (The group's -caller keeps
+# it apart from any of the workflow it calls, where github.workflow is
+# this one's name too.)
+concurrency:
+  group: ${{ github.workflow }}-caller-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+<% else -%>
+# Each Perf run's report has a run of its own, which nothing cancels.
+# (The group's -caller keeps it apart from any of the workflow it calls,
+# where github.workflow is this one's name too.)
+concurrency:
+  group: ${{ github.workflow }}-caller-${{ github.event.workflow_run.id }}
+<% end -%>
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:

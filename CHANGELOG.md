@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   doesn't run for pushes), and leaves out the badge's job where the
   README shows no badges. Its step about the workflow's jobs for
   pushes describes them as Duel 0.3.0 writes them.
+- The Perf comment workflow that `duel init` writes has a concurrency
+  group, as linters of workflows such as jactionlint ask for: each Perf
+  run's report has a run of its own, which nothing cancels, and a pull
+  request's label changes run in turn. The workflow that calls Duel's
+  reusable one names its group with `-caller`, apart from any of the
+  workflow it calls, where `github.workflow` is the caller's name too.
 
 ### Fixed
 

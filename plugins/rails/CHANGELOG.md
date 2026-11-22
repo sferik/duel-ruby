@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Perf comment workflow that `bin/rails generate duel:install`
+  writes has a concurrency group, as `duel init`'s does: each Perf
+  run's report has a run of its own, which nothing cancels, and a pull
+  request's label changes run in turn.
+
 ### Fixed
 
 - The Perf workflow that `bin/rails generate duel:install` writes

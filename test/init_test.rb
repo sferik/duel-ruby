@@ -261,6 +261,8 @@ class InitTest < DuelTest
     get, ruby, post = comment.fetch("steps")
 
     assert_equal [{"workflows" => ["Perf"], "types" => ["completed"]}, {}], [workflow.dig(true, "workflow_run"), workflow.fetch("permissions")]
+    assert_equal({"group" => "${{ github.workflow }}-${{ github.event.pull_request.number || github.event.workflow_run.id }}", "cancel-in-progress" => false},
+      workflow.fetch("concurrency"), "a run for each Perf run's report, and the label's in turn")
     assert_equal "${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' }}",
       comment.fetch("if")
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.fetch("permissions"))
@@ -331,6 +333,7 @@ class InitTest < DuelTest
     refute_includes perf, "ACCEPT_LABEL"
     assert_equal %w[workflow_run], comment.fetch(true).keys
     assert_equal %w[comment], comment.fetch("jobs").keys
+    assert_equal({"group" => "${{ github.workflow }}-${{ github.event.workflow_run.id }}", "cancel-in-progress" => false}, comment.fetch("concurrency"))
   end
 
   # Whether the comment workflow runs the Duel job again, and how, when
@@ -1225,6 +1228,7 @@ class InitTest < DuelTest
 
     assert_equal inputs, perf.dig(true, "workflow_call", "inputs").keys
     refute perf.key?("concurrency"), "the caller's: one of its own would wait for the caller's run"
+    refute comment.key?("concurrency"), "the caller's"
     assert_equal %w[duel], perf.fetch("jobs").keys, "the Duel job alone: the push workflow's write"
     steps = perf.dig("jobs", "duel", "steps")
 
@@ -1344,6 +1348,8 @@ class InitTest < DuelTest
     assert_equal({"actions" => "write", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"), "to run the Duel job again")
     assert_equal({"accept-label" => "duel: accept"}, comment.dig("jobs", "comment", "with"))
     assert_equal %w[workflow_run pull_request_target], comment.fetch(true).keys
+    assert_equal({"group" => "${{ github.workflow }}-caller-${{ github.event.pull_request.number || github.event.workflow_run.id }}", "cancel-in-progress" => false},
+      comment.fetch("concurrency"), "a group apart from any of the workflow it calls")
   end
 
   # What the workflow needs to know before Duel runs is passed on: the
@@ -1364,6 +1370,7 @@ class InitTest < DuelTest
     assert_equal({"actions" => "read", "pull-requests" => "write"}, comment.dig("jobs", "comment", "permissions"))
     refute comment.fetch("jobs").fetch("comment").key?("with"), "nothing to pass on"
     assert_equal %w[workflow_run], comment.fetch(true).keys, "no label to run it again for"
+    assert_equal({"group" => "${{ github.workflow }}-caller-${{ github.event.workflow_run.id }}", "cancel-in-progress" => false}, comment.fetch("concurrency"))
   end
 
   # Where .duel.rb doesn't load, the workflows take Duel's defaults: its

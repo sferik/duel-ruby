@@ -343,6 +343,12 @@ on:
   pull_request_target:
     types: [labeled, unlabeled]
 
+# Each Perf run's report has a run of its own, which nothing cancels, and
+# a pull request's label changes run in turn.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
