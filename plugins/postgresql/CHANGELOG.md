@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-22
+
 ### Fixed
 
 - On macOS, a comparison no longer runs more workers' servers at once
@@ -176,7 +178,8 @@ later, with `pg_stat_statements`.
   CI.
 - RBS signatures in sig/, checked with Steep.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.3.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.3.1...HEAD
+[0.3.1]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.3.0...duel-postgresql-v0.3.1
 [0.3.0]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.2.0...duel-postgresql-v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.8...duel-postgresql-v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/duel-postgresql-v0.1.7...duel-postgresql-v0.1.8

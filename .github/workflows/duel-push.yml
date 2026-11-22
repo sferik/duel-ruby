@@ -81,7 +81,7 @@ jobs:
           # (duel, or for a project in a subdirectory, duel and its path.)
           MARKER: ${{ inputs.working-directory == '.' && 'duel' || format('duel {0}', inputs.working-directory) }}
         run: |
-          gem install duel --version '0.3.0' --no-document
+          gem install duel --version '0.3.1' --no-document
           duel comment --report "$RUNNER_TEMP/report" --commit "$GITHUB_SHA" --marker "$MARKER"
 
   # With c.push_base = :last_passed in .duel.rb, a push is compared with
@@ -115,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ inputs.passed }}
         run: |
-          gem install duel --version '0.3.0' --no-document
+          gem install duel --version '0.3.1' --no-document
           duel mark-passed "$BRANCH"
 
   # Duel's badge, for the README: green (perf guarded), red (perf
@@ -161,5 +161,5 @@ jobs:
           # path>.)
           branch=duel/badge
           if [ "$DIRECTORY" != . ]; then branch="duel/badge-$(printf %s "$DIRECTORY" | tr / -)"; fi
-          gem install duel --version '0.3.0' --no-document
+          gem install duel --version '0.3.1' --no-document
           duel badge "$branch" --status "$STATUS" --result "$RESULT"

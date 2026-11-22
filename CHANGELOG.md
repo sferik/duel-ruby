@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-22
+
 ### Added
 
 - A plugin can say how many workers' resources the machine has room
@@ -1205,7 +1207,8 @@ needs Ruby 3.4 or later (or JRuby 10, or TruffleRuby 40).
   Anything marked `@api private`, in lib/ and sig/, may change in any
   release.
 
-[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/sferik/duel-ruby/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/sferik/duel-ruby/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/sferik/duel-ruby/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sferik/duel-ruby/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/sferik/duel-ruby/compare/v0.1.7...v0.1.8
