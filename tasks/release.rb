@@ -29,6 +29,21 @@ module Release
   UNRELEASED_LINK = %r{^\[Unreleased\]: (?<base>\S+)/compare/(?<from>\S+)\.\.\.HEAD$}
   # What a changelog says of a release with nothing of its own in it.
   NO_CHANGES = "No changes of its own: released in step with the other Duel gems."
+  # The files that pin Duel's version: the reusable workflows, which
+  # install exactly the release they're from, the guide, with its copies
+  # of what duel init writes and its calls of those workflows, and the
+  # JSON report's example.
+  PINNED = %w[.github/workflows/duel*.yml docs/ci.md docs/json.md].freeze
+  # A pin of Duel's version, which it matches: `gem install duel
+  # --version '0.2.0'`, a call of a reusable workflow by its tag
+  # (duel-ruby/.github/workflows/duel.yml@v0.2.0) or by a commit, with
+  # the tag in a comment (@<commit> # v0.2.0), and "duel_version": "0.2.0".
+  PINNED_VERSION = /\d(?:[\w.]*\w)?/
+  PIN = %r{
+    gem\ install\ duel\ --version\ '\K#{PINNED_VERSION}(?=')
+    | duel-ruby/\.github/workflows/duel[\w-]*\.yml@(?:v|\S+\ \#\ v)\K#{PINNED_VERSION}
+    | "duel_version":\ "\K#{PINNED_VERSION}(?=")
+  }x
 
   # One of the gems: Duel (at the root) or a plugin (in plugins/<dir>).
   Component = Data.define(:name, :dir) do
@@ -73,6 +88,7 @@ module Release
     components = components(root)
     version = version(root, components.first)
     problems = check_versions(root, components, version) +
+      check_pins(root, version) +
       components.flat_map { |component| check_changelog(root, component, version, date) } +
       check_git(root, components, version) +
       Dir.mktmpdir("release") { |dir| components.flat_map { |component| check_build(root, component, components, version, dir) } }
@@ -85,6 +101,17 @@ module Release
       "#{component.name} is at version #{found.inspect} (#{component.version_file}), not #{version}" unless found == version
     end
   end
+
+  def check_pins(root, version)
+    pinned(root).flat_map do |path|
+      File.read(File.join(root, path)).scan(PIN).uniq.reject { |found| found == version }.map do |found|
+        "#{path} pins Duel #{found}, not #{version} (rake release:bump)"
+      end
+    end
+  end
+
+  # The PINNED files there are, by their paths from +root+.
+  def pinned(root) = PINNED.flat_map { |pattern| Dir.glob(pattern, base: root).sort }
 
   def check_changelog(root, component, version, date)
     text = File.read(File.join(root, component.changelog))
@@ -204,8 +231,9 @@ module Release
   # Sets every gem's version to +version+, moves each changelog's
   # Unreleased entries under a section for it dated +date+, links that
   # section, and loosens a gemspec's requirement of another of the gems
-  # that +version+ wouldn't satisfy (to "~> 0.2", say). The files it
-  # changed.
+  # that +version+ wouldn't satisfy (to "~> 0.2", say). Then it sets
+  # every pin of Duel's version in the PINNED files to +version+. The
+  # files it changed.
   def bump(root, version, date:)
     raise ArgumentError, "#{version.inspect} isn't a version" unless Gem::Version.correct?(version) && !version.to_s.empty?
 
@@ -216,13 +244,14 @@ module Release
     end
     raise ArgumentError, "Can't bump to #{version}:\n#{problems.map { |problem| "  - #{problem}" }.join("\n")}" unless problems.empty?
 
-    current.flat_map do |component, previous|
+    changed = current.flat_map do |component, previous|
       [
         rewrite(root, component.version_file) { |text| text.sub(VERSION_LINE) { "#{$1}#{version}#{$3}" } },
         rewrite(root, component.changelog) { |text| bump_changelog(text, component, previous, version, date) },
         rewrite(root, component.gemspec) { |text| loosen(text, components, version) }
       ]
-    end.compact
+    end
+    (changed + pinned(root).map { |path| rewrite(root, path) { |text| text.gsub(PIN, version) } }).compact
   end
 
   def bump_changelog(text, component, previous, version, date)

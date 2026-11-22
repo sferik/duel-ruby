@@ -268,7 +268,14 @@ moves what's under `[Unreleased]` into a new section dated today (a
 gem with no entries gets a line saying it had no changes of its own),
 and links it at the bottom. A plugin's requirement of Duel (or of
 duel-activerecord) that the new version wouldn't satisfy becomes
-`~> 0.2`. Review the changes, commit and push them to main, then:
+`~> 0.2`. And it sets every pin of Duel's version to the new one: in
+the reusable workflows (`.github/workflows/duel*.yml`), which install
+exactly the release they're from, in `docs/ci.md`, with its copies of
+what `duel init` writes and its calls of those workflows, and in
+`docs/json.md`'s example report. It only loosens a requirement: to
+raise one, where a plugin needs what's new in Duel's release, change
+its gemspec yourself. Review the changes, commit and push them to main,
+then:
 
 ```sh
 bundle exec rake release:all:dry_run      # or DRY_RUN=1 bundle exec rake release:all
@@ -281,6 +288,8 @@ Both check everything first, and list every problem they find:
   plugin's `lib/duel/<plugin>/version.rb`)
 - every plugin's requirement of Duel (and duel-rails's of
   duel-activerecord) admits that version
+- every pin of Duel's version, in the reusable workflows and the docs,
+  names that version
 - every changelog has a section for it dated today (or `RELEASE_DATE`),
   a link for it, and nothing under `[Unreleased]`
 - the working tree is clean, on main, and at origin's main

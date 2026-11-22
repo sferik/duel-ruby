@@ -133,7 +133,7 @@ namespace :release do
     end
   end
 
-  desc "Set every gem's version to VERSION and date each changelog's Unreleased entries (RELEASE_DATE)"
+  desc "Set every gem's version, and every pin of Duel's, to VERSION and date each changelog's Unreleased entries (RELEASE_DATE)"
   task :bump, [:version] do |_task, args|
     require_relative "tasks/release"
     version = args.fetch(:version) { abort "Usage: rake release:bump[VERSION]" }

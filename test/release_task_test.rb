@@ -166,11 +166,14 @@ class ReleaseTaskTest < DuelTest
     write("CHANGELOG.md", changelog("v", unreleased: "\n- Something new.\n").sub("[0.1.0]: ", "[0.0.9]: "))
     write("plugins/rails/CHANGELOG.md", changelog("duel-rails-v").sub(DATE, "2026-10-23").sub("## [Unreleased]\n", ""))
     write("plugins/redis/CHANGELOG.md", changelog("duel-redis-v").sub(" - #{DATE}", "").sub("[0.1.0]: ", "[0.0.9]: "))
+    pins("0.1.0").each { |file, content| write(file, content) }
+    write("docs/ci.md", pins("0.0.9")["docs/ci.md"])
     commit("Disagree")
     git("push", "--quiet", "origin", "main")
 
     assert_equal [
       %(duel-redis is at version "0.1.1" (plugins/redis/lib/duel/redis/version.rb), not 0.1.0),
+      "docs/ci.md pins Duel 0.0.9, not 0.1.0 (rake release:bump)",
       "CHANGELOG.md has entries under [Unreleased]: move them under [0.1.0] (rake release:bump)",
       "CHANGELOG.md has no link for [0.1.0]",
       "plugins/rails/CHANGELOG.md has no [Unreleased] section",
@@ -238,12 +241,34 @@ class ReleaseTaskTest < DuelTest
     assert_equal ["origin has no main branch"], check
   end
 
+  # What the PINNED files of a release at +version+ pin it in, and what
+  # they say of versions that aren't pins (another action's tag, a
+  # version a feature came in).
+  def pins(version)
+    {
+      ".github/workflows/duel-push.yml" => "        run: |\n          gem install duel --version '#{version}' --no-document\n",
+      ".github/workflows/duel.yml" => "      - uses: actions/checkout@3d3c42e # v0.1.0\n",
+      "docs/ci.md" => <<~MARKDOWN,
+        uses: sferik/duel-ruby/.github/workflows/duel.yml@v#{version}
+        uses: sferik/duel-ruby/.github/workflows/duel-push.yml@<commit> # v#{version}
+        - uses: actions/checkout@3d3c42e # v0.1.0
+
+        It installs the release it's from (`gem install duel --version '#{version}'`).
+        A version of Duel before 0.1.0 doesn't have them.
+      MARKDOWN
+      "docs/json.md" => %(  "duel_version": "#{version}",\n)
+    }
+  end
+
   def test_bump
     write("plugins/redis/CHANGELOG.md", changelog("duel-redis-v", unreleased: "\n### Fixed\n\n- A fix.\n"))
+    pins("0.1.0").each { |file, content| write(file, content) }
     changed = Release.bump(@root, "0.2.0", date: "2026-11-01")
 
     assert_equal %w[lib/duel/version.rb CHANGELOG.md plugins/rails/lib/duel/rails/version.rb plugins/rails/CHANGELOG.md
-      plugins/redis/lib/duel/redis/version.rb plugins/redis/CHANGELOG.md], changed
+      plugins/redis/lib/duel/redis/version.rb plugins/redis/CHANGELOG.md
+      .github/workflows/duel-push.yml docs/ci.md docs/json.md], changed
+    assert_equal pins("0.2.0"), pins("0.2.0").to_h { |file, _| [file, read(file)] }
     assert_equal %(module Duel\n  VERSION = "0.2.0"\nend\n), read("plugins/rails/lib/duel/rails/version.rb")
     assert_equal <<~MARKDOWN, read("plugins/redis/CHANGELOG.md")
       # Changelog
@@ -269,6 +294,15 @@ class ReleaseTaskTest < DuelTest
     git("push", "--quiet", "origin", "main")
 
     assert_empty Release.check(@root, date: "2026-11-01").last
+  end
+
+  # This repository's own pins name the version it's at, between
+  # releases too.
+  def test_this_repositorys_pins
+    root = File.expand_path("..", __dir__)
+
+    assert_empty Release.check_pins(root, Duel::VERSION)
+    assert_includes File.read(File.join(root, "docs/ci.md")).scan(Release::PIN), Duel::VERSION, "the pattern finds them"
   end
 
   def test_bump_to_a_major_version_loosens_the_requirements
