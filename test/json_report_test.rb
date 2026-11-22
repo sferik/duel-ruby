@@ -199,4 +199,13 @@ class JSONReportTest < DuelTest
       report.dig("benchmarks", 0, "counted", "allocations"))
     assert_equal({"baseline" => RUBY_DESCRIPTION, "candidate" => RUBY_DESCRIPTION}, report.slice("baseline", "candidate").transform_values { |v| v.fetch("ruby") })
   end
+
+  # The nightly bias check reads the report, and stops at a schema it
+  # doesn't know, so a new schema needs it updated too. (It's read as
+  # text: required, it would count in the coverage.)
+  def test_the_bias_check_reads_this_schema
+    script = File.read(File.expand_path("../tasks/bias_check.rb", __dir__))
+
+    assert_equal Duel::JSONReport::SCHEMA, Integer(script[/^  SCHEMA = (\d+)$/, 1]), "update tasks/bias_check.rb for the new schema"
+  end
 end
