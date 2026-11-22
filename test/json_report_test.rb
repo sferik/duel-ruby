@@ -202,9 +202,10 @@ class JSONReportTest < DuelTest
 
   # The nightly bias check reads the report, and stops at a schema it
   # doesn't know, so a new schema needs it updated too. (It's read as
-  # text: required, it would count in the coverage.)
+  # text: required, it would count in the coverage. And Windows checks it
+  # out with CRLF, which JRuby reads as it is, not as one newline.)
   def test_the_bias_check_reads_this_schema
-    script = File.read(File.expand_path("../tasks/bias_check.rb", __dir__))
+    script = File.read(File.expand_path("../tasks/bias_check.rb", __dir__)).gsub("\r\n", "\n")
 
     assert_equal Duel::JSONReport::SCHEMA, Integer(script[/^  SCHEMA = (\d+)$/, 1]), "update tasks/bias_check.rb for the new schema"
   end
