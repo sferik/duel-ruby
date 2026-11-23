@@ -77,7 +77,7 @@ jobs:
       - uses: actions/checkout@v7
       # (JRuby 10 needs Java 21, and Windows's runner has 17 first.)
       - if: matrix.os == 'windows-latest' && startsWith(matrix.ruby-version, 'jruby')
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
