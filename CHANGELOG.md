@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- On GitHub, `duel mark-passed` no longer fails with "Resource not
+  accessible by integration (HTTP 403)" after a push that changes a
+  workflow file, such as Dependabot's bump of an action. It moved the
+  branch that marks the last commit Duel passed (`duel/passed/main`) to
+  the push's commit, and GitHub doesn't let `GITHUB_TOKEN` move a branch
+  onto commits that change `.github/workflows`. So the branch stayed
+  where it was, and the job failed for every push after. Now the branch
+  points at a commit of its own, which names the commit that passed
+  (`Duel passed <sha>`) and has none of the project's files, and Duel
+  reads the commit that passed from its message. A branch still at one
+  of the project's commits, which Duel 0.3 or `git push origin
+  main:duel/passed/main` left there, marks that commit, and the next
+  push that passes replaces it (deleted and made again, as moving it
+  would take its workflows away). On GitLab, which has no such rule,
+  the branch still points at the commit that passed.
+
 ## [0.3.1] - 2026-11-22
 
 ### Added

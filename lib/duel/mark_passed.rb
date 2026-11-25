@@ -8,18 +8,27 @@ module Duel
   # where Duel said a push passed, with the branch that marks it (see
   # Baseline#passed_branch: the Duel job's passed output), where
   # Config#push_base compares a push with the last commit Duel passed.
-  # It moves the branch to the push's commit (or makes it), but never
-  # back: where a newer push's run moved it first, it stays. On GitHub
-  # Actions, through gh (to GITHUB_SHA, in GITHUB_REPOSITORY), and on
-  # GitLab CI, through its API, signed in with DUEL_TOKEN (to
-  # CI_COMMIT_SHA). It checks nothing out, and runs none of the code.
+  # It moves the branch forward to mark the push's commit (or makes it),
+  # but never back: where a newer push's run marked it first, it stays.
+  # On GitHub Actions, through gh (GITHUB_SHA, in GITHUB_REPOSITORY), to
+  # a commit of its own that names the push's (see #on_github), and on
+  # GitLab CI, through its API, signed in with DUEL_TOKEN, to the push's
+  # commit (CI_COMMIT_SHA). It checks nothing out, and runs none of the
+  # code.
   # @api private
   class MarkPassed
     include Forge
 
     USAGE = "Usage: duel mark-passed BRANCH\n\n" \
-      "Moves BRANCH, which marks the last commit Duel passed, forward to the pushed commit, or makes it: what the Mark\n" \
-      "the commit passed job runs.\n\n"
+      "Moves BRANCH, which marks the last commit Duel passed, forward to mark the pushed commit, or makes it: what the\n" \
+      "Mark the commit passed job runs.\n\n"
+
+    # What begins a mark's message (see #mark), before the commit it
+    # marks, which Baseline#passed reads.
+    MESSAGE = "Duel passed "
+
+    # A mark's message, and the commit it marks.
+    MARKED = /\A#{MESSAGE}(\h{40}|\h{64})\n?\z/
 
     def initialize(argv, env:, out:, err:)
       @argv = argv
@@ -54,43 +63,81 @@ module Duel
       end
     end
 
-    # Moves +branch+ to +sha+ on GitHub: forward, where GitHub moves it
-    # only where it's behind the push. Where there's no branch, and making
-    # it fails, it looks once more, as something else may have made it (a
-    # push of it, say).
+    # Marks +sha+ on GitHub: moves +branch+ forward to a commit of its
+    # own that names it (#mark), or makes it there. The branch never has
+    # the project's files, so moving it changes no workflow, which GitHub
+    # lets GITHUB_TOKEN do only with the workflows permission, which it
+    # can't have. Each mark's parent is the mark before, so GitHub moves
+    # the branch only where nothing moved it since: where something did,
+    # or where making it fails (something else made it), it looks once
+    # more, and then says why it failed.
     def on_github(branch, sha)
       ref = "repos/#{repository}/git/refs/heads/#{branch}"
       at = nil #: String?
-      2.times do
-        return moved(branch, sha) if gh(ref, "--method", "PATCH", "-f", "sha=#{sha}", quiet: true)
-
+      2.times do |again|
+        quiet = again.zero?
         at = gh("repos/#{repository}/git/ref/heads/#{branch}", "--jq", ".object.sha", quiet: true)&.chomp
-        break if at
-        return moved(branch, sha) if gh("repos/#{repository}/git/refs", "--method", "POST", "-f", "ref=refs/heads/#{branch}", "-f", "sha=#{sha}")
-      end
-      found = at or return blocked(branch) { |prefix| gh("repos/#{repository}/git/ref/heads/#{prefix}", quiet: true) }
+        unless at
+          return moved(branch, sha) if (mark = mark(sha)) && made(branch, mark, quiet)
 
-      case (compared = compared(sha, found))
-      # (A newer push's run moved it, or this one's did, run again.)
-      when "ahead", "identical" then left(branch)
-      # (History rewritten, a force push's, say, or replaced: moved anyway.)
-      when "diverged", "behind", "unrelated"
-        gh(ref, "--method", "PATCH", "-f", "sha=#{sha}", "-F", "force=true") ? moved(branch, sha) : 1
-      else
-        @out.puts "::error::Couldn't compare #{branch} with this push: #{compared}"
-        1
+          next
+        end
+        message = gh("repos/#{repository}/git/commits/#{at}", "--jq", ".message") or return 1
+        # (Or where it's at the commit itself: moved there by hand, say, or
+        # by Duel 0.3.)
+        marked = message[MARKED, 1]
+        case (compared = compared(sha, marked || at))
+        # (A newer push's run marked it, or this one's did, run again.)
+        when "ahead", "identical" then return left(branch)
+        # (History rewritten, a force push's, say, or replaced: marked
+        # anyway.)
+        when "diverged", "behind", "unrelated"
+          mark = mark(sha, (at if marked)) or return 1
+          return moved(branch, sha) if marked ? gh(ref, "--method", "PATCH", "-f", "sha=#{mark}", quiet:) : remade(branch, mark, quiet)
+        else
+          @out.puts "::error::Couldn't compare #{branch} with this push: #{compared}"
+          return 1
+        end
       end
+      at ? 1 : blocked(branch) { |prefix| gh("repos/#{repository}/git/ref/heads/#{prefix}", quiet: true) }
+    end
+
+    # A commit that marks +sha+, for the branch: its message names it
+    # (MESSAGE), and its one file, passed, has it. Its parent is +parent+,
+    # the mark before, or it has none. Or nil, where GitHub won't make it.
+    def mark(sha, parent = nil)
+      # (gh makes the fields' JSON: {"tree": [{"path": "passed", ...}]}.)
+      tree = gh("repos/#{repository}/git/trees", "--method", "POST", "-f", "tree[][path]=passed", "-f", "tree[][mode]=100644",
+        "-f", "tree[][type]=blob", "-f", "tree[][content]=#{sha}\n", "--jq", ".sha")&.chomp or return
+      gh("repos/#{repository}/git/commits", "--method", "POST", "-f", "message=#{MESSAGE}#{sha}", "-f", "tree=#{tree}",
+        *[parent].compact.flat_map { |mark| ["-f", "parents[]=#{mark}"] }, "--jq", ".sha")&.chomp
+    end
+
+    # Makes +branch+ at +mark+, saying why it fails, unless +quiet+.
+    def made(branch, mark, quiet)
+      gh("repos/#{repository}/git/refs", "--method", "POST", "-f", "ref=refs/heads/#{branch}", "-f", "sha=#{mark}", quiet:)
+    end
+
+    # Moves +branch+, at one of the project's commits, to +mark+: where it
+    # has a workflow, moving it would take that away, which GitHub lets
+    # GITHUB_TOKEN do no more than change one, so it's deleted and made
+    # again.
+    def remade(branch, mark, quiet)
+      gh("repos/#{repository}/git/refs/heads/#{branch}", "--method", "DELETE", quiet: true)
+      made(branch, mark, quiet)
     end
 
     # How +at+ (the branch's commit) compares with the push's commit
     # +sha+, as GitHub says: ahead, identical, behind or diverged, or
     # unrelated, which GitHub can't compare (commits with no history in
-    # common), or what went wrong.
+    # common, or one of them not there), or what went wrong.
     def compared(sha, at)
       out, err, status = Spawn.open3(:capture3, "gh", "api", "repos/#{repository}/compare/#{sha}...#{at}", "--jq", ".status")
       return out.chomp if status.success?
 
-      err.include?("No common ancestor") ? "unrelated" : err.strip
+      # (GitHub says Not Found for both: no history in common, or a commit
+      # that's gone, after a force push, as a mark may name.)
+      err.include?("(HTTP 404)") ? "unrelated" : err.strip
     end
 
     # Moves +branch+ to +sha+ on GitLab, which moves no branch, so it's
@@ -115,12 +162,12 @@ module Duel
     end
 
     def moved(branch, sha)
-      @out.puts "#{command}: #{branch} is at #{sha}"
+      @out.puts "#{command}: #{branch} marks #{sha}"
       0
     end
 
     def left(branch)
-      @out.puts "#{command}: #{branch} is at a newer push's commit, which it's left at"
+      @out.puts "#{command}: #{branch} marks a newer push's commit, which it's left at"
       0
     end
 

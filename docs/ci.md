@@ -482,12 +482,23 @@ A branch, `duel/passed/main` for `main`, marks that commit. Each
 branch that the workflow guards has its own (see
 [Guard other branches](#guard-other-branches)). When a push passes, or has
 nothing to compare, Duel sets the `passed` output to `true`, and the
-Mark the commit passed job moves the branch to the push, or creates the
-branch. It never moves the branch back: when two pushes run at once and
-the older one finishes last, the branch stays at the newer push. The
+Mark the commit passed job moves the branch to mark the push, or creates
+the branch. It never moves the branch back: when two pushes run at once
+and the older one finishes last, the branch stays at the newer push. The
 job runs one at a time for each branch, so two runs can't race to
 create the branch. After a force push rewrites the branch's history,
 it moves the branch anyway.
+
+On GitHub, the branch doesn't point at the commit that passed. It points
+at a small commit of its own, with a message that names that commit
+(`Duel passed <sha>`) and a single file, `passed`, that holds it. The
+branch never contains your project's files, so moving it never changes
+a workflow file. GitHub doesn't let the workflow's `GITHUB_TOKEN` move a
+branch onto commits that change `.github/workflows`, which pushes that
+bump an action, such as Dependabot's, do. A branch that you moved to one
+of your own commits, as below, marks that commit, and the job replaces
+it with its own commit the next time it marks a push. On GitLab, the
+branch points at the commit that passed.
 That job checks nothing out either, and it gets the `contents: write`
 permission that moving a branch takes. Until the branch exists, and
 when the push's history doesn't have its commit, Duel compares the push

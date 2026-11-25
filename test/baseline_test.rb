@@ -241,6 +241,32 @@ class BaselineTest < DuelTest
     assert_equal @first, pushed.call(@first), "no branch"
   end
 
+  # Where `duel mark-passed` marked the last commit Duel passed on GitHub,
+  # with a commit of the branch's own that names it, it's that commit.
+  def test_a_mark
+    # (Each after the mark before, as mark-passed makes them.)
+    mark = lambda do |message|
+      before = `git -C #{@repo} rev-parse -q --verify refs/remotes/origin/duel/passed/main`.strip
+      sha = IO.popen(["git", "-C", @repo, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit-tree", "-m", message,
+        *(["-p", before] unless before.empty?), "4b825dc642cb6eb9a060e54bf8d69288fbee4904"], &:read).strip
+      git("update-ref", "refs/remotes/origin/duel/passed/main", sha)
+    end
+    @config.push_base = :last_passed
+    passed = -> { baseline(base: @first, pushed: "main").ref }
+    mark.call("Duel passed #{@first}")
+    mark.call("Duel passed #{@second}")
+
+    assert_equal @second, passed.call, "the last mark's, not the one before"
+    assert_equal @second, baseline(pushed: "main").passed
+    git("checkout", "-q", "main")
+    mark.call("Duel passed #{@third}")
+
+    assert_equal @first, passed.call, "HEAD doesn't have it"
+    mark.call("Duel passed #{@second}x")
+
+    assert_equal @first, passed.call, "not a mark: and not a commit HEAD has"
+  end
+
   # The branch that marks the last commit Duel passed: the branch
   # pushed's own, and a project's own in a subdirectory.
   def test_the_passed_branch
