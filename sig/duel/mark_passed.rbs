@@ -1,11 +1,18 @@
 module Duel
   # duel mark-passed BRANCH: moves the branch that marks the last commit
-  # Duel passed forward to the pushed commit, on GitHub or GitLab.
+  # Duel passed forward to mark the pushed commit, on GitHub (with a
+  # commit of its own that names it) or GitLab.
   # @api private
   class MarkPassed
     include Forge
 
     USAGE: String
+
+    # What begins a mark's message, before the commit it marks.
+    MESSAGE: String
+
+    # A mark's message, and the commit it marks.
+    MARKED: Regexp
 
     @argv: Array[String]
 
@@ -19,8 +26,18 @@ module Duel
 
     def parser: () -> OptionParser
 
-    # Moves the branch to the commit on GitHub.
+    # Moves the branch to a commit that marks the push's, on GitHub.
     def on_github: (String branch, String sha) -> Integer
+
+    # A commit that marks the push's, after the mark before, or nil.
+    def mark: (String sha, ?String? parent) -> String?
+
+    # Makes the branch at the mark.
+    def made: (String branch, String mark, bool quiet) -> String?
+
+    # Deletes the branch, at one of the project's commits, and makes it
+    # at the mark.
+    def remade: (String branch, String mark, bool quiet) -> String?
 
     # How the branch's commit compares with the push's, as GitHub says.
     def compared: (String sha, String at) -> String

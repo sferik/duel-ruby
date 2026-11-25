@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require "rbconfig"
 require_relative "../duel"
+require_relative "mark_passed"
 require_relative "rubies"
 require_relative "spawn"
 
@@ -100,8 +101,13 @@ module Duel
     def passed_branch = "#{prefix.empty? ? "duel/passed" : "duel/passed-#{prefix.tr("/", "-")}"}/#{@settings.pushed}"
 
     # The last commit Duel passed in a push, as checked out from GitHub
-    # (#passed_branch, on origin).
-    def passed = "origin/#{passed_branch}"
+    # (#passed_branch, on origin): the one that the commit there names,
+    # where `duel mark-passed` marked it on GitHub (MarkPassed::MESSAGE),
+    # or else that commit (on GitLab, or where it was moved by hand).
+    def passed
+      branch = "origin/#{passed_branch}"
+      git("log", "-1", "--format=%B", branch, allow_failure: true).to_s[MarkPassed::MARKED, 1] || branch
+    end
 
     # Whether nothing #watched changed since the baseline (only for a git
     # baseline compared with the working tree).
