@@ -75,7 +75,7 @@ module Duel
         @io = io
       end
 
-      def read = @io.pread(UINT64, 0).unpack1("Q")
+      def read = @io.sysread(UINT64).unpack1("Q")
     end
 
     # macOS: proc_pid_rusage(RUSAGE_INFO_V4), the process's instructions

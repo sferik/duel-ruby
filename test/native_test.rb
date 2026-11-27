@@ -7,13 +7,20 @@ require_relative "test_helper"
 class NativeTest < DuelTest
   cover "Duel::Native*"
 
-  # A fake perf_event_open(2): a file holding an 8-byte count (and more
-  # after it, never read).
+  # A fake perf_event_open(2): a pipe holding an 8-byte count (and more
+  # after it, never read), which can't seek, as perf's file can't.
   def fake_syscall(count, fd: nil)
-    path = File.join(tmpdir, "counter")
-    File.binwrite(path, [count, 7].pack("QQ"))
     calls = []
-    syscall = ->(*args) { (calls << args) && (fd || IO.sysopen(path)) }
+    syscall = lambda do |*args|
+      calls << args
+      next fd if fd
+
+      reader, writer = IO.pipe
+      reader.autoclose = false
+      writer.write([count, 7].pack("QQ"))
+      writer.close
+      reader.fileno
+    end
     [syscall, calls]
   end
 
